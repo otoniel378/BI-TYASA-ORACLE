@@ -1,3 +1,4 @@
+
 """
 create_market_tables.py — Crea las tablas de mercado en BigQuery y carga datos históricos.
 Ejecutar UNA SOLA VEZ para inicializar. Requiere: pip install yfinance pandas google-cloud-bigquery

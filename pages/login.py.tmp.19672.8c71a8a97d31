@@ -1,0 +1,357 @@
+"""
+login.py — Pantalla de inicio de sesión TYASA BI.
+Split-card layout: panel izquierdo (form) + panel derecho (brand).
+"""
+import os
+import base64
+import streamlit as st
+from core.auth import autenticar, iniciar_sesion
+
+_ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_LOGO_PATH = os.path.join(_ROOT, "assets", "img", "tyasa_logo.png")
+
+# Solo puestos, sin nombres
+_ROLES_DISPLAY = {
+    "director":   "Director General",
+    "gerente":    "Gerente Comercial",
+    "esp.negros": "Especialista — Aceros Planos Negros",
+    "esp.largos": "Especialista — Aceros Largos",
+    "esp.sbq":    "Especialista — Aceros SBQ",
+}
+
+
+def _logo_b64() -> str | None:
+    if os.path.exists(_LOGO_PATH):
+        with open(_LOGO_PATH, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    return None
+
+
+def render_login():
+    b64 = _logo_b64()
+    logo_tag = (
+        f'<img src="data:image/png;base64,{b64}" '
+        f'style="height:52px;width:auto;object-fit:contain;">'
+        if b64 else
+        '<div style="font-size:2rem;font-weight:900;letter-spacing:.04em;'
+        'color:#fff;font-family:\'Segoe UI\',sans-serif;">TYASA<span style="color:#DC2626;">.</span>BI</div>'
+    )
+
+    # ── CSS global ─────────────────────────────────────────────────────────────
+    st.markdown("""
+    <style>
+    @keyframes floatA {
+        0%,100% { transform: translateY(0px);   opacity:.55; }
+        50%      { transform: translateY(-28px); opacity:.80; }
+    }
+    @keyframes floatB {
+        0%,100% { transform: translateY(0px);  opacity:.38; }
+        50%      { transform: translateY(24px); opacity:.60; }
+    }
+    @keyframes fadeSlideUp {
+        from { opacity:0; transform:translateY(20px); }
+        to   { opacity:1; transform:translateY(0);    }
+    }
+    @keyframes spinSlow {
+        from { transform:rotate(0deg);   }
+        to   { transform:rotate(360deg); }
+    }
+
+    /* ── Ocultar chrome ── */
+    [data-testid="stSidebar"]       { display:none !important; }
+    header[data-testid="stHeader"]  { display:none !important; }
+    #MainMenu, footer               { display:none !important; }
+
+    /* ── Fondo — mezcla navy / gris oscuro / rojo sutil ── */
+    .stApp {
+        background: linear-gradient(145deg, #0A1220 0%, #111827 45%, #1a0808 100%) !important;
+        min-height: 100vh;
+    }
+
+    /* ── Contenedor principal → quitar padding, centrar, limitar ancho ── */
+    [data-testid="stMainBlockContainer"] {
+        max-width: 900px !important;
+        margin: 6vh auto 0 auto !important;
+        padding: 0 !important;
+        background: transparent !important;
+        animation: fadeSlideUp .55s ease both;
+    }
+
+    /* ── Columnas wrapper sin gap ── */
+    [data-testid="stMainBlockContainer"] [data-testid="stHorizontalBlock"] {
+        gap: 0 !important;
+        align-items: stretch !important;
+        background: #fff;
+        border-radius: 22px;
+        overflow: hidden;
+        box-shadow: 0 32px 80px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.06);
+    }
+
+    /* ── Panel izquierdo (form) — blanco ── */
+    [data-testid="stMainBlockContainer"]
+      [data-testid="stHorizontalBlock"]
+      > [data-testid="stColumn"]:nth-child(1) {
+        background: #FFFFFF !important;
+        padding: 52px 52px 44px !important;
+        border-radius: 22px 0 0 22px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: center !important;
+    }
+    [data-testid="stMainBlockContainer"]
+      [data-testid="stHorizontalBlock"]
+      > [data-testid="stColumn"]:nth-child(1) > div {
+        width: 100% !important;
+    }
+
+    /* ── Panel derecho (brand) — ya es st.html(), hereda el color del wrapper ── */
+    [data-testid="stMainBlockContainer"]
+      [data-testid="stHorizontalBlock"]
+      > [data-testid="stColumn"]:nth-child(2) {
+        padding: 0 !important;
+        border-radius: 0 22px 22px 0 !important;
+        overflow: hidden !important;
+    }
+
+    /* ── Labels dentro del panel izquierdo ── */
+    [data-testid="stMainBlockContainer"] label p,
+    [data-testid="stMainBlockContainer"] .stSelectbox label,
+    [data-testid="stMainBlockContainer"] .stTextInput  label {
+        color: #374151 !important;
+        font-size: 0.74rem !important;
+        font-weight: 700 !important;
+        letter-spacing: .07em !important;
+        text-transform: uppercase !important;
+    }
+
+    /* ── Inputs ── */
+    [data-testid="stMainBlockContainer"] .stSelectbox > div > div,
+    [data-testid="stMainBlockContainer"] .stTextInput  > div > div > input {
+        background: #F9FAFB !important;
+        border: 1.5px solid #D1D5DB !important;
+        color: #111827 !important;
+        border-radius: 10px !important;
+        font-size: .88rem !important;
+    }
+    [data-testid="stMainBlockContainer"] .stSelectbox > div > div:focus-within,
+    [data-testid="stMainBlockContainer"] .stTextInput  > div > div > input:focus {
+        border-color: #1D4ED8 !important;
+        box-shadow: 0 0 0 3px rgba(29,78,216,.15) !important;
+        background: #fff !important;
+    }
+
+    /* ── Botón principal ── */
+    [data-testid="stMainBlockContainer"] .stForm .stButton > button,
+    [data-testid="stMainBlockContainer"] .stForm .stButton > button[kind="primary"] {
+        width: 100% !important;
+        background: linear-gradient(135deg,#1B3A5C 0%,#1D4ED8 100%) !important;
+        color: #fff !important;
+        border: none !important;
+        border-radius: 11px !important;
+        height: 50px !important;
+        font-size: .93rem !important;
+        font-weight: 700 !important;
+        letter-spacing: .05em !important;
+        box-shadow: 0 6px 20px rgba(29,78,216,.40) !important;
+        transition: all .18s ease !important;
+        margin-top: 4px !important;
+    }
+    [data-testid="stMainBlockContainer"] .stForm .stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 10px 28px rgba(29,78,216,.55) !important;
+    }
+
+    /* ── Botón salir ── */
+    [data-testid="stMainBlockContainer"] .stButton > button[kind="secondary"] {
+        background: transparent !important;
+        border: 1.5px solid #E5E7EB !important;
+        color: #6B7280 !important;
+        border-radius: 10px !important;
+        font-size: .82rem !important;
+        font-weight: 600 !important;
+        height: 40px !important;
+        width: 100% !important;
+        margin-top: 2px !important;
+        transition: all .15s !important;
+    }
+    [data-testid="stMainBlockContainer"] .stButton > button[kind="secondary"]:hover {
+        background: #F9FAFB !important;
+        border-color: #DC2626 !important;
+        color: #DC2626 !important;
+    }
+
+    /* ── Alertas ── */
+    [data-testid="stMainBlockContainer"] .stAlert {
+        border-radius: 10px !important;
+        font-size: .82rem !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # ── Orbs decorativos (fondo, fuera del card) ───────────────────────────────
+    st.html("""
+    <div style="position:fixed;top:0;left:0;width:100vw;height:100vh;
+                pointer-events:none;overflow:hidden;z-index:0;">
+      <div style="position:absolute;top:-15%;left:-10%;width:560px;height:560px;
+           border-radius:50%;
+           background:radial-gradient(circle,rgba(29,78,216,.28) 0%,transparent 65%);
+           animation:floatA 10s ease-in-out infinite;"></div>
+      <div style="position:absolute;bottom:-20%;right:-8%;width:680px;height:680px;
+           border-radius:50%;
+           background:radial-gradient(circle,rgba(220,38,38,.18) 0%,transparent 60%);
+           animation:floatB 13s ease-in-out infinite;"></div>
+      <div style="position:absolute;top:50%;left:42%;width:340px;height:340px;
+           border-radius:50%;
+           background:radial-gradient(circle,rgba(27,58,92,.30) 0%,transparent 68%);
+           animation:floatA 16s ease-in-out infinite reverse;"></div>
+    </div>
+    """)
+
+    # ── Layout split ───────────────────────────────────────────────────────────
+    col_form, col_brand = st.columns([1, 1])
+
+    # ── PANEL IZQUIERDO — formulario ──────────────────────────────────────────
+    with col_form:
+        # Cabecera del form
+        st.html(f"""
+        <div style="margin-bottom:28px;">
+          <div style="margin-bottom:20px;">{logo_tag}</div>
+          <div style="font-size:1.55rem;font-weight:800;color:#111827;
+                      font-family:'Segoe UI',sans-serif;letter-spacing:-.01em;
+                      margin-bottom:4px;">Iniciar sesión</div>
+          <div style="color:#6B7280;font-size:.80rem;">
+            Accede con tus credenciales corporativas
+          </div>
+        </div>
+        """)
+
+        _label_to_uid = {v: k for k, v in _ROLES_DISPLAY.items()}
+
+        with st.form("login_form", border=False):
+            puesto = st.selectbox(
+                "Puesto",
+                options=list(_ROLES_DISPLAY.values()),
+                index=0,
+            )
+            password = st.text_input(
+                "Contraseña",
+                type="password",
+                placeholder="••••••••",
+            )
+            st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
+            submitted = st.form_submit_button("Ingresar al sistema", type="primary")
+
+        if submitted:
+            uid = _label_to_uid.get(puesto, "")
+            usuario = autenticar(uid, password)
+            if usuario:
+                iniciar_sesion(usuario)
+                st.rerun()
+            else:
+                st.error("Contraseña incorrecta.")
+
+        # Botón Salir
+        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+        if st.button("✕ Salir", type="secondary", key="btn_salir"):
+            st.html("""
+            <script>
+              try { window.close(); } catch(e) {}
+            </script>
+            """)
+            st.info("Puedes cerrar esta pestaña del navegador.")
+
+        # Línea divisoria + versión
+        st.html("""
+        <div style="margin-top:28px;padding-top:18px;border-top:1px solid #F3F4F6;
+                    display:flex;align-items:center;justify-content:space-between;">
+          <span style="color:#9CA3AF;font-size:.68rem;letter-spacing:.04em;">
+            © 2026 TYASA · Acceso restringido
+          </span>
+          <span style="background:#EEF2FF;color:#4338CA;font-size:.65rem;
+                       font-weight:700;padding:2px 8px;border-radius:20px;
+                       letter-spacing:.04em;">v2.1</span>
+        </div>
+        """)
+
+    # ── PANEL DERECHO — brand ─────────────────────────────────────────────────
+    with col_brand:
+        st.html(f"""
+        <div style="
+          height:100%;min-height:520px;
+          background:linear-gradient(145deg,#0D1F3C 0%,#1B3A5C 40%,#1D4ED8 100%);
+          padding:52px 44px;
+          display:flex;flex-direction:column;justify-content:space-between;
+          position:relative;overflow:hidden;
+        ">
+          <!-- Círculo decorativo grande -->
+          <div style="
+            position:absolute;bottom:-80px;right:-80px;
+            width:340px;height:340px;border-radius:50%;
+            background:rgba(29,78,216,.35);
+          "></div>
+          <div style="
+            position:absolute;bottom:-40px;right:-40px;
+            width:220px;height:220px;border-radius:50%;
+            background:rgba(220,38,38,.25);
+          "></div>
+          <!-- Círculo top-left -->
+          <div style="
+            position:absolute;top:-60px;left:-60px;
+            width:200px;height:200px;border-radius:50%;
+            background:rgba(255,255,255,.06);
+          "></div>
+
+          <!-- Contenido superior -->
+          <div style="position:relative;z-index:1;">
+            <div style="
+              display:inline-flex;align-items:center;justify-content:center;
+              width:52px;height:52px;border-radius:14px;
+              background:rgba(255,255,255,.15);
+              border:2px solid rgba(255,255,255,.25);
+              font-size:1.5rem;margin-bottom:24px;
+            ">🏭</div>
+
+            <div style="
+              color:#fff;font-size:1.75rem;font-weight:800;
+              font-family:'Segoe UI',sans-serif;
+              line-height:1.25;margin-bottom:12px;
+            ">Bienvenido a<br>TYASA BI</div>
+
+            <div style="color:rgba(255,255,255,.65);font-size:.88rem;
+                        line-height:1.6;max-width:240px;">
+              Plataforma de Inteligencia Comercial para el análisis y toma
+              de decisiones del negocio siderúrgico.
+            </div>
+          </div>
+
+          <!-- Características -->
+          <div style="position:relative;z-index:1;margin-top:32px;">
+            {"".join(f'''
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+              <div style="width:32px;height:32px;border-radius:8px;
+                          background:rgba(255,255,255,.12);
+                          display:flex;align-items:center;justify-content:center;
+                          font-size:.95rem;flex-shrink:0;">{ic}</div>
+              <div style="color:rgba(255,255,255,.80);font-size:.80rem;">{txt}</div>
+            </div>''' for ic, txt in [
+              ("📊","Dashboards ejecutivos en tiempo real"),
+              ("🤖","Análisis con Inteligencia Artificial"),
+              ("🌐","Monitor de mercado siderúrgico global"),
+            ])}
+
+            <!-- Separador + badge TYASA -->
+            <div style="margin-top:28px;padding-top:20px;
+                        border-top:1px solid rgba(255,255,255,.12);
+                        display:flex;align-items:center;gap:10px;">
+              <div style="
+                background:rgba(220,38,38,.90);
+                padding:3px 10px;border-radius:6px;
+                color:#fff;font-size:.68rem;font-weight:800;
+                letter-spacing:.08em;
+              ">TYASA</div>
+              <div style="color:rgba(255,255,255,.40);font-size:.68rem;
+                          letter-spacing:.05em;">Siderúrgica · GCP · BigQuery</div>
+            </div>
+          </div>
+        </div>
+        """)

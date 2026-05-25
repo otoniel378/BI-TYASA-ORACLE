@@ -94,6 +94,22 @@ with col1:
 with col2:
     st.metric("Top producto", kpis_data.top_producto or "—")
 
+# Exportar KPIs al contexto acumulativo del sistema
+try:
+    from core.chat_widget import actualizar_contexto_sistema
+    actualizar_contexto_sistema("negros_kpis", {
+        "pagina":            "Resumen Ejecutivo — Aceros Planos Negros",
+        "toneladas_totales": round(float(kpis_data.toneladas_totales or 0), 1),
+        "clientes_activos":  int(kpis_data.clientes_activos or 0),
+        "productos_activos": int(kpis_data.productos_activos or 0),
+        "ticket_promedio":   round(float(kpis_data.ticket_promedio or 0), 1),
+        "variacion_mom_pct": round(float(kpis_data.variacion_mom or 0), 1),
+        "top_cliente":       kpis_data.top_cliente or "",
+        "top_producto":      kpis_data.top_producto or "",
+    })
+except Exception:
+    pass
+
 # ---------------------------------------------------------------------------
 # A1 + A3 — Gauge ICC + Mini-panel contexto externo
 # ---------------------------------------------------------------------------

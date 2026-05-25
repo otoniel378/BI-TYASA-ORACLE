@@ -22,6 +22,8 @@ if "nav_subseccion" not in st.session_state:
     st.session_state.nav_subseccion = "bienvenida"
 if "nav_subcategoria" not in st.session_state:
     st.session_state.nav_subcategoria = "negros"
+if "chat_drawer_abierto" not in st.session_state:
+    st.session_state.chat_drawer_abierto = False
 
 # ---------------------------------------------------------------------------
 # Configuracion de pagina
@@ -40,6 +42,24 @@ css_path = os.path.join(ASSETS_DIR, "style.css")
 if os.path.exists(css_path):
     with open(css_path) as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+
+# ---------------------------------------------------------------------------
+# Autenticación — gate principal
+# ---------------------------------------------------------------------------
+from core.auth import esta_autenticado, get_usuario, puede_ver_seccion, es_especialista
+
+if not esta_autenticado():
+    from pages.login import render_login
+    render_login()
+    st.stop()
+
+_usuario_actual = get_usuario()
+
+# Especialistas van a su propio dashboard
+if es_especialista():
+    from pages.especialista.dashboard import render_dashboard
+    render_dashboard(_usuario_actual)
+    st.stop()
 
 # ---------------------------------------------------------------------------
 # CSS navegación
@@ -178,7 +198,12 @@ st.markdown("""
 # ---------------------------------------------------------------------------
 # Header estilo Power BI
 # ---------------------------------------------------------------------------
-st.markdown("""
+_u_color    = _usuario_actual.color    if _usuario_actual else "#4A7BA7"
+_u_iniciales = _usuario_actual.iniciales if _usuario_actual else "U"
+_u_nombre   = _usuario_actual.cargo    if _usuario_actual else ""
+_u_cargo    = ""
+
+st.markdown(f"""
 <div style="
     background:#1B3A5C;
     padding:10px 20px;
@@ -198,11 +223,23 @@ st.markdown("""
             </div>
         </div>
     </div>
-    <div style="display:flex;align-items:center;gap:12px;">
-        <span style="color:rgba(255,255,255,0.35);font-size:0.62rem;font-weight:600;
-                     letter-spacing:0.08em;text-transform:uppercase;">
-            Streamlit · BigQuery · GCP
-        </span>
+    <div style="display:flex;align-items:center;gap:10px;">
+        <div style="
+          width:30px;height:30px;border-radius:50%;
+          background:{_u_color};
+          display:flex;align-items:center;justify-content:center;
+          font-size:.72rem;font-weight:800;color:#fff;
+          border:1.5px solid rgba(255,255,255,.25);
+          flex-shrink:0;
+        ">{_u_iniciales}</div>
+        <div>
+          <div style="color:rgba(255,255,255,.85);font-size:.72rem;font-weight:700;line-height:1.2;">
+            {_u_nombre}
+          </div>
+          <div style="color:rgba(255,255,255,.42);font-size:.60rem;letter-spacing:.05em;">
+            {_u_cargo}
+          </div>
+        </div>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -216,6 +253,7 @@ SECCIONES = {
     "aceros_largos": {"icon": "📏", "label": "ACEROS LARGOS"},
     "aceros_sbq": {"icon": "🔑", "label": "ACEROS SBQ"},
     "mercado": {"icon": "🌐", "label": "MERCADO GLOBAL"},
+    "chat_ia": {"icon": "🤖", "label": "CHAT IA"},
 }
 
 # Subsecciones (pestañas horizontales en contenido)
@@ -242,7 +280,11 @@ SUBSECCIONES = {
         "mkt_vars": ("🌐", "Variables Globales"),
         "mkt_industria": ("🏭", "Monitor Siderúrgico"),
         "mkt_inegi": ("📈", "Indicadores INEGI"),
-    }
+        "mkt_sentimiento": ("🌡️", "Sentimiento"),
+    },
+    "chat_ia": {
+        "chat": ("💬", "Chat con los datos"),
+    },
 }
 
 # Página base por sección + subcategoría
@@ -280,22 +322,65 @@ PAGINAS = {
     "mkt_vars": "pages.mercado.02_variables",
     "mkt_industria": "pages.mercado.03_industria",
     "mkt_inegi": "pages.mercado.04_indicadores",
+    "mkt_sentimiento": "pages.mercado.05_sentimiento",
+
+    # CHAT IA
+    "chat": "pages.chat_ia.chat",
 }
 
 # ---------------------------------------------------------------------------
 # Navegación SIDEBAR
 # ---------------------------------------------------------------------------
 with st.sidebar:
+    # ── Avatar del usuario autenticado ────────────────────────────────────────
+    if _usuario_actual:
+        st.html(f"""
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 0 14px;">
+          <div style="
+            width:38px;height:38px;border-radius:50%;flex-shrink:0;
+            background:{_usuario_actual.color};
+            display:flex;align-items:center;justify-content:center;
+            font-size:.85rem;font-weight:800;color:#fff;
+            box-shadow:0 2px 8px {_usuario_actual.color}55;
+            border:2px solid rgba(255,255,255,0.30);
+          ">{_usuario_actual.iniciales}</div>
+          <div>
+            <div style="font-weight:700;font-size:.80rem;color:#1B3A5C;line-height:1.2;">
+              {_usuario_actual.cargo}
+            </div>
+          </div>
+        </div>
+        """)
+
     st.markdown("### 📍 Navegación")
     st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
-    
+
     for seccion_id, seccion in SECCIONES.items():
+        # Ocultar "CHAT IA" del menú lateral (acceso solo via drawer o botón de asistente)
+        if seccion_id == "chat_ia":
+            continue
         btn_type = "primary" if st.session_state.nav_seccion == seccion_id else "secondary"
         if st.button(f"{seccion['icon']} {seccion['label']}", use_container_width=True, type=btn_type, key=f"nav_{seccion_id}"):
             st.session_state.nav_seccion = seccion_id
             first_sub = list(SUBSECCIONES[seccion_id].keys())[0]
             st.session_state.nav_subseccion = first_sub
             st.rerun()
+
+    # ── Botón Asistente IA (siempre visible en sidebar) ──────────────────────
+    st.markdown("---")
+    _drawer_on = st.session_state.chat_drawer_abierto
+    _btn_label = "✕ Cerrar Asistente" if _drawer_on else "🤖 Asistente IA"
+    _btn_type  = "primary" if _drawer_on else "secondary"
+    if st.button(_btn_label, use_container_width=True, type=_btn_type, key="nav_chat_toggle"):
+        st.session_state.chat_drawer_abierto = not _drawer_on
+        st.rerun()
+
+    # ── Cerrar sesión ─────────────────────────────────────────────────────────
+    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
+    if st.button("🚪 Cerrar sesión", use_container_width=True, type="secondary", key="nav_logout"):
+        from core.auth import cerrar_sesion
+        cerrar_sesion()
+        st.rerun()
 
 # ---------------------------------------------------------------------------
 # Subsecciones horizontales en área de contenido
@@ -342,6 +427,9 @@ elif seccion == "aceros_sbq":
 
 elif seccion == "mercado":
     modulo = PAGINAS.get(subseccion, "pages.mercado.01_monitor")
+
+elif seccion == "chat_ia":
+    modulo = PAGINAS.get(subseccion, "pages.chat_ia.chat")
 
 # ---------------------------------------------------------------------------
 # Tabs para módulos dentro de ACEROS PLANOS
@@ -404,6 +492,30 @@ def renderizar_hub():
         )
 
 # ---------------------------------------------------------------------------
-# Ejecutar página
+# Ejecutar página (con soporte para drawer del Asistente IA)
 # ---------------------------------------------------------------------------
-cargar_pagina(modulo)
+_drawer_activo = (
+    st.session_state.get("chat_drawer_abierto", False)
+    and seccion != "chat_ia"
+)
+
+if _drawer_activo:
+    try:
+        _gemini_key = st.secrets.get("GEMINI_API_KEY", "")
+    except Exception:
+        _gemini_key = ""
+
+    _seccion_label = SECCIONES.get(seccion, {}).get("label", "")
+
+    col_main, col_chat = st.columns([6, 4])
+    with col_main:
+        cargar_pagina(modulo)
+    with col_chat:
+        from core.chat_widget import render_drawer
+        render_drawer(
+            gemini_key=_gemini_key,
+            seccion_label=_seccion_label,
+            subseccion=subseccion,
+        )
+else:
+    cargar_pagina(modulo)

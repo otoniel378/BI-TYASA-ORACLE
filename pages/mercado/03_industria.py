@@ -497,6 +497,21 @@ elif run_man:
 
 st.html(_render_mananera_full(st.session_state.get(skey_man)))
 
+# ── Exportar mañanera al contexto acumulativo del sistema ─────────────────────
+_man_data = st.session_state.get(skey_man) or {}
+if _man_data.get("tiene_contenido_relevante"):
+    try:
+        from core.chat_widget import actualizar_contexto_sistema
+        actualizar_contexto_sistema("mananera", {
+            "mananera_fecha":        fecha_man_str,
+            "mananera_resumen":      _man_data.get("resumen_ejecutivo", []),
+            "mananera_impactos":     [i.get("punto", "") for i in _man_data.get("analisis_impacto", [])],
+            "mananera_insight":      _man_data.get("insight_estrategico", ""),
+            "mananera_recomendacion":_man_data.get("recomendacion", ""),
+        })
+    except Exception:
+        pass
+
 st.divider()
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -517,6 +532,21 @@ elif run_sint:
     st.session_state["sint_result"] = {"_error": "Configura GEMINI_API_KEY en .streamlit/secrets.toml"}
 
 st.html(_render_sintesis_full(st.session_state.get("sint_result")))
+
+# ── Exportar síntesis al contexto acumulativo del sistema ────────────────────
+_sint_data = st.session_state.get("sint_result") or {}
+if _sint_data and not _sint_data.get("_error") and _sint_data.get("nivel_alerta"):
+    try:
+        from core.chat_widget import actualizar_contexto_sistema
+        actualizar_contexto_sistema("sintesis_industria", {
+            "sintesis_nivel_alerta":     _sint_data.get("nivel_alerta", ""),
+            "sintesis_impacto_precios":  _sint_data.get("impacto_precios", ""),
+            "sintesis_tendencias_mexico":_sint_data.get("tendencias_mexico", ""),
+            "sintesis_riesgos_globales": _sint_data.get("riesgos_globales", ""),
+            "sintesis_recomendacion":    _sint_data.get("recomendacion", ""),
+        })
+    except Exception:
+        pass
 
 st.divider()
 
