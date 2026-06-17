@@ -1,66 +1,34 @@
 """
-update_inegi_data.py — Descarga indicadores INEGI vía BIE API y hace upsert en gold_indicadores_inegi.
+update_inegi_data.py — Descarga indicadores INEGI y los carga en Oracle ADW.
 
-Requiere token gratuito: https://www.inegi.org.mx/app/desarrolladores/generaToken/Inicio
+Tablas destino: ADMIN.GOLD_INDICADORES_INEGI
 
-Ejecutar mensualmente (los datos INEGI son mensuales/trimestrales):
+Uso:
     python scripts/update_inegi_data.py
-
-O configurar token en .streamlit/secrets.toml:
-    [inegi]
-    token = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+    python scripts/update_inegi_data.py --truncate   # limpia antes de insertar
 """
 
-import os
 import sys
-import time
-import warnings
-from datetime import datetime
-from pathlib import Path
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import pandas as pd
+import argparse
+import math
 import requests
-from google.cloud import bigquery
+import oracledb
+from dotenv import load_dotenv
 
-warnings.filterwarnings("ignore")
+load_dotenv()
 
-_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-sys.path.insert(0, _ROOT)
+try:
+    import pandas as pd
+except ImportError:
+    print("Instala pandas: pip install pandas")
+    sys.exit(1)
 
-# ---------------------------------------------------------------------------
-# CONFIG
-# ---------------------------------------------------------------------------
-PROJECT_ID = "project-d0cf2519-d089-47d3-930"
-DATASET    = "tyasa_bi"
-TABLE      = "gold_indicadores_inegi"
-TABLE_FULL = f"{PROJECT_ID}.{DATASET}.{TABLE}"
+INEGI_TOKEN = os.environ.get("INEGI_TOKEN", "")
 
-
-def _load_token_from_secrets() -> str:
-    """Lee el token INEGI de .streamlit/secrets.toml si existe."""
-    secrets_path = Path(_ROOT) / ".streamlit" / "secrets.toml"
-    if not secrets_path.exists():
-        return ""
-    try:
-        import tomllib  # Python 3.11+
-    except ImportError:
-        try:
-            import tomli as tomllib  # pip install tomli
-        except ImportError:
-            return ""
-    try:
-        with open(secrets_path, "rb") as f:
-            secrets = tomllib.load(f)
-        return secrets.get("inegi", {}).get("token", "")
-    except Exception:
-        return ""
-
-
-INEGI_TOKEN = os.environ.get("INEGI_TOKEN", "") or _load_token_from_secrets()
-
-# Catálogo completo de indicadores (IDs INEGI BIE → nombre técnico)
 INDICADORES = {
-    # ── ACTIVIDAD INDUSTRIAL (IMAI) ───────────────────────────────────────────
     "736407": "IMAI_ActividadIndustrial_Indice",
     "736418": "IMAI_Manufactureras_Indice",
     "736414": "IMAI_Construccion_Indice",
@@ -71,183 +39,171 @@ INDICADORES = {
     "736526": "IMAI_ActividadIndustrial_VarAnual",
     "736533": "IMAI_Construccion_VarAnual",
     "736594": "IMAI_MetalicasBasicas_331_VarAnual",
-    # ── EMIM ─────────────────────────────────────────────────────────────────
     "910468": "EMIM_VolFisico_Desest_Indice",
     "910470": "EMIM_VolFisico_Desest_VarAnual",
-    # ── ENEC ─────────────────────────────────────────────────────────────────
     "720332": "ENEC_ValorProd_ObraTotal",
     "720334": "ENEC_ValorProd_Edificacion",
     "720340": "ENEC_ValorProd_Transporte_Urb",
-    # ── EMEC ─────────────────────────────────────────────────────────────────
     "718504": "EMEC_Ingresos_ComercioMayor_43",
     "718506": "EMEC_Ingresos_ComercioMenor_46",
-    # ── IGAE ─────────────────────────────────────────────────────────────────
     "737173": "IGAE_Secundario_Indice",
     "737149": "IGAE_Secundario_VarAnual",
-    # ── BALANZA COMERCIAL SIDERURGIA ──────────────────────────────────────────
     "133094": "BC_Siderurgia_Importaciones",
     "133031": "BC_Siderurgia_Exportaciones",
-    # ── INPP ─────────────────────────────────────────────────────────────────
     "910503": "INPP_Manufactura_3133",
     "910502": "INPP_Construccion_23",
     "910501": "INPP_Energia_22",
     "910500": "INPP_Mineria_SinPetroleo",
     "910499": "INPP_Mineria_ConPetroleo",
     "910491": "INPP_SinPetroleo_ConServicios",
-    # ── INPC ─────────────────────────────────────────────────────────────────
     "910396": "INPC_Total_Mensual",
     "909294": "INPC_Energeticos_NoSubyacente",
     "910398": "INPC_Energeticos_Gobierno",
     "910393": "INPC_Subyacente_Total",
-    # ── IFB ──────────────────────────────────────────────────────────────────
     "741034": "IFB_Construccion",
     "741030": "IFB_Maquinaria_Importada",
     "741025": "IFB_Maquinaria_Nacional",
-    # ── CONFIANZA ─────────────────────────────────────────────────────────────
     "701407": "ICE_Construccion",
     "701401": "ICE_Global",
     "334497": "ICC_Confianza_Consumidor",
 }
 
-BATCH_SIZE = 20   # INEGI BIE soporta múltiples IDs por request
 BIE_BASE   = "https://www.inegi.org.mx/app/api/indicadores/desarrolladores/jsonxml"
+BATCH_SIZE = 20
+
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json, text/plain, */*",
+}
 
 
-# ---------------------------------------------------------------------------
-# HELPERS
-# ---------------------------------------------------------------------------
-def _bie_url(ids: list[str], token: str) -> str:
-    ids_str = ",".join(ids)
-    return f"{BIE_BASE}/INDICATOR/{ids_str}/es/0700/false/BIE/2.0/{token}.json"
-
-
-def _fetch_batch(ids: list[str], token: str) -> list[dict]:
-    """Descarga un batch de indicadores desde INEGI BIE API. Retorna filas listas para BQ."""
-    url = _bie_url(ids, token)
+def _parse_periodo(periodo: str) -> str | None:
+    if "/" not in periodo:
+        return None
+    year, sub = periodo.split("/", 1)
+    if sub.startswith("T"):
+        try:
+            return f"{year}-{(int(sub[1]) - 1) * 3 + 1:02d}"
+        except (ValueError, IndexError):
+            return None
     try:
-        resp = requests.get(url, timeout=30)
+        return f"{year}-{int(sub):02d}"
+    except ValueError:
+        return None
+
+
+def fetch_batch(ids: list[str], token: str) -> list[tuple]:
+    """Descarga un batch de indicadores INEGI (área=00, banco=BIE-BISE)."""
+    ids_str = ",".join(ids)
+    url = f"{BIE_BASE}/INDICATOR/{ids_str}/es/00/false/BIE-BISE/2.0/{token}?type=json"
+    try:
+        resp = requests.get(url, timeout=30, headers=_HEADERS)
         resp.raise_for_status()
         data = resp.json()
-    except requests.RequestException as e:
-        print(f"  ✗ Error HTTP: {e}")
-        return []
-    except ValueError:
-        print("  ✗ Respuesta no es JSON válido")
+    except Exception as e:
+        print(f"  ERROR batch {ids[:2]}...: {e}")
         return []
 
-    series = data.get("Series", [])
     rows = []
-    ts = datetime.utcnow().isoformat()
-
-    for serie in series:
-        clave   = str(serie.get("INDICADOR", ""))
-        nombre  = INDICADORES.get(clave, serie.get("NOMBRE_IND", clave))
-        obs_list = serie.get("OBS", [])
-        for obs in obs_list:
-            periodo = obs.get("PERIODO", "")
-            val_str = obs.get("OBS_VALUE", "N/E")
-            # Normalizar periodo YYYY/MM → YYYY-MM  |  trimestral YYYY/T1 → ignorar (solo mensuales)
-            if "/" not in periodo:
+    for serie in data.get("Series", []):
+        clave  = str(serie.get("INDICADOR", ""))
+        nombre = INDICADORES.get(clave, clave)
+        for obs in serie.get("OBSERVATIONS", []):
+            periodo = obs.get("TIME_PERIOD", "")
+            val_str = str(obs.get("OBS_VALUE", "") or "")
+            if not val_str or val_str in ("N/E", "N/A", "null", "None"):
                 continue
-            parts = periodo.split("/")
-            if len(parts) != 2:
+            fecha = _parse_periodo(periodo)
+            if not fecha:
                 continue
-            year, subperiod = parts
-            if subperiod.startswith("T"):
-                fecha = f"{year}-{(int(subperiod[1]) - 1) * 3 + 1:02d}"
-            else:
-                try:
-                    fecha = f"{year}-{int(subperiod):02d}"
-                except ValueError:
-                    continue
             try:
-                valor = float(val_str) if val_str not in ("N/E", "", "N/A", "null") else None
-            except ValueError:
-                valor = None
-            if valor is None:
+                valor = float(val_str)
+            except (ValueError, TypeError):
                 continue
-            rows.append({
-                "Fecha":       fecha,
-                "Clave":       clave,
-                "Nombre":      nombre,
-                "Valor":       valor,
-                "Actualizado": ts,
-            })
+            rows.append((clave, nombre, fecha, valor))
     return rows
 
 
-def upsert_bq(client: bigquery.Client, rows: list[dict]) -> int:
-    """MERGE temporal: carga a staging y luego MERGE en tabla final."""
-    if not rows:
-        return 0
-
-    df = pd.DataFrame(rows)
-
-    staging = f"{PROJECT_ID}.{DATASET}._staging_inegi"
-    job_config = bigquery.LoadJobConfig(
-        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
-        schema=[
-            bigquery.SchemaField("Fecha",       "STRING"),
-            bigquery.SchemaField("Clave",        "STRING"),
-            bigquery.SchemaField("Nombre",       "STRING"),
-            bigquery.SchemaField("Valor",        "FLOAT64"),
-            bigquery.SchemaField("Actualizado",  "STRING"),
-        ],
-    )
-    client.load_table_from_dataframe(df, staging, job_config=job_config).result()
-
-    merge_sql = f"""
-    MERGE `{TABLE_FULL}` AS T
-    USING `{staging}`   AS S
-    ON  T.Clave = S.Clave AND T.Fecha = S.Fecha
-    WHEN MATCHED THEN
-        UPDATE SET Nombre = S.Nombre, Valor = S.Valor, Actualizado = CURRENT_TIMESTAMP()
-    WHEN NOT MATCHED THEN
-        INSERT (Fecha, Clave, Nombre, Valor, Actualizado)
-        VALUES (S.Fecha, S.Clave, S.Nombre, S.Valor, CURRENT_TIMESTAMP())
-    """
-    client.query(merge_sql).result()
-    client.delete_table(staging, not_found_ok=True)
-    return len(rows)
+def get_conn() -> oracledb.Connection:
+    wallet_dir = os.environ.get("ORACLE_WALLET_DIR", "")
+    params = {
+        "user":     os.environ.get("ORACLE_USER", "ADMIN"),
+        "password": os.environ.get("ORACLE_PASSWORD", ""),
+        "dsn":      os.environ.get("ORACLE_DSN", ""),
+    }
+    if wallet_dir:
+        params["config_dir"]      = wallet_dir
+        params["wallet_location"] = wallet_dir
+        wallet_pw = os.environ.get("ORACLE_WALLET_PASSWORD", "")
+        if wallet_pw:
+            params["wallet_password"] = wallet_pw
+    return oracledb.connect(**params)
 
 
-# ---------------------------------------------------------------------------
-# MAIN
-# ---------------------------------------------------------------------------
-def run(token: str | None = None):
-    token = token or INEGI_TOKEN
+def cargar_indicadores(truncate: bool = False, insert_batch: int = 2000):
+    token = os.environ.get("INEGI_TOKEN", "")
     if not token:
-        print("ERROR: Falta INEGI_TOKEN.")
-        print("  1. Registra un token gratis en https://www.inegi.org.mx/app/desarrolladores/generaToken/Inicio")
-        print("  2. Agrégalo en .streamlit/secrets.toml:  [inegi]  token = \"xxxx\"")
-        print("  3. O exporta la variable de entorno: set INEGI_TOKEN=xxxx  (Windows)")
+        print("ERROR: INEGI_TOKEN no configurado.")
+        print("Agrega INEGI_TOKEN=<tu-token> en .env")
         sys.exit(1)
 
-    client = bigquery.Client(project=PROJECT_ID)
-    ids    = list(INDICADORES.keys())
+    import time
+    ids     = list(INDICADORES.keys())
     batches = [ids[i:i + BATCH_SIZE] for i in range(0, len(ids), BATCH_SIZE)]
+    print(f"Descargando {len(ids)} indicadores en {len(batches)} batch(es)...")
 
     all_rows = []
-    print(f"Descargando {len(ids)} indicadores en {len(batches)} batches...")
     for i, batch in enumerate(batches, 1):
-        print(f"  Batch {i}/{len(batches)}: {batch[:3]}...")
-        rows = _fetch_batch(batch, token)
-        all_rows.extend(rows)
+        rows = fetch_batch(batch, token)
+        if rows:
+            all_rows.extend(rows)
+            print(f"  Batch {i}/{len(batches)}: {len(rows)} obs OK")
+        else:
+            print(f"  Batch {i}/{len(batches)}: sin datos")
         if i < len(batches):
-            time.sleep(1)   # respetar rate-limit INEGI
+            time.sleep(0.5)
 
-    print(f"  Registros descargados: {len(all_rows)}")
+    if not all_rows:
+        print("Sin datos para cargar.")
+        return
 
-    if all_rows:
-        inserted = upsert_bq(client, all_rows)
-        print(f"✓ Upsert en {TABLE_FULL}: {inserted} filas procesadas")
-    else:
-        print("✗ No se obtuvieron datos — verifica el token o los IDs")
+    INSERT = """
+        INSERT INTO ADMIN.GOLD_INDICADORES_INEGI (CLAVE, NOMBRE, FECHA, VALOR)
+        VALUES (:1,:2,:3,:4)
+    """
 
-    return len(all_rows)
+    conn = get_conn()
+    cursor = conn.cursor()
+    try:
+        if truncate:
+            cursor.execute("TRUNCATE TABLE ADMIN.GOLD_INDICADORES_INEGI")
+            conn.commit()
+            print(f"  Tabla truncada.")
+        else:
+            cursor.execute("DELETE FROM ADMIN.GOLD_INDICADORES_INEGI")
+            conn.commit()
+            print(f"  Datos anteriores eliminados.")
+
+        n_batches = math.ceil(len(all_rows) / insert_batch)
+        for i in range(n_batches):
+            cursor.executemany(INSERT, all_rows[i*insert_batch:(i+1)*insert_batch])
+            conn.commit()
+
+        print(f"  OK {len(all_rows):,} filas en GOLD_INDICADORES_INEGI")
+    finally:
+        cursor.close()
+        conn.close()
 
 
 if __name__ == "__main__":
-    # Permite pasar el token como argumento: python update_inegi_data.py <token>
-    token_arg = sys.argv[1] if len(sys.argv) > 1 else None
-    run(token_arg)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--truncate", action="store_true",
+                        help="Truncar tabla antes de insertar")
+    args = parser.parse_args()
+
+    cargar_indicadores(truncate=args.truncate)
+    print("\nActualizacion INEGI completada.")

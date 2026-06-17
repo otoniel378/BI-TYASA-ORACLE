@@ -48,5 +48,15 @@ credentials*.json
 .streamlit/secrets.toml
 !.streamlit/secrets.toml.example
 
+# Variables de entorno para scripts ETL (contiene credenciales Oracle)
+.env
+!.env.example
+
 # Caché de análisis de IA
 cache/ai_summaries/
+
+# Oracle Wallet — contiene certificados y credenciales de Oracle ADW (NUNCA subir)
+oracle/Wallet_TYASAADW/
+
+# Archivos temporales del editor
+*.tmp.*

@@ -1,108 +1,83 @@
 """
-db_connector.py — Conexion a BigQuery compartida entre todas las areas.
-Todas las consultas van a project-d0cf2519-d089-47d3-930.tyasa_bi
+db_connector.py — Conexión a Oracle Autonomous Database (ADW).
+Todas las consultas van al schema ADMIN del ADW de TYASA.
 
-Autenticacion (se intenta en este orden):
-  1. secrets.toml [gcp_service_account] — JSON embebido (recomendado para equipos)
-  2. secrets.toml GOOGLE_APPLICATION_CREDENTIALS — ruta al archivo JSON
-  3. Variable de entorno GOOGLE_APPLICATION_CREDENTIALS
-  4. Application Default Credentials (gcloud auth, Workload Identity, etc.)
+Autenticación (se intenta en este orden):
+  1. secrets.toml [oracle] — user, password, dsn, wallet_dir, wallet_password
+  2. Variables de entorno ORACLE_USER, ORACLE_PASSWORD, ORACLE_DSN
 """
 
 import os
-import json
-import tempfile
-
-from google.cloud import bigquery
-from google.oauth2 import service_account
+import oracledb
 import pandas as pd
 import streamlit as st
 
-PROJECT_ID = "project-d0cf2519-d089-47d3-930"
-DATASET    = "tyasa_bi"
-FULL_DS    = f"{PROJECT_ID}.{DATASET}"
+SCHEMA = "ADMIN"
 
 
-def _build_credentials():
-    """
-    Construye credenciales GCP con fallback progresivo.
-    Retorna (credentials, project_id) o (None, PROJECT_ID) para ADC.
-    """
-    # ── Método 1: JSON embebido en secrets.toml ────────────────────────────
+def _get_oracle_params() -> dict:
     try:
-        sa_info = dict(st.secrets["gcp_service_account"])
-        creds = service_account.Credentials.from_service_account_info(
-            sa_info,
-            scopes=["https://www.googleapis.com/auth/cloud-platform"],
-        )
-        return creds, sa_info.get("project_id", PROJECT_ID)
-    except (KeyError, Exception):
-        pass
-
-    # ── Método 2: Ruta al JSON en secrets.toml ────────────────────────────
-    try:
-        cred_path = st.secrets.get("GOOGLE_APPLICATION_CREDENTIALS", "")
-        if cred_path and os.path.isfile(cred_path):
-            creds = service_account.Credentials.from_service_account_file(
-                cred_path,
-                scopes=["https://www.googleapis.com/auth/cloud-platform"],
-            )
-            return creds, PROJECT_ID
+        cfg = st.secrets["oracle"]
+        params = {
+            "user":     cfg["user"],
+            "password": cfg["password"],
+            "dsn":      cfg["dsn"],
+        }
+        wallet_dir = cfg.get("wallet_dir", "")
+        if wallet_dir:
+            params["config_dir"]      = wallet_dir
+            params["wallet_location"] = wallet_dir
+            wallet_pw = cfg.get("wallet_password", "")
+            if wallet_pw:
+                params["wallet_password"] = wallet_pw
+        return params
     except Exception:
-        pass
-
-    # ── Método 3: Variable de entorno del sistema ─────────────────────────
-    env_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
-    if env_path and os.path.isfile(env_path):
-        try:
-            creds = service_account.Credentials.from_service_account_file(
-                env_path,
-                scopes=["https://www.googleapis.com/auth/cloud-platform"],
-            )
-            return creds, PROJECT_ID
-        except Exception:
-            pass
-
-    # ── Método 4: ADC (gcloud auth, Workload Identity, etc.) ─────────────
-    return None, PROJECT_ID
+        return {
+            "user":     os.environ.get("ORACLE_USER", "ADMIN"),
+            "password": os.environ.get("ORACLE_PASSWORD", ""),
+            "dsn":      os.environ.get("ORACLE_DSN", ""),
+        }
 
 
 @st.cache_resource(show_spinner=False)
-def get_bq_client() -> bigquery.Client:
-    """Cliente BigQuery singleton por sesion de Streamlit."""
-    creds, project = _build_credentials()
-    if creds:
-        return bigquery.Client(project=project, credentials=creds)
-    return bigquery.Client(project=PROJECT_ID)
+def get_oracle_pool() -> oracledb.ConnectionPool:
+    """Pool de conexiones Oracle singleton por sesión de Streamlit."""
+    params = _get_oracle_params()
+    return oracledb.create_pool(min=1, max=5, increment=1, **params)
 
 
 def run_query(sql: str) -> pd.DataFrame:
-    """
-    Ejecuta una consulta SQL en BigQuery y devuelve un DataFrame.
-
-    Args:
-        sql: sentencia SQL con nombres de tabla completamente calificados.
-
-    Returns:
-        pd.DataFrame con los resultados.
-    """
-    client = get_bq_client()
-    try:
-        return client.query(sql).to_dataframe()
-    except Exception as e:
-        raise RuntimeError(f"Error BigQuery:\n{sql}\n\nDetalle: {e}") from e
+    """Ejecuta SQL en Oracle ADW y devuelve un DataFrame."""
+    pool = get_oracle_pool()
+    with pool.acquire() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(sql)
+            cols = [d[0] for d in cursor.description]
+            rows = cursor.fetchall()
+            return pd.DataFrame(rows, columns=cols)
+        except Exception as e:
+            raise RuntimeError(f"Error Oracle:\n{sql}\n\nDetalle: {e}") from e
+        finally:
+            cursor.close()
 
 
 def list_tables() -> list[str]:
-    """Devuelve la lista de tablas disponibles en el dataset."""
-    client = get_bq_client()
-    try:
-        tables = client.list_tables(f"{PROJECT_ID}.{DATASET}")
-        return [t.table_id for t in tables]
-    except Exception:
-        return []
+    """Devuelve la lista de tablas disponibles en el schema ADMIN."""
+    pool = get_oracle_pool()
+    with pool.acquire() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                f"SELECT TABLE_NAME FROM ALL_TABLES WHERE OWNER = '{SCHEMA}'"
+            )
+            return [row[0] for row in cursor.fetchall()]
+        except Exception:
+            return []
+        finally:
+            cursor.close()
 
 
 def table_ref(table_name: str) -> str:
-    """Devuelve la referencia completa de una tabla BigQuery."""
-    return f"`{FULL_DS}.{table_name}`"
+    """Devuelve la referencia completa de una tabla Oracle: ADMIN.NOMBRE_TABLA."""
+    return f"{SCHEMA}.{table_name.upper()}"

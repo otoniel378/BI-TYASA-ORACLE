@@ -1,5 +1,5 @@
 """
-loaders.py — Funciones de carga para indicadores INEGI desde BigQuery.
+loaders.py — Funciones de carga para indicadores INEGI desde Oracle ADW.
 """
 
 import pandas as pd
@@ -7,6 +7,12 @@ import streamlit as st
 from core.db_connector import run_query, table_ref
 
 T_INDICADORES = table_ref("gold_indicadores_inegi")
+
+
+def _lc(df: pd.DataFrame) -> pd.DataFrame:
+    """Normaliza columnas a minúsculas para compatibilidad con las páginas."""
+    df.columns = [c.lower() for c in df.columns]
+    return df
 
 # ── Catálogo de indicadores ──────────────────────────────────────────────────
 INDICADORES_CONFIG = {
@@ -153,7 +159,7 @@ GRUPOS_INEGI = {
     },
     "INPC": {
         "label": "Precios Consumidor",
-        "desc": "Contexto macro — INPC Total, Subyacente, Energía NS y Gobierno; niveles altos implican tasas Banxico más altas, frenando crédito e inversión",
+        "desc": "Contexto macro — INPC Total, Subyacente, Energía NS y Gobierno",
         "claves": ["910396","909294","910398","910393"],
         "color": "#F48FB1",
         "icon": "🏪",
@@ -179,25 +185,25 @@ GRUPOS_INEGI = {
 @st.cache_data(ttl=3600, show_spinner="Cargando indicadores INEGI...")
 def load_todos_indicadores() -> pd.DataFrame:
     sql = f"""
-        SELECT Clave, Nombre, Fecha, Valor
+        SELECT CLAVE, NOMBRE, FECHA, VALOR
         FROM {T_INDICADORES}
-        ORDER BY Clave, Fecha DESC
+        ORDER BY CLAVE, FECHA DESC
     """
-    return run_query(sql)
+    return _lc(run_query(sql))
 
 
 @st.cache_data(ttl=3600, show_spinner="Cargando indicador...")
 def load_indicador(clave: str) -> pd.DataFrame:
     sql = f"""
-        SELECT Fecha, Valor, Nombre
+        SELECT FECHA, VALOR, NOMBRE
         FROM {T_INDICADORES}
-        WHERE Clave = '{clave}'
-        ORDER BY Fecha DESC
-        LIMIT 500
+        WHERE CLAVE = '{clave}'
+        ORDER BY FECHA DESC
+        FETCH FIRST 500 ROWS ONLY
     """
-    df = run_query(sql)
-    if not df.empty and "Fecha" in df.columns:
-        df["Fecha"] = pd.to_datetime(df["Fecha"], format="%Y-%m", errors="coerce")
+    df = _lc(run_query(sql))
+    if not df.empty and "fecha" in df.columns:
+        df["fecha"] = pd.to_datetime(df["fecha"], format="%Y-%m", errors="coerce")
     return df
 
 
@@ -207,27 +213,27 @@ def load_indicadores_por_grupo(grupo: str) -> pd.DataFrame:
     if not clves:
         return pd.DataFrame()
     sql = f"""
-        SELECT Clave, Nombre, Fecha, Valor
+        SELECT CLAVE, NOMBRE, FECHA, VALOR
         FROM {T_INDICADORES}
-        WHERE Clave IN ({','.join([f"'{c}'" for c in clves])})
-        ORDER BY Clave, Fecha DESC
+        WHERE CLAVE IN ({','.join([f"'{c}'" for c in clves])})
+        ORDER BY CLAVE, FECHA DESC
     """
-    return run_query(sql)
+    return _lc(run_query(sql))
 
 
 @st.cache_data(ttl=3600)
 def load_serie(clave: str, periodos: int = 24) -> pd.DataFrame:
     sql = f"""
-        SELECT Fecha, Valor
+        SELECT FECHA, VALOR
         FROM {T_INDICADORES}
-        WHERE Clave = '{clave}'
-        ORDER BY Fecha DESC
-        LIMIT {periodos}
+        WHERE CLAVE = '{clave}'
+        ORDER BY FECHA DESC
+        FETCH FIRST {periodos} ROWS ONLY
     """
-    df = run_query(sql)
-    if not df.empty and "Fecha" in df.columns:
-        df["Fecha"] = pd.to_datetime(df["Fecha"], format="%Y-%m", errors="coerce")
-        df = df.sort_values("Fecha")
+    df = _lc(run_query(sql))
+    if not df.empty and "fecha" in df.columns:
+        df["fecha"] = pd.to_datetime(df["fecha"], format="%Y-%m", errors="coerce")
+        df = df.sort_values("fecha")
     return df
 
 
@@ -239,31 +245,31 @@ def calcular_alertas(periodos_hist: int = 24) -> pd.DataFrame:
     """
     sql = f"""
         WITH hist AS (
-            SELECT Clave, Nombre, Valor, Fecha,
-                   ROW_NUMBER() OVER (PARTITION BY Clave ORDER BY Fecha DESC) AS rn
+            SELECT CLAVE, NOMBRE, VALOR, FECHA,
+                   ROW_NUMBER() OVER (PARTITION BY CLAVE ORDER BY FECHA DESC) AS rn
             FROM {T_INDICADORES}
         ),
         stats AS (
-            SELECT Clave,
-                   MAX(CASE WHEN rn = 1 THEN Nombre END) AS nombre,
-                   MAX(CASE WHEN rn = 1 THEN Fecha  END) AS ult_fecha,
-                   MAX(CASE WHEN rn = 1 THEN Valor  END) AS ult_valor,
-                   MAX(CASE WHEN rn = 2 THEN Valor  END) AS ant_valor,
-                   AVG(Valor)    AS media,
-                   STDDEV(Valor) AS std
+            SELECT CLAVE,
+                   MAX(CASE WHEN rn = 1 THEN NOMBRE END) AS NOMBRE,
+                   MAX(CASE WHEN rn = 1 THEN FECHA  END) AS ULT_FECHA,
+                   MAX(CASE WHEN rn = 1 THEN VALOR  END) AS ULT_VALOR,
+                   MAX(CASE WHEN rn = 2 THEN VALOR  END) AS ANT_VALOR,
+                   AVG(VALOR)    AS MEDIA,
+                   STDDEV(VALOR) AS STD
             FROM hist
             WHERE rn <= {periodos_hist}
-            GROUP BY Clave
+            GROUP BY CLAVE
         )
-        SELECT Clave, nombre, ult_fecha, ult_valor, ant_valor, media, std,
-               SAFE_DIVIDE(ult_valor - media, std) AS z_score
+        SELECT CLAVE, NOMBRE, ULT_FECHA, ULT_VALOR, ANT_VALOR, MEDIA, STD,
+               CASE WHEN STD != 0 THEN (ULT_VALOR - MEDIA) / STD ELSE NULL END AS Z_SCORE
         FROM stats
     """
-    df = run_query(sql)
+    df = _lc(run_query(sql))
     if df.empty:
         return df
 
-    df["Clave"] = df["Clave"].astype(str)
+    df["clave"] = df["clave"].astype(str)
 
     def _nivel(z):
         try:
@@ -291,21 +297,21 @@ def load_sparklines(n_periodos: int = 12) -> dict:
     """Últimos N periodos de todos los indicadores (cronológico asc) para sparklines."""
     sql = f"""
         WITH ranked AS (
-            SELECT Clave, Valor,
-                   ROW_NUMBER() OVER (PARTITION BY Clave ORDER BY Fecha DESC) AS rn
+            SELECT CLAVE, VALOR,
+                   ROW_NUMBER() OVER (PARTITION BY CLAVE ORDER BY FECHA DESC) AS rn
             FROM {T_INDICADORES}
         )
-        SELECT Clave, Valor
+        SELECT CLAVE, VALOR
         FROM ranked
         WHERE rn <= {n_periodos}
-        ORDER BY Clave, rn DESC
+        ORDER BY CLAVE, rn DESC
     """
-    df = run_query(sql)
+    df = _lc(run_query(sql))
     result: dict = {}
     if not df.empty:
-        df["Clave"] = df["Clave"].astype(str)
-        for clave, grp in df.groupby("Clave"):
-            vals = pd.to_numeric(grp["Valor"], errors="coerce").dropna().tolist()
+        df["clave"] = df["clave"].astype(str)
+        for clave, grp in df.groupby("clave"):
+            vals = pd.to_numeric(grp["valor"], errors="coerce").dropna().tolist()
             if vals:
                 result[clave] = vals
     return result

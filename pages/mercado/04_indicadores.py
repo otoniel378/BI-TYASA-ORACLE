@@ -61,9 +61,9 @@ def _calc_yoy(df_serie: pd.DataFrame):
     if df_serie.empty or len(df_serie) < 13:
         return None
     try:
-        df_s = df_serie.sort_values("Fecha")
-        v_now = float(df_s.iloc[-1]["Valor"])
-        v_ago = float(df_s.iloc[-13]["Valor"])
+        df_s = df_serie.sort_values("fecha")
+        v_now = float(df_s.iloc[-1]["valor"])
+        v_ago = float(df_s.iloc[-13]["valor"])
         return (v_now - v_ago) / abs(v_ago) * 100 if v_ago != 0 else None
     except Exception:
         return None
@@ -72,11 +72,11 @@ def _calc_yoy(df_serie: pd.DataFrame):
 def _serie_to_list(df_serie: pd.DataFrame) -> list:
     if df_serie.empty:
         return []
-    df_s = df_serie.sort_values("Fecha").tail(12)
+    df_s = df_serie.sort_values("fecha").tail(12)
     result = []
     for _, r in df_s.iterrows():
         try:
-            result.append((str(r["Fecha"])[:7], float(r["Valor"])))
+            result.append((str(r["fecha"])[:7], float(r["valor"])))
         except Exception:
             pass
     return result
@@ -197,10 +197,10 @@ def _alert_summary(df: pd.DataFrame) -> str:
 
 # ── Gráfica Plotly ───────────────────────────────────────────────────────────
 def _make_chart(df_serie: pd.DataFrame, label: str, color: str) -> go.Figure:
-    df_s = df_serie.sort_values("Fecha")
+    df_s = df_serie.sort_values("fecha")
     fig  = go.Figure()
     fig.add_trace(go.Scatter(
-        x=df_s["Fecha"], y=df_s["Valor"],
+        x=df_s["fecha"], y=df_s["valor"],
         mode="lines+markers", name=label,
         line=dict(color=color, width=2.5),
         fill="tozeroy", fillcolor=_hex_rgba(color, 0.12),
@@ -416,8 +416,8 @@ def render():
         st.info("Sin datos en `gold_indicadores_inegi`. Ejecuta `scripts/script_inegi.py` para cargar datos.")
         return
 
-    df_alerts["Clave"] = df_alerts["Clave"].astype(str)
-    alerts_idx = df_alerts.drop_duplicates("Clave").set_index("Clave")
+    df_alerts["clave"] = df_alerts["clave"].astype(str)
+    alerts_idx = df_alerts.drop_duplicates("clave").set_index("clave")
 
     # ── Banner de alertas ────────────────────────────────────────────────────
     st.html(_alert_summary(df_alerts))
@@ -480,7 +480,7 @@ def render():
                     clave_to_group[c] = gk
 
             for _, arow in df_sorted.iterrows():
-                clave_a  = str(arow["Clave"])
+                clave_a  = str(arow["clave"])
                 label_a  = INDICADORES_LABEL.get(clave_a, clave_a)
                 alerta_a = arow.get("alerta", "Normal")
                 am_a     = _ALERT[alerta_a]
@@ -502,7 +502,7 @@ def render():
     ult = ""
     if "ult_fecha" in df_alerts.columns:
         try:
-            ult = f" · último dato: {df_alerts['ult_fecha'].dropna().max()[:7]}"
+            ult = f" · último dato: {str(df_alerts['ult_fecha'].dropna().max())[:7]}"
         except Exception:
             pass
     st.caption(
