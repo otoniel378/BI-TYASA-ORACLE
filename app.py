@@ -203,46 +203,35 @@ _u_iniciales = _usuario_actual.iniciales if _usuario_actual else "U"
 _u_nombre   = _usuario_actual.cargo    if _usuario_actual else ""
 _u_cargo    = ""
 
-st.markdown(f"""
-<div style="
-    background:#1B3A5C;
-    padding:10px 20px;
-    margin:-0.4rem -0.9rem 14px -0.9rem;
-    display:flex;align-items:center;justify-content:space-between;
-">
-    <div style="display:flex;align-items:center;gap:10px;">
-        <span style="font-size:1.1rem;">🏭</span>
-        <div>
-            <div style="color:#FFFFFF;font-size:0.88rem;font-weight:700;
-                        letter-spacing:0.01em;font-family:'Segoe UI',sans-serif;line-height:1.2;">
-                TYASA Business Intelligence
-            </div>
-            <div style="color:rgba(255,255,255,0.55);font-size:0.62rem;font-weight:500;
-                        letter-spacing:0.06em;text-transform:uppercase;">
-                Plataforma de Inteligencia Comercial
-            </div>
-        </div>
+st.html(f"""
+<div style="background:#1B3A5C;padding:10px 20px;margin:-0.4rem -0.9rem 14px -0.9rem;
+    display:flex;align-items:center;justify-content:space-between;">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span style="font-size:1.1rem;">🏭</span>
+    <div>
+      <div style="color:#FFFFFF;font-size:0.88rem;font-weight:700;
+                  letter-spacing:0.01em;font-family:'Segoe UI',sans-serif;line-height:1.2;">
+        TYASA Business Intelligence
+      </div>
+      <div style="color:rgba(255,255,255,0.55);font-size:0.62rem;font-weight:500;
+                  letter-spacing:0.06em;text-transform:uppercase;">
+        Plataforma de Inteligencia Comercial
+      </div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px;">
-        <div style="
-          width:30px;height:30px;border-radius:50%;
-          background:{_u_color};
-          display:flex;align-items:center;justify-content:center;
-          font-size:.72rem;font-weight:800;color:#fff;
-          border:1.5px solid rgba(255,255,255,.25);
-          flex-shrink:0;
-        ">{_u_iniciales}</div>
-        <div>
-          <div style="color:rgba(255,255,255,.85);font-size:.72rem;font-weight:700;line-height:1.2;">
-            {_u_nombre}
-          </div>
-          <div style="color:rgba(255,255,255,.42);font-size:.60rem;letter-spacing:.05em;">
-            {_u_cargo}
-          </div>
-        </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <div style="width:30px;height:30px;border-radius:50%;background:{_u_color};
+                display:flex;align-items:center;justify-content:center;
+                font-size:.72rem;font-weight:800;color:#fff;
+                border:1.5px solid rgba(255,255,255,.25);flex-shrink:0;">
+      {_u_iniciales}
     </div>
+    <div style="color:rgba(255,255,255,.85);font-size:.72rem;font-weight:700;line-height:1.2;">
+      {_u_nombre}
+    </div>
+  </div>
 </div>
-""", unsafe_allow_html=True)
+""")
 
 # ---------------------------------------------------------------------------
 # Definición de secciones

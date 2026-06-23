@@ -367,6 +367,28 @@ def buscar_noticias_industria(grupo: str = "Urgente", max_resultados: int = 12) 
     return final[:max_resultados]
 
 
+def buscar_query_libre(query: str, max_resultados: int = 30) -> list[dict]:
+    """
+    Búsqueda libre por cualquier tema o fuente.
+    Busca en español (MX) e inglés (US) simultáneamente,
+    complementa con NewsAPI si hay pocos resultados.
+    """
+    todos = _buscar_google_news(query, max_resultados=max_resultados)
+    if len(todos) < 10:
+        hasta = datetime.utcnow().strftime("%Y-%m-%d")
+        desde = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
+        todos.extend(_buscar_newsapi(query, desde, hasta, max_resultados=10))
+    seen: set[str] = set()
+    final: list[dict] = []
+    for item in todos:
+        url = item.get("url", "")
+        if url and url not in seen:
+            seen.add(url)
+            final.append(item)
+    final.sort(key=lambda x: x.get("fecha_pub", "") or "", reverse=True)
+    return final[:max_resultados]
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # NOTICIAS NACIONALES — 5 categorías siderúrgicas México
 # ════════════════════════════════════════════════════════════════════════════
@@ -378,6 +400,12 @@ GRUPOS_NACIONAL: dict[str, list[str]] = {
         "T-MEC reglas origen acero México EE.UU. Canadá",
         "Sección 232 acero México exportaciones aranceles Trump",
         "comercio exterior acero política arancelaria SE México",
+        # Columnas político-financieras estilo CANACERO
+        "columnas acero México política financiera industria",
+        "política comercial acero México Secretaría Economía",
+        "CANACERO temas estratégicos sector acero México",
+        "gobierno siderurgia priorizar compras acero mexicano",
+        "temas estratégicos sector acero política comercial México",
     ],
     "Energía": [
         "CFE tarifas industriales electricidad México costo manufactura",
@@ -385,6 +413,8 @@ GRUPOS_NACIONAL: dict[str, list[str]] = {
         "PEMEX producción exploración petróleo gas inversión",
         "electricidad industrial tarifa media alta tensión México",
         "reforma energética CFE gas natural privados",
+        "energía eléctrica costo industrial acero manufactura México",
+        "gas natural industrial precio costo acero siderurgia México",
     ],
     "Infraestructura": [
         "obra pública construcción México inversión gobierno 2025",
@@ -392,6 +422,8 @@ GRUPOS_NACIONAL: dict[str, list[str]] = {
         "tren transporte infraestructura México presupuesto",
         "puertos carreteras inversión pública México acero",
         "acero varilla construcción vivienda demanda México",
+        "infraestructura 2030 acero México construcción inversión",
+        "demanda acero construcción obra pública privada México",
     ],
     "Industria": [
         "nearshoring México inversión manufactura parques industriales",
@@ -399,6 +431,13 @@ GRUPOS_NACIONAL: dict[str, list[str]] = {
         "automotriz armadoras acero México producción exportación",
         "inversión extranjera directa México sector industrial",
         "PYMES manufactura metalmecánica México acero",
+        # CANACERO en los medios + socios
+        "CANACERO medios acero México industria noticias",
+        "gigantes acero San Luis Potosí industria siderúrgica",
+        "acero mexicano siderurgia noticias industria México",
+        "TYASA acero SBQ México expansión producción",
+        "Líder Empresarial acero México industria siderúrgica",
+        "siderurgia México industria acero reportaje entrevista",
     ],
     "Economía": [
         "PIB México crecimiento sector industrial manufacturero INEGI",
@@ -406,6 +445,8 @@ GRUPOS_NACIONAL: dict[str, list[str]] = {
         "tipo de cambio peso dólar exportaciones industria México",
         "Banxico tasa interés crédito manufactura empresa",
         "IGAE actividad económica México industria mensual",
+        "actividad económica México manufactura industria trimestre",
+        "economía México crecimiento industrial acero manufactura",
     ],
 }
 
@@ -415,11 +456,20 @@ GRUPOS_NACIONAL: dict[str, list[str]] = {
 
 GRUPOS_INTERNACIONAL: dict[str, list[str]] = {
     "Mercado Global": [
+        # Precios generales
         "HRC hot rolled coil steel price market global",
         "steel price market outlook demand supply global",
         "worldsteel crude steel production global report",
         "acero precio laminado caliente mercado mundial tendencias",
         "steel scrap EAF market price USA",
+        # Fuentes especializadas premium
+        "fastmarkets steel HRC price Mexico market",
+        "fastmarkets acero México precio mercado",
+        "CRU steel market analysis prices report",
+        "MEPS steel price international monthly",
+        "Metal Bulletin steel market weekly prices",
+        "SteelFirst steel price news market",
+        "Kallanish steel market intelligence price",
     ],
     "Materias Primas": [
         "iron ore mineral hierro precio tonelada Vale BHP",
@@ -427,6 +477,11 @@ GRUPOS_INTERNACIONAL: dict[str, list[str]] = {
         "coking coal carbón coquizable precio siderurgia",
         "DRI HBI hierro reducción directa precio mercado",
         "zinc LME precio galvanizado acero recubrimiento",
+        # Fuentes especializadas
+        "fastmarkets iron ore scrap price market",
+        "CRU iron ore coking coal market report",
+        "Platts steel raw materials iron ore price",
+        "S&P Global steel scrap iron ore market",
     ],
     "Empresas": [
         "Ternium ArcelorMittal producción resultados trimestre acero",
@@ -434,6 +489,16 @@ GRUPOS_INTERNACIONAL: dict[str, list[str]] = {
         "POSCO Nippon Steel Hyundai Steel producción global",
         "Nucor Cleveland-Cliffs US Steel resultados acero EAF",
         "alacero CANACERO worldsteel reporte estadística acero",
+        # Empresas México sector acero
+        "TYASA acero México SBQ expansión producción",
+        "Ternium México inversión planta resultados acero",
+        "ArcelorMittal México planta producción noticias",
+        "SIMEC acero socios CANACERO México industria",
+        "Deacero Gerdau Corsa AHMSA acero México",
+        "Outokumpu Mexinox PEASA Suacero acero México",
+        # Cobertura CANACERO socios
+        "CANACERO socios acero México medios noticias",
+        "fastmarkets TYASA acero México",
     ],
     "Comercio": [
         "China steel overcapacity exports dumping global market",
@@ -441,6 +506,12 @@ GRUPOS_INTERNACIONAL: dict[str, list[str]] = {
         "anti-dumping steel trade EU USA investigation",
         "OCTG tubería acero importaciones mercado global",
         "steel trade restrictions safeguards global protectionism",
+        # T-MEC y temas estratégicos
+        "T-MEC acero México EE.UU. Canadá comercio reglas origen",
+        "aranceles acero sección 232 México exportaciones Trump",
+        "temas estratégicos sector acero México política comercial",
+        "China acero dumping México importaciones cuotas",
+        "nearshoring acero manufactura México inversión extranjera",
     ],
 }
 
@@ -461,21 +532,32 @@ GRUPO_STYLE_INTERNACIONAL: dict[str, tuple[str, str]] = {
 }
 
 
-def buscar_noticias_sector(grupo: str, max_resultados: int = 12) -> list[dict]:
+def buscar_noticias_sector(grupo: str, max_resultados: int = 40) -> list[dict]:
     """
     Busca noticias para cualquier grupo de GRUPOS_NACIONAL o GRUPOS_INTERNACIONAL.
-    Fallback a GRUPOS_INDUSTRIA para compatibilidad.
+    Usa todas las queries del grupo (no solo 3) y 10 resultados por query.
+    Complementa con NewsAPI si hay pocos resultados.
     """
     all_groups = {**GRUPOS_NACIONAL, **GRUPOS_INTERNACIONAL, **GRUPOS_INDUSTRIA}
     queries = all_groups.get(grupo)
     if not queries:
         queries = [grupo]
     todos: list[dict] = []
-    for q in queries[:3]:
-        res = _buscar_google_news(q, max_resultados=5)
+    # Todas las queries del grupo, 10 resultados cada una
+    for q in queries:
+        res = _buscar_google_news(q, max_resultados=10)
         for r in res:
             r["grupo"] = grupo
         todos.extend(res)
+    # NewsAPI como complemento si hay pocos resultados
+    if len(todos) < 20:
+        hasta = datetime.utcnow().strftime("%Y-%m-%d")
+        desde = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
+        for q in queries[:3]:
+            newsapi_res = _buscar_newsapi(q, desde, hasta, max_resultados=8)
+            for r in newsapi_res:
+                r["grupo"] = grupo
+            todos.extend(newsapi_res)
     seen: set[str] = set()
     final: list[dict] = []
     for item in todos:

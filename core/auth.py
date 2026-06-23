@@ -20,33 +20,33 @@ _PASS = "TYA2026"
 
 _USUARIOS: dict[str, Usuario] = {
     "director": Usuario(
-        id="director", nombre="Carlos Mendoza",
+        id="director", nombre="Director General",
         cargo="Director General", rol="director",
-        iniciales="CM", color="#1D4ED8",
+        iniciales="DG", color="#1D4ED8",
         areas_permitidas=[],
     ),
     "gerente": Usuario(
-        id="gerente", nombre="Ana Ramírez",
+        id="gerente", nombre="Gerente Comercial",
         cargo="Gerente Comercial", rol="gerente",
-        iniciales="AR", color="#059669",
+        iniciales="GC", color="#059669",
         areas_permitidas=[],
     ),
     "esp.negros": Usuario(
-        id="esp.negros", nombre="Jorge Silva",
-        cargo="Especialista — Aceros Planos Negros", rol="esp_negros",
-        iniciales="JS", color="#7C3AED",
+        id="esp.negros", nombre="Especialista Planos",
+        cargo="Especialista — Aceros Planos", rol="esp_negros",
+        iniciales="EP", color="#7C3AED",
         areas_permitidas=["aceros_planos"],
     ),
     "esp.largos": Usuario(
-        id="esp.largos", nombre="María López",
+        id="esp.largos", nombre="Especialista Largos",
         cargo="Especialista — Aceros Largos", rol="esp_largos",
-        iniciales="ML", color="#D97706",
+        iniciales="EL", color="#D97706",
         areas_permitidas=["aceros_largos"],
     ),
     "esp.sbq": Usuario(
-        id="esp.sbq", nombre="Roberto Díaz",
+        id="esp.sbq", nombre="Especialista SBQ",
         cargo="Especialista — Aceros SBQ", rol="esp_sbq",
-        iniciales="RD", color="#DC2626",
+        iniciales="ES", color="#DC2626",
         areas_permitidas=["aceros_sbq"],
     ),
 }

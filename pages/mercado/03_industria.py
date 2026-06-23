@@ -21,6 +21,7 @@ from config import COLORS
 from mercado_noticias.analytics.noticias import (
     buscar_noticias_industria,
     buscar_noticias_sector,
+    buscar_query_libre,
     GRUPOS_INDUSTRIA,
     GRUPOS_NACIONAL,
     GRUPOS_INTERNACIONAL,
@@ -45,57 +46,292 @@ ALERTA_STYLE: dict[str, tuple[str, str]] = {
     "Bajo":  ("#059669", "#D1FAE5"),
 }
 
+# ── Reconocimiento de fuentes periodísticas ────────────────────────────────────
+# (color_texto, color_fondo, icono)
+_FUENTES_DB: dict[str, tuple[str, str, str]] = {
+    # ── Acero / commodities especializado ────────────────────────────────────
+    "fastmarkets":       ("#7C3AED", "#EDE9FE", "⚡"),   # premium steel intel
+    "cru":               ("#1B3A5C", "#DBEAFE", "📐"),   # CRU Group
+    "meps":              ("#0F766E", "#CCFBF1", "📈"),   # MEPS International
+    "metal bulletin":    ("#4338CA", "#E0E7FF", "⛏️"),
+    "steelfirst":        ("#7C3AED", "#EDE9FE", "🔩"),
+    "kallanish":         ("#4338CA", "#E0E7FF", "📊"),
+    "platts":            ("#4338CA", "#E0E7FF", "📊"),
+    "s&p global":        ("#4338CA", "#E0E7FF", "📊"),
+    "reporteacero":      ("#DC2626", "#FEE2E2", "🔩"),
+    "worldsteel":        ("#1B3A5C", "#E8EFF6", "⚙️"),
+    "canacero":          ("#DC2626", "#FEE2E2", "🏭"),
+    "alacero":           ("#DC2626", "#FEE2E2", "🏭"),
+    # ── Nacionales México ─────────────────────────────────────────────────────
+    "reforma":           ("#C8102E", "#FEE2E2", "📰"),
+    "el financiero":     ("#059669", "#D1FAE5", "💼"),
+    "el universal":      ("#1B3A5C", "#E8EFF6", "📰"),
+    "milenio":           ("#D97706", "#FEF3C7", "📰"),
+    "excélsior":         ("#4338CA", "#E0E7FF", "📰"),
+    "excelsior":         ("#4338CA", "#E0E7FF", "📰"),
+    "la jornada":        ("#374151", "#F3F4F6", "📰"),
+    "el economista":     ("#059669", "#D1FAE5", "📈"),
+    "expansión":         ("#0F766E", "#CCFBF1", "💼"),
+    "expansion":         ("#0F766E", "#CCFBF1", "💼"),
+    "forbes":            ("#DC2626", "#FEE2E2", "💼"),
+    "líder empresarial": ("#4338CA", "#E0E7FF", "🏢"),
+    "infraestructura 2030": ("#0F766E", "#CCFBF1", "🏗️"),
+    "cb televisión":     ("#7C3AED", "#EDE9FE", "📺"),
+    "esemanal":          ("#059669", "#D1FAE5", "💻"),
+    "infobae":           ("#4338CA", "#E0E7FF", "🌎"),
+    "el norte":          ("#C8102E", "#FEE2E2", "📰"),
+    "vanguardia":        ("#0F766E", "#CCFBF1", "📰"),
+    # ── Internacional ─────────────────────────────────────────────────────────
+    "reuters":           ("#D97706", "#FEF3C7", "🌍"),
+    "bloomberg":         ("#1B3A5C", "#E8EFF6", "🌍"),
+    "financial times":   ("#D97706", "#FEF3C7", "📊"),
+    "wall street":       ("#1B3A5C", "#E8EFF6", "🌍"),
+    "economist":         ("#C8102E", "#FEE2E2", "🌍"),
+    "indexbox":          ("#4338CA", "#E0E7FF", "📦"),
+}
+
+
+def _get_fuente_style(fuente: str) -> tuple[str, str, str]:
+    """Retorna (color_texto, color_fondo, icono) para una fuente periodística."""
+    fl = fuente.lower()
+    for key, style in _FUENTES_DB.items():
+        if key in fl:
+            return style
+    return ("#6B7280", "#F3F4F6", "📰")
+
 # ════════════════════════════════════════════════════════════════════════════
 # HELPERS — NOTICIAS
 # ════════════════════════════════════════════════════════════════════════════
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def _noticias_grupo(grupo: str, max_r: int = 14) -> list[dict]:
+def _noticias_grupo(grupo: str, max_r: int = 40) -> list[dict]:
     return buscar_noticias_sector(grupo, max_resultados=max_r)
 
 
 def _filtrar_por_fecha(noticias: list[dict], desde: str, hasta: str) -> list[dict]:
+    """Filtra por rango; incluye artículos sin fecha para no perder contenido."""
     out = []
     for n in noticias:
         fp = (n.get("fecha_pub") or "")[:10]
+        # Sin fecha → incluir siempre (Google News a veces omite la fecha)
         if not fp or (desde <= fp <= hasta):
             out.append(n)
     return out
 
 
+_BUSQ_STYLE: dict[str, tuple[str, str]] = {
+    "Búsqueda": ("#1B3A5C", "#E8EFF6"),
+}
+
+
+def _render_busqueda_libre(noticias: list[dict], query: str) -> str:
+    """Resultados de búsqueda libre en estilo Chronicle con header especial."""
+    c_txt = "#1B3A5C"
+    if not noticias:
+        return (
+            _CHRONICLE_CSS +
+            f'<div class="cn"><div class="cn-empty">'
+            f'<div class="cn-empty-icon">🔍</div>'
+            f'<div>No se encontraron resultados para <b>"{query}"</b></div>'
+            f'<div style="font-size:11px;margin-top:6px;color:#D1D5DB;">'
+            f'Intenta con términos más generales o en otro idioma</div>'
+            f'</div></div>'
+        )
+    # Header de búsqueda
+    header = (
+        f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;'
+        f'padding:12px 16px;background:#F0F4F8;border-radius:10px;border-left:4px solid {c_txt};">'
+        f'<span style="font-size:18px;">🔍</span>'
+        f'<div>'
+        f'<div style="font-size:11px;color:#6B7280;font-weight:600;letter-spacing:.06em;">RESULTADOS DE BÚSQUEDA</div>'
+        f'<div style="font-size:14px;font-weight:700;color:{c_txt};">"{query}" · {len(noticias)} artículo(s)</div>'
+        f'</div></div>'
+    )
+    grid_html = _render_noticias_grid(noticias, "Búsqueda", _BUSQ_STYLE)
+    # Extraemos solo el contenido sin el CSS (ya lo incluye _render_noticias_grid)
+    return grid_html.replace('<div class="cn">', f'<div class="cn">{header}', 1)
+
+
+_CHRONICLE_CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=Inter:wght@400;500;600;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#fff;}
+.cn{font-family:'Inter',sans-serif;background:#fff;color:#1b1b1d;padding:4px 0 24px 0;}
+/* ── Hero layout ── */
+.cn-hero{display:grid;grid-template-columns:62% 38%;gap:28px;margin-bottom:28px;padding-bottom:28px;border-bottom:1px solid #E2E8F0;}
+.cn-main-art{display:flex;flex-direction:column;}
+.cn-gradient{height:160px;border-radius:8px;display:flex;align-items:flex-end;padding:14px 18px;margin-bottom:14px;}
+.cn-cat-pill{font-size:10px;font-weight:700;letter-spacing:.10em;background:rgba(255,255,255,.22);color:#fff;padding:4px 13px;border-radius:20px;}
+.cn-featured-badge{font-size:10px;font-weight:700;color:rgba(255,255,255,.88);background:rgba(255,255,255,.15);padding:3px 10px;border-radius:10px;}
+.cn-pill-row{display:flex;justify-content:space-between;align-items:center;}
+.cn-date{font-size:10px;color:#9CA3AF;letter-spacing:.04em;margin-bottom:8px;}
+.cn-main-title{font-family:'Playfair Display',serif;font-size:22px;font-weight:800;color:#111827;line-height:1.32;margin-bottom:10px;}
+.cn-main-desc{font-size:13px;color:#4B5563;line-height:1.72;margin-bottom:16px;flex:1;}
+.cn-footer{display:flex;justify-content:space-between;align-items:center;padding-top:12px;border-top:1px solid #F3F4F6;}
+.cn-source{font-size:10px;font-weight:700;padding:3px 10px;border-radius:14px;}
+.cn-read-btn{display:inline-flex;align-items:center;gap:5px;color:#fff;font-weight:700;font-size:11px;text-decoration:none;padding:7px 16px;border-radius:20px;letter-spacing:.02em;}
+/* ── Secondary sidebar ── */
+.cn-sidebar{display:flex;flex-direction:column;gap:0;}
+.cn-sec-item{padding:16px 0;border-bottom:1px solid #E2E8F0;}
+.cn-sec-item:last-child{border-bottom:none;}
+.cn-sec-cat{font-size:9px;font-weight:700;letter-spacing:.10em;display:block;margin-bottom:6px;}
+.cn-sec-title{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:#111827;line-height:1.38;margin-bottom:6px;}
+.cn-sec-desc{font-size:11px;color:#6B7280;line-height:1.6;margin-bottom:8px;}
+.cn-sec-footer{display:flex;justify-content:space-between;align-items:center;}
+.cn-sec-date{font-size:9px;color:#9CA3AF;}
+.cn-sec-read{font-size:10px;font-weight:700;text-decoration:none;}
+/* ── Latest Stories header ── */
+.cn-latest-hdr{display:flex;align-items:center;gap:10px;margin:4px 0 16px 0;padding-bottom:10px;border-bottom:2px solid #1b1b1d;}
+.cn-latest-bar{width:4px;height:22px;border-radius:2px;flex-shrink:0;}
+.cn-latest-title{font-family:'Playfair Display',serif;font-size:18px;font-weight:800;color:#111827;}
+/* ── Card grid ── */
+.cn-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+.cn-card{display:flex;flex-direction:column;background:#fff;border:1px solid #E5E7EB;border-radius:10px;overflow:hidden;transition:box-shadow .2s,transform .2s;}
+.cn-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.08);transform:translateY(-2px);}
+.cn-card-top{height:3px;}
+.cn-card-body{padding:14px 15px;flex:1;display:flex;flex-direction:column;}
+.cn-card-meta{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;}
+.cn-card-cat{font-size:9px;font-weight:700;letter-spacing:.08em;padding:2px 9px;border-radius:14px;}
+.cn-card-date{font-size:9px;color:#9CA3AF;}
+.cn-card-title{font-family:'Playfair Display',serif;font-size:14px;font-weight:700;color:#111827;line-height:1.42;margin-bottom:7px;flex:1;}
+.cn-card-desc{font-size:11px;color:#6B7280;line-height:1.62;margin-bottom:10px;}
+.cn-card-footer{display:flex;justify-content:space-between;align-items:center;padding-top:9px;border-top:1px solid #F3F4F6;margin-top:auto;}
+.cn-card-source{font-size:9px;font-weight:700;padding:2px 8px;border-radius:12px;}
+.cn-card-read{font-size:10px;font-weight:700;text-decoration:none;}
+.cn-minread{font-size:9px;color:#9CA3AF;}
+/* ── Empty state ── */
+.cn-empty{text-align:center;padding:48px 0;color:#9CA3AF;}
+.cn-empty-icon{font-size:36px;margin-bottom:10px;}
+.cn-count{font-size:11px;color:#6B7280;margin-bottom:16px;}
+</style>
+"""
+
+
+def _min_read(titulo: str, desc: str) -> str:
+    return f"{max(1, (len(titulo) + len(desc)) // 250)} min"
+
+
 def _render_news_card(n: dict, grupo: str,
                       style_map: dict | None = None) -> str:
+    """Mantenido por compatibilidad — delega a Chronicle card."""
     default_style = {**GRUPO_STYLE_NACIONAL, **GRUPO_STYLE_INTERNACIONAL}
     sm = style_map or default_style
+    return _chronicle_card(n, grupo, sm)
+
+
+def _chronicle_card(n: dict, grupo: str, sm: dict) -> str:
     c_txt, c_bg = sm.get(grupo, ("#374151", "#F9FAFB"))
     titulo = (n.get("titulo", "") or "").strip()
-    desc   = (n.get("descripcion", "") or "").strip()[:220]
+    desc   = (n.get("descripcion", "") or "").strip()[:180]
     fuente = (n.get("fuente", "") or "").strip()
     url    = (n.get("url", "") or "").strip()
     fecha  = (n.get("fecha_pub", "") or "").strip()
-    badge  = n.get("fuente_api", "")
-    bc     = "#1B3A5C" if badge == "Google News" else "#6B7280"
-    link   = (
-        f'<a href="{url}" target="_blank" style="color:{c_txt};font-weight:700;'
-        f'font-size:12px;text-decoration:none;">Leer artículo →</a>'
-    ) if url else ""
+    fc, fb, fi = _get_fuente_style(fuente)
+    mr    = _min_read(titulo, desc)
+    leer  = f'<a href="{url}" target="_blank" class="cn-card-read" style="color:{c_txt};">Leer →</a>' if url else ""
     return (
-        f"<div style='border:1px solid #E5E7EB;border-radius:10px;padding:16px;"
-        f"background:white;box-shadow:0 1px 4px rgba(0,0,0,0.06);'>"
-        f"<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;'>"
-        f"<span style='font-size:10px;font-weight:700;letter-spacing:0.06em;"
-        f"background:{c_bg};color:{c_txt};padding:3px 10px;border-radius:20px;'>{grupo.upper()}</span>"
-        f"<span style='font-size:11px;color:#9CA3AF;'>📅 {fecha}</span>"
-        f"</div>"
-        f"<div style='font-size:14px;font-weight:700;color:#111827;line-height:1.45;margin-bottom:8px;'>{titulo}</div>"
-        f"<div style='font-size:12px;color:#6B7280;line-height:1.55;margin-bottom:12px;'>{desc}</div>"
-        f"<div style='display:flex;justify-content:space-between;align-items:center;"
-        f"padding-top:10px;border-top:1px solid #F3F4F6;'>"
-        f"<span style='font-size:11px;color:#9CA3AF;display:flex;gap:6px;align-items:center;'>"
-        f"📰 {fuente} "
-        f"<span style='background:{bc};color:white;padding:1px 6px;border-radius:4px;font-size:9px;'>{badge}</span>"
-        f"</span>{link}</div></div>"
+        f'<div class="cn-card">'
+        f'<div class="cn-card-top" style="background:linear-gradient(90deg,{c_txt},{c_txt}55);"></div>'
+        f'<div class="cn-card-body">'
+        f'<div class="cn-card-meta">'
+        f'<span class="cn-card-cat" style="background:{c_bg};color:{c_txt};">{grupo.upper()}</span>'
+        f'<span class="cn-card-date">📅 {fecha}</span>'
+        f'</div>'
+        f'<div class="cn-card-title">{titulo}</div>'
+        f'<div class="cn-card-desc">{desc}</div>'
+        f'<div class="cn-card-footer">'
+        f'<span class="cn-card-source" style="background:{fb};color:{fc};">{fi} {fuente}</span>'
+        f'<div style="display:flex;align-items:center;gap:8px;">'
+        f'<span class="cn-minread">⏱ {mr}</span>{leer}</div>'
+        f'</div></div></div>'
     )
+
+
+def _chronicle_secondary(n: dict, grupo: str, sm: dict) -> str:
+    c_txt, _ = sm.get(grupo, ("#374151", "#F9FAFB"))
+    titulo = (n.get("titulo", "") or "").strip()
+    desc   = (n.get("descripcion", "") or "").strip()[:130]
+    fuente = (n.get("fuente", "") or "").strip()
+    url    = (n.get("url", "") or "").strip()
+    fecha  = (n.get("fecha_pub", "") or "").strip()
+    fc, fb, fi = _get_fuente_style(fuente)
+    leer = f'<a href="{url}" target="_blank" class="cn-sec-read" style="color:{c_txt};">Leer →</a>' if url else ""
+    return (
+        f'<div class="cn-sec-item">'
+        f'<span class="cn-sec-cat" style="color:{c_txt};">{grupo.upper()}</span>'
+        f'<div class="cn-sec-title">{titulo}</div>'
+        f'<div class="cn-sec-desc">{desc}</div>'
+        f'<div class="cn-sec-footer">'
+        f'<span class="cn-sec-date">📅 {fecha} · <span style="background:{fb};color:{fc};padding:1px 7px;border-radius:10px;font-size:9px;font-weight:700;">{fi} {fuente}</span></span>'
+        f'{leer}</div></div>'
+    )
+
+
+def _render_noticias_grid(noticias: list[dict], grupo: str, sm: dict) -> str:
+    """Renderiza sección completa estilo The Chronicle: hero + sidebar + grid."""
+    c_txt, _ = sm.get(grupo, ("#374151", "#F9FAFB"))
+
+    if not noticias:
+        return (
+            _CHRONICLE_CSS +
+            f'<div class="cn"><div class="cn-empty">'
+            f'<div class="cn-empty-icon">📭</div>'
+            f'<div>Sin noticias para <b>{grupo}</b> en el rango seleccionado.</div>'
+            f'<div style="font-size:11px;margin-top:8px;color:#D1D5DB;">Intenta ampliar el rango de fechas</div>'
+            f'</div></div>'
+        )
+
+    count_txt = f'<div class="cn-count">{len(noticias)} artículo(s) en el período</div>'
+    main_n   = noticias[0]
+    sidebar_n = noticias[1:3]
+    grid_n    = noticias[3:]
+
+    # ── Hero principal ────────────────────────────────────────────────────────
+    m_titulo = (main_n.get("titulo", "") or "").strip()
+    m_desc   = (main_n.get("descripcion", "") or "").strip()[:320]
+    m_fuente = (main_n.get("fuente", "") or "").strip()
+    m_url    = (main_n.get("url", "") or "").strip()
+    m_fecha  = (main_n.get("fecha_pub", "") or "").strip()
+    m_fc, m_fb, m_fi = _get_fuente_style(m_fuente)
+    m_leer = (
+        f'<a href="{m_url}" target="_blank" class="cn-read-btn" style="background:{c_txt};">Leer artículo →</a>'
+    ) if m_url else ""
+
+    main_html = (
+        f'<div class="cn-main-art">'
+        f'<div class="cn-gradient" style="background:linear-gradient(135deg,{c_txt},{c_txt}99);">'
+        f'<div class="cn-pill-row" style="width:100%;">'
+        f'<span class="cn-cat-pill">{grupo.upper()}</span>'
+        f'<span class="cn-featured-badge">⭐ DESTACADO</span>'
+        f'</div></div>'
+        f'<div class="cn-date">📅 {m_fecha}</div>'
+        f'<div class="cn-main-title">{m_titulo}</div>'
+        f'<div class="cn-main-desc">{m_desc}</div>'
+        f'<div class="cn-footer">'
+        f'<span class="cn-source" style="background:{m_fb};color:{m_fc};">{m_fi} {m_fuente}</span>'
+        f'{m_leer}</div></div>'
+    )
+
+    # ── Sidebar secundario ────────────────────────────────────────────────────
+    sec_items = "".join(_chronicle_secondary(n, grupo, sm) for n in sidebar_n)
+    sidebar_html = f'<div class="cn-sidebar">{sec_items}</div>' if sec_items else "<div></div>"
+
+    hero_html = f'<div class="cn-hero">{main_html}{sidebar_html}</div>'
+
+    # ── Grid Latest Stories ───────────────────────────────────────────────────
+    grid_html = ""
+    if grid_n:
+        cards = "".join(_chronicle_card(n, grupo, sm) for n in grid_n)
+        grid_html = (
+            f'<div class="cn-latest-hdr">'
+            f'<div class="cn-latest-bar" style="background:{c_txt};"></div>'
+            f'<span class="cn-latest-title">Últimas Noticias</span>'
+            f'</div>'
+            f'<div class="cn-grid">{cards}</div>'
+        )
+
+    return _CHRONICLE_CSS + f'<div class="cn">{count_txt}{hero_html}{grid_html}</div>'
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -558,34 +794,89 @@ seccion_titulo("📰 Noticias de la Industria")
 hoy      = datetime.date.today()
 hace_30d = hoy - datetime.timedelta(days=30)
 
-col_rng, col_act = st.columns([3, 1])
+# ── Fila 1: rango de fechas + Hoy + Actualizar ───────────────────────────────
+col_rng, col_hoy, col_act = st.columns([3, 1, 1])
 with col_rng:
     rango = st.date_input(
         "Rango de fechas",
-        value=(hoy - datetime.timedelta(days=7), hoy),
+        value=(hoy - datetime.timedelta(days=30), hoy),
         min_value=hace_30d,
         max_value=hoy,
         key="ind_fecha_rango",
         format="DD/MM/YYYY",
     )
+with col_hoy:
+    st.markdown("<div style='padding-top:22px;'></div>", unsafe_allow_html=True)
+    hoy_clicked = st.button("📅 Hoy", key="ind_hoy", use_container_width=True,
+                            help="Ver solo noticias de hoy")
 with col_act:
     st.markdown("<div style='padding-top:22px;'></div>", unsafe_allow_html=True)
     if st.button("🔄 Actualizar", key="ind_refresh", use_container_width=True):
         st.cache_data.clear()
-        # no st.rerun() — cache is cleared before _noticias_grupo() calls below
 
-if isinstance(rango, (list, tuple)) and len(rango) == 2:
+# Fechas efectivas — "Hoy" sobreescribe el date_input
+if hoy_clicked:
+    fecha_desde = fecha_hasta = str(hoy)
+elif isinstance(rango, (list, tuple)) and len(rango) == 2:
     fecha_desde, fecha_hasta = str(rango[0]), str(rango[1])
 else:
-    fecha_desde = str(hoy - datetime.timedelta(days=7))
+    fecha_desde = str(hoy - datetime.timedelta(days=30))
     fecha_hasta = str(hoy)
 
-st.caption(f"Mostrando noticias del **{fecha_desde}** al **{fecha_hasta}**")
+st.caption(
+    f"Mostrando noticias del **{fecha_desde}** al **{fecha_hasta}**"
+    + (" · 📅 *Solo hoy*" if hoy_clicked else "")
+)
+
+# ── Fila 2: buscador libre ────────────────────────────────────────────────────
+col_busq, col_busq_btn = st.columns([4, 1])
+with col_busq:
+    query_libre = st.text_input(
+        "busqueda",
+        placeholder="🔍  Buscar noticias por tema, empresa o fuente…  ej: HRC México, T-MEC acero, Fastmarkets",
+        key="ind_query_libre",
+        label_visibility="collapsed",
+    )
+with col_busq_btn:
+    buscar_clicked = st.button("🔍 Buscar", key="ind_buscar_btn", use_container_width=True)
+
+# ── Lógica de búsqueda libre ─────────────────────────────────────────────────
+_BUSQ_RES_KEY   = "busq_libre_resultado"
+_BUSQ_QUERY_KEY = "busq_libre_query"
+
+if buscar_clicked and query_libre.strip():
+    with st.spinner(f'Buscando "{query_libre.strip()}"…'):
+        st.session_state[_BUSQ_RES_KEY]   = buscar_query_libre(query_libre.strip(), max_resultados=30)
+        st.session_state[_BUSQ_QUERY_KEY] = query_libre.strip()
+
+_busq_res   = st.session_state.get(_BUSQ_RES_KEY)
+_busq_query = st.session_state.get(_BUSQ_QUERY_KEY, "")
+
+# DOM-STABLE: botón siempre presente (disabled cuando no hay resultados)
+_, col_clear = st.columns([5, 1])
+with col_clear:
+    if st.button(
+        "✕ Limpiar búsqueda",
+        key="ind_busq_clear",
+        use_container_width=True,
+        disabled=(_busq_res is None),
+    ):
+        st.session_state.pop(_BUSQ_RES_KEY, None)
+        st.session_state.pop(_BUSQ_QUERY_KEY, None)
+        _busq_res   = None
+        _busq_query = ""
+
+# DOM-STABLE: st.html() siempre presente — string vacío cuando no hay resultados
+st.html(_render_busqueda_libre(_busq_res, _busq_query) if _busq_res else "")
 
 # ── Nacionales ────────────────────────────────────────────────────────────────
 st.markdown(
-    "<div style='margin:16px 0 8px 0;'>"
-    "<span style='font-size:16px;font-weight:800;color:#1B3A5C;'>🇲🇽 Nacionales</span>"
+    "<div style='border-bottom:2px solid #1B3A5C;margin:20px 0 16px 0;padding-bottom:10px;"
+    "display:flex;align-items:center;gap:10px;'>"
+    "<div style='width:4px;height:26px;background:#DC2626;border-radius:2px;flex-shrink:0;'></div>"
+    "<span style='font-size:18px;font-weight:900;color:#1B3A5C;letter-spacing:-0.02em;'>🇲🇽 Nacionales</span>"
+    "<span style='margin-left:auto;font-size:10px;color:#9CA3AF;font-style:italic;'>"
+    "Reforma · El Financiero · El Universal · Milenio · El Economista · ReporteAcero · +</span>"
     "</div>",
     unsafe_allow_html=True,
 )
@@ -599,30 +890,16 @@ for tab, grupo in zip(tabs_nac, nac_grupos):
     with tab:
         noticias_raw = _noticias_grupo(grupo, 20)
         noticias_g   = _filtrar_por_fecha(noticias_raw, fecha_desde, fecha_hasta)
-        if not noticias_g:
-            html_tab = (
-                f"<div style='color:#9CA3AF;padding:24px 0;text-align:center;font-size:13px;'>"
-                f"Sin noticias para <b>{grupo}</b> en el rango seleccionado.</div>"
-            )
-        else:
-            caption = (
-                f"<div style='font-size:11px;color:#6B7280;margin-bottom:10px;'>"
-                f"{len(noticias_g)} artículo(s) en el período</div>"
-            )
-            cards = "".join(
-                f"<div>{_render_news_card(n, grupo, GRUPO_STYLE_NACIONAL)}</div>"
-                for n in noticias_g
-            )
-            html_tab = (
-                caption
-                + f"<div style='display:grid;grid-template-columns:repeat(2,1fr);gap:12px;'>{cards}</div>"
-            )
-        st.html(html_tab)
+        st.html(_render_noticias_grid(noticias_g, grupo, GRUPO_STYLE_NACIONAL))
 
 # ── Internacionales ───────────────────────────────────────────────────────────
 st.markdown(
-    "<div style='margin:20px 0 8px 0;'>"
-    "<span style='font-size:16px;font-weight:800;color:#1B3A5C;'>🌐 Internacionales</span>"
+    "<div style='border-bottom:2px solid #1B3A5C;margin:24px 0 16px 0;padding-bottom:10px;"
+    "display:flex;align-items:center;gap:10px;'>"
+    "<div style='width:4px;height:26px;background:#4338CA;border-radius:2px;flex-shrink:0;'></div>"
+    "<span style='font-size:18px;font-weight:900;color:#1B3A5C;letter-spacing:-0.02em;'>🌐 Internacionales</span>"
+    "<span style='margin-left:auto;font-size:10px;color:#9CA3AF;font-style:italic;'>"
+    "Reuters · Bloomberg · WorldSteel · Financial Times · S&amp;P Global · +</span>"
     "</div>",
     unsafe_allow_html=True,
 )
@@ -636,25 +913,7 @@ for tab, grupo in zip(tabs_int, int_grupos):
     with tab:
         noticias_raw = _noticias_grupo(grupo, 20)
         noticias_g   = _filtrar_por_fecha(noticias_raw, fecha_desde, fecha_hasta)
-        if not noticias_g:
-            html_tab = (
-                f"<div style='color:#9CA3AF;padding:24px 0;text-align:center;font-size:13px;'>"
-                f"Sin noticias para <b>{grupo}</b> en el rango seleccionado.</div>"
-            )
-        else:
-            caption = (
-                f"<div style='font-size:11px;color:#6B7280;margin-bottom:10px;'>"
-                f"{len(noticias_g)} artículo(s) en el período</div>"
-            )
-            cards = "".join(
-                f"<div>{_render_news_card(n, grupo, GRUPO_STYLE_INTERNACIONAL)}</div>"
-                for n in noticias_g
-            )
-            html_tab = (
-                caption
-                + f"<div style='display:grid;grid-template-columns:repeat(2,1fr);gap:12px;'>{cards}</div>"
-            )
-        st.html(html_tab)
+        st.html(_render_noticias_grid(noticias_g, grupo, GRUPO_STYLE_INTERNACIONAL))
 
 st.divider()
 
