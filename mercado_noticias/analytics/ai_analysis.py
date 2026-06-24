@@ -352,6 +352,8 @@ def _call_gemini_text(
     api_key: str,
     system: str = _SYSTEM_CHAT,
     model: str = "gemini-2.5-flash",
+    max_output_tokens: int = 600,
+    temperature: float = 0.5,
 ) -> str:
     """Llama a Gemini y retorna texto libre (para chat y síntesis abierta)."""
     try:
@@ -363,15 +365,37 @@ def _call_gemini_text(
             contents=prompt,
             config=genai_types.GenerateContentConfig(
                 system_instruction=system,
-                temperature=0.5,
-                max_output_tokens=600,
+                temperature=temperature,
+                max_output_tokens=max_output_tokens,
                 thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
             ),
         )
         return (resp.text or "").strip() or "Sin respuesta."
     except Exception as e:
         print(f"[ai_analysis] _call_gemini_text error: {e}")
-        return f"Error al consultar la IA: {str(e)[:120]}"
+    # REST fallback
+    try:
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{model}:generateContent?key={api_key}"
+        )
+        body = {
+            "system_instruction": {"parts": [{"text": system}]},
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": temperature,
+                "maxOutputTokens": max_output_tokens,
+                "thinkingConfig": {"thinkingBudget": 0},
+            },
+        }
+        resp = requests.post(url, json=body, timeout=60)
+        if resp.status_code == 200:
+            data = resp.json()
+            return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        print(f"[ai_analysis] REST {resp.status_code}: {resp.text[:200]}")
+    except Exception as e2:
+        print(f"[ai_analysis] _call_gemini_text REST error: {e2}")
+    return "Error al consultar la IA."
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -441,6 +465,191 @@ def sintesis_industrial(
         "recomendacion":     "",
         "_cached": False,
         "_error":  "Gemini no respondió o la respuesta no pudo ser parseada.",
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# SÍNTESIS GLOBAL — Resumen ejecutivo con referencias a noticias (10 categorías)
+# ════════════════════════════════════════════════════════════════════════════
+
+_GLOBAL_SYSTEM = (
+    "Eres analista sénior de la industria siderúrgica para TYASA México "
+    "(acería EAF, produce lámina negra, galvanizado y SBQ). "
+    "Responde SIEMPRE con JSON válido únicamente, sin texto antes ni después del JSON."
+)
+
+_GLOBAL_TMPL = """Hoy es {hoy}. Eres analista senior de TYASA México. Analiza las noticias de TODAS las siguientes categorías y genera un resumen ejecutivo completo.
+
+CATEGORÍAS ANALIZADAS: {categorias}
+
+NOTICIAS POR CATEGORÍA (título | URL | fuente | fecha):
+{noticias_txt}
+
+Genera EXCLUSIVAMENTE este JSON (sin markdown, sin explicaciones adicionales):
+{{
+  "estado_mercado": "2-3 oraciones sobre precios HRC/CRC/chatarra, demanda global y tendencias relevantes",
+  "impacto_mexico": "2-3 oraciones sobre T-MEC, nearshoring, costos CFE/gas, logística, aranceles y demanda local para TYASA",
+  "nivel_alerta": "Medio",
+  "resumen_por_area": [
+    {{"area": "NOMBRE EXACTO DE LA CATEGORÍA", "resumen": "1 oración con el hallazgo más relevante", "ref_url": "https://url-del-articulo-fuente", "ref_titulo": "título corto del artículo"}},
+    {{"area": "...", "resumen": "...", "ref_url": "https://...", "ref_titulo": "..."}}
+  ],
+  "riesgos": [
+    {{"texto": "riesgo en máx 18 palabras — puede ser de CUALQUIER categoría incluida Logística", "ref_titulo": "título corto", "ref_url": "https://..."}},
+    {{"texto": "segundo riesgo", "ref_titulo": "...", "ref_url": "https://..."}},
+    {{"texto": "tercer riesgo", "ref_titulo": "...", "ref_url": "https://..."}},
+    {{"texto": "cuarto riesgo si hay algo relevante", "ref_titulo": "...", "ref_url": "https://..."}}
+  ],
+  "oportunidades": [
+    {{"texto": "oportunidad en máx 18 palabras — puede ser de CUALQUIER categoría", "ref_titulo": "título corto", "ref_url": "https://..."}},
+    {{"texto": "segunda oportunidad", "ref_titulo": "...", "ref_url": "https://..."}},
+    {{"texto": "tercera oportunidad", "ref_titulo": "...", "ref_url": "https://..."}},
+    {{"texto": "cuarta oportunidad si hay algo relevante", "ref_titulo": "...", "ref_url": "https://..."}}
+  ],
+  "recomendacion": "acción concreta para TYASA esta semana integrando logística, precios y política comercial — máx 35 palabras"
+}}
+
+REGLAS CRÍTICAS:
+- "resumen_por_area" DEBE ser un ARRAY con un objeto por CADA categoría de CATEGORÍAS ANALIZADAS
+- Cada objeto en resumen_por_area DEBE incluir "ref_url" con la URL literal de una noticia de esa categoría
+- Los riesgos y oportunidades deben cubrir al menos 3 categorías distintas
+- Si hay bloqueos, accidentes o disrupciones en Logística Nacional, DEBEN aparecer en riesgos
+- nivel_alerta: "Alto", "Medio" o "Bajo" según urgencia real para TYASA
+- Usa SOLO URLs que aparezcan literalmente en las noticias de arriba
+- Responde EXCLUSIVAMENTE con el JSON, sin texto adicional"""
+
+
+def cargar_sintesis_latest() -> dict | None:
+    """Carga la síntesis global más reciente (sin importar la fecha).
+    Útil al inicio del día siguiente cuando no hay caché para hoy todavía.
+    """
+    cached = _cache_load("sintesis_global_latest")
+    if cached:
+        cached["_cached"] = True
+    return cached
+
+
+def cargar_cache_hoy(tipo: str, cat_keys: list[str] | None = None) -> dict | None:
+    """Carga el resultado cacheado del día actual para un tipo dado.
+
+    cat_keys — lista de nombres de categoría (misma que se usó al guardar).
+    Si se omite, busca con la clave de solo fecha (compatibilidad legada).
+    """
+    hoy = date.today().isoformat()
+    if cat_keys:
+        cat_fp = "|".join(sorted(cat_keys))
+        ckey = hashlib.md5(f"{tipo}|{hoy}|{cat_fp}".encode()).hexdigest()[:16]
+    else:
+        ckey = hashlib.md5(f"{tipo}|{hoy}".encode()).hexdigest()[:16]
+    cached = _cache_load(ckey)
+    if cached:
+        cached["_cached"] = True
+    return cached
+
+
+def sintesis_global(
+    noticias_por_grupo: dict[str, list[dict]],
+    api_key: str,
+    model: str = "gemini-2.5-flash",
+    force_refresh: bool = False,
+) -> dict:
+    """
+    Resumen ejecutivo global de todas las categorías estratégicas con URLs de artículos.
+    Caché diario en disco, con huella de categorías para invalidar automáticamente
+    cuando se agregan/eliminan secciones.
+    """
+    hoy        = date.today().isoformat()
+    cat_fp     = "|".join(sorted(noticias_por_grupo.keys()))
+    ckey       = hashlib.md5(f"sintesis_global|{hoy}|{cat_fp}".encode()).hexdigest()[:16]
+
+    cached = _cache_load(ckey)
+    if cached and not force_refresh:
+        cached["_cached"] = True
+        return cached
+
+    # Construir texto de noticias (máx 5 por categoría para mejor cobertura)
+    lineas: list[str] = []
+    referencias_pool: list[dict] = []
+
+    for grupo, nots in noticias_por_grupo.items():
+        top = [n for n in (nots or []) if n.get("url") and n.get("titulo")][:5]
+        if not top:
+            lineas.append(f"[{grupo}]")
+            lineas.append("  (sin noticias disponibles hoy)")
+            continue
+        lineas.append(f"[{grupo}]")
+        for n in top:
+            titulo = (n.get("titulo") or "")[:85]
+            url    = n.get("url", "")
+            fuente = n.get("fuente", "")
+            fecha  = n.get("fecha_pub", "")
+            lineas.append(f"  • {titulo} | {url} | {fuente} | {fecha}")
+            referencias_pool.append({
+                "titulo": titulo,
+                "url":    url,
+                "fuente": fuente,
+                "grupo":  grupo,
+                "fecha":  fecha,
+            })
+
+    if not lineas:
+        return {
+            "estado_mercado": "",
+            "impacto_mexico": "",
+            "nivel_alerta": "—",
+            "resumen_por_area": {},
+            "riesgos": [],
+            "oportunidades": [],
+            "recomendacion": "",
+            "_referencias": [],
+            "_fecha": hoy,
+            "_cached": False,
+            "_error": "No hay noticias disponibles para generar la síntesis.",
+        }
+
+    categorias_txt = ", ".join(noticias_por_grupo.keys())
+    noticias_txt   = "\n".join(lineas)
+    prompt = _GLOBAL_TMPL.format(
+        hoy=hoy,
+        categorias=categorias_txt,
+        noticias_txt=noticias_txt,
+    )
+
+    # 8192 tokens: necesario para JSON con 11 categorías + resumen_por_area con URLs
+    raw = _call_gemini_text(
+        prompt, api_key,
+        system=_GLOBAL_SYSTEM,
+        model=model,
+        max_output_tokens=8192,
+        temperature=0.2,
+    )
+
+    resultado = _parse_json_response(raw) if raw and raw != "Error al consultar la IA." else None
+
+    if resultado:
+        resultado.setdefault("resumen_por_area", [])
+        resultado["_cached"]      = False
+        resultado["_error"]       = None
+        resultado["_fecha"]       = hoy
+        resultado["_referencias"] = referencias_pool
+        _cache_save(ckey, resultado)
+        _cache_save("sintesis_global_latest", resultado)  # para reload entre días
+        return resultado
+
+    # Debug: guardar respuesta cruda para diagnóstico
+    print(f"[sintesis_global] respuesta cruda (primeros 500 chars): {raw[:500] if raw else 'VACÍA'}")
+    return {
+        "estado_mercado": "",
+        "impacto_mexico": "",
+        "nivel_alerta": "—",
+        "resumen_por_area": [],
+        "riesgos": [],
+        "oportunidades": [],
+        "recomendacion": "",
+        "_referencias": referencias_pool,
+        "_fecha": hoy,
+        "_cached": False,
+        "_error": f"No se pudo generar la síntesis. Respuesta de IA: {(raw or 'vacía')[:200]}",
     }
 
 

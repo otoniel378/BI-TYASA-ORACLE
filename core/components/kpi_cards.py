@@ -92,14 +92,13 @@ def render_kpi_row(kpis: list) -> None:
 
 
 def seccion_titulo(titulo: str, subtitulo: str = "") -> None:
-    st.markdown(
-        f"""
-        <div style='margin:24px 0 12px 0;'>
-            <h3 style='color:{COLORS["primary"]};margin:0;font-size:1.15rem;'>
-                {titulo}
-            </h3>
-            {"<p style='color:" + COLORS["text_light"] + ";font-size:0.85rem;margin:2px 0 0 0;'>" + subtitulo + "</p>" if subtitulo else ""}
-        </div>
-        """,
-        unsafe_allow_html=True,
+    sub_html = (
+        f"<p style='color:{COLORS['text_light']};font-size:0.85rem;margin:2px 0 0 0;'>{subtitulo}</p>"
+        if subtitulo else ""
+    )
+    st.html(
+        f"<div style='margin:24px 0 12px 0;'>"
+        f"<h3 style='color:{COLORS['primary']};margin:0;font-size:1.15rem;'>{titulo}</h3>"
+        f"{sub_html}"
+        f"</div>"
     )

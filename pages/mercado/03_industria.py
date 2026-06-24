@@ -28,7 +28,7 @@ from mercado_noticias.analytics.noticias import (
     GRUPO_STYLE_NACIONAL,
     GRUPO_STYLE_INTERNACIONAL,
 )
-from mercado_noticias.analytics.ai_analysis import sintesis_industrial, _call_gemini_text
+from mercado_noticias.analytics.ai_analysis import sintesis_industrial, _call_gemini_text, sintesis_global, cargar_cache_hoy, cargar_sintesis_latest
 from mercado_noticias.analytics.mananera import analizar_mananera, MANANERA_CACHE_DIR, MANANERA_CACHE_DAYS
 from core.components.filters import sidebar_header
 from core.components.kpi_cards import seccion_titulo
@@ -402,6 +402,313 @@ def _sintesis_card(titulo: str, texto: str, c_txt: str, c_bg: str, icon: str) ->
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# HELPERS — SÍNTESIS GLOBAL (nueva, 10 categorías con URLs)
+# ════════════════════════════════════════════════════════════════════════════
+
+def _render_sintesis_global(result: dict | None) -> str:
+    """Render del resumen ejecutivo global con referencias clickeables."""
+    if result is None:
+        return (
+            "<div style='background:#F0F9FF;border:1px solid #BAE6FD;border-radius:8px;"
+            "padding:16px;color:#0369A1;font-size:13px;'>"
+            "ℹ️ Haz clic en <b>▶ Generar síntesis ejecutiva</b> para obtener el resumen "
+            "global de las 10 categorías con referencias a los artículos más relevantes.</div>"
+        )
+    err = result.get("_error")
+    if err:
+        return (
+            f"<div style='background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;"
+            f"padding:16px;color:#DC2626;font-size:13px;'>⚠️ {err}</div>"
+        )
+
+    nivel    = result.get("nivel_alerta", "—")
+    nc_txt, nc_bg = ALERTA_STYLE.get(nivel, ("#6B7280", "#F3F4F6"))
+    cached_b = (
+        '<span style="background:#F3F4F6;color:#6B7280;padding:3px 10px;'
+        'border-radius:20px;font-size:11px;margin-left:6px;">💾 Caché</span>'
+    ) if result.get("_cached") else ""
+    fecha    = result.get("_fecha", "")
+
+    header = (
+        f"<div style='display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;'>"
+        f"<span style='background:{nc_bg};color:{nc_txt};padding:5px 14px;"
+        f"border-radius:20px;font-size:12px;font-weight:700;'>⚡ Nivel de alerta: {nivel}</span>"
+        f"<span style='background:#F3F4F6;color:#6B7280;padding:4px 12px;"
+        f"border-radius:20px;font-size:11px;'>📅 {fecha}</span>"
+        f"{cached_b}</div>"
+    )
+
+    estado  = result.get("estado_mercado", "") or ""
+    impacto = result.get("impacto_mexico", "") or ""
+    dos_col = (
+        "<div style='display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;'>"
+        f"<div style='background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:16px;'>"
+        f"<div style='font-size:11px;font-weight:800;color:#1B3A5C;letter-spacing:.06em;margin-bottom:8px;'>🌍 ESTADO DEL MERCADO</div>"
+        f"<div style='font-size:13px;color:#374151;line-height:1.65;'>{estado}</div></div>"
+        f"<div style='background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;padding:16px;'>"
+        f"<div style='font-size:11px;font-weight:800;color:#1D4ED8;letter-spacing:.06em;margin-bottom:8px;'>🇲🇽 IMPACTO EN MÉXICO / TYASA</div>"
+        f"<div style='font-size:13px;color:#1E40AF;line-height:1.65;'>{impacto}</div></div>"
+        "</div>"
+    )
+
+    def _item(data: dict, color: str, bg: str) -> str:
+        texto     = (data.get("texto") or "").strip()
+        ref_url   = (data.get("ref_url") or "").strip()
+        ref_titulo = ((data.get("ref_titulo") or "")[:55]).strip()
+        link = (
+            f'<br><a href="{ref_url}" target="_blank" '
+            f'style="color:{color};font-size:10px;font-weight:600;text-decoration:none;">'
+            f'↗ {ref_titulo}</a>'
+        ) if ref_url else ""
+        return (
+            f"<div style='background:{bg};border-left:3px solid {color};"
+            f"border-radius:0 8px 8px 0;padding:10px 14px;margin-bottom:6px;'>"
+            f"<div style='font-size:12.5px;color:#374151;line-height:1.5;'>{texto}{link}</div>"
+            f"</div>"
+        )
+
+    # ── Resumen por área (lista con URLs) ────────────────────────────────────
+    areas_raw = result.get("resumen_por_area") or []
+    # Normalizar: acepta lista de dicts o dict legado
+    if isinstance(areas_raw, dict):
+        areas_list = [{"area": k, "resumen": v, "ref_url": "", "ref_titulo": ""} for k, v in areas_raw.items()]
+    else:
+        areas_list = [a for a in areas_raw if isinstance(a, dict)]
+
+    areas_html = ""
+    if areas_list:
+        _all_styles = {**GRUPO_STYLE_NACIONAL, **GRUPO_STYLE_INTERNACIONAL}
+        area_chips = []
+        for item in areas_list:
+            area      = (item.get("area") or "").strip()
+            resumen   = (item.get("resumen") or "").strip()
+            ref_url   = (item.get("ref_url") or "").strip()
+            ref_titulo = ((item.get("ref_titulo") or "")[:55]).strip()
+            if not area:
+                continue
+            ac_txt, ac_bg = _all_styles.get(area, ("#374151", "#F3F4F6"))
+            link = (
+                f'<a href="{ref_url}" target="_blank" '
+                f'style="color:{ac_txt};font-size:10px;font-weight:600;'
+                f'text-decoration:none;display:inline-block;margin-top:3px;">'
+                f'↗ {ref_titulo}</a>'
+            ) if ref_url and ref_titulo else (
+                f'<a href="{ref_url}" target="_blank" '
+                f'style="color:{ac_txt};font-size:10px;font-weight:600;'
+                f'text-decoration:none;display:inline-block;margin-top:3px;">'
+                f'↗ Ver artículo</a>'
+            ) if ref_url else ""
+            area_chips.append(
+                f"<div style='background:#FAFAFA;border:1px solid #E5E7EB;"
+                f"border-left:3px solid {ac_txt};border-radius:0 8px 8px 0;"
+                f"padding:8px 12px;margin-bottom:4px;'>"
+                f"<span style='font-size:10px;font-weight:700;color:{ac_txt};"
+                f"background:{ac_bg};padding:2px 8px;border-radius:10px;'>{area}</span>"
+                f"<div style='font-size:12px;color:#374151;margin-top:4px;line-height:1.5;'>{resumen}</div>"
+                f"{link}"
+                f"</div>"
+            )
+        areas_html = (
+            "<div style='margin-bottom:14px;'>"
+            "<div style='font-size:11px;font-weight:800;color:#1B3A5C;letter-spacing:.06em;"
+            "margin-bottom:8px;'>📋 RESUMEN POR ÁREA</div>"
+            "<div style='display:grid;grid-template-columns:1fr 1fr;gap:4px;'>"
+            + "".join(area_chips)
+            + "</div></div>"
+        )
+
+    riesgos   = result.get("riesgos", []) or []
+    opors     = result.get("oportunidades", []) or []
+    r_html    = "".join(_item(r, "#DC2626", "#FEF2F2") for r in riesgos)
+    o_html    = "".join(_item(o, "#059669", "#F0FDF4") for o in opors)
+    _vacio    = "<div style='color:#9CA3AF;font-size:12px;padding:8px 0;'>—</div>"
+
+    two_col = (
+        "<div style='display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px;'>"
+        "<div>"
+        "<div style='font-size:11px;font-weight:800;color:#DC2626;letter-spacing:.06em;margin-bottom:8px;'>⚠️ RIESGOS IDENTIFICADOS</div>"
+        f"{r_html or _vacio}"
+        "</div>"
+        "<div>"
+        "<div style='font-size:11px;font-weight:800;color:#059669;letter-spacing:.06em;margin-bottom:8px;'>✅ OPORTUNIDADES</div>"
+        f"{o_html or _vacio}"
+        "</div>"
+        "</div>"
+    )
+
+    rec     = result.get("recomendacion", "") or ""
+    rec_html = (
+        f"<div style='background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;"
+        f"padding:12px 16px;font-size:13px;color:#1E40AF;'>"
+        f"🎯 <b>Recomendación para TYASA:</b> {rec}</div>"
+    ) if rec else ""
+
+    return header + dos_col + areas_html + two_col + rec_html
+
+
+def _email_area_rows(areas_list: list) -> str:
+    if not areas_list:
+        return ""
+    rows = []
+    for a in areas_list:
+        area    = a.get("area", "")
+        resumen = a.get("resumen", "")
+        url     = a.get("ref_url", "") or ""
+        titulo  = (a.get("ref_titulo") or "Ver artículo")[:55]
+        link    = f'<br><a href="{url}" style="color:#1B3A5C;font-size:10px;">↗ {titulo}</a>' if url else ""
+        rows.append(
+            f"<tr><td style='padding:6px 10px;border-left:3px solid #1B3A5C;"
+            f"background:#F8FAFC;font-size:12px;color:#374151;margin-bottom:3px;'>"
+            f"<b style='color:#1B3A5C;'>{area}:</b> {resumen}{link}</td></tr>"
+        )
+    return (
+        '<div style="padding:0 28px 16px;">'
+        '<div style="font-size:11px;font-weight:700;color:#1B3A5C;text-transform:uppercase;'
+        'letter-spacing:.06em;margin-bottom:8px;">📋 Resumen por Área</div>'
+        '<table style="width:100%;border-collapse:separate;border-spacing:0 4px;">'
+        + "".join(rows)
+        + "</table></div>"
+    )
+
+
+def _build_email_html(result: dict) -> str:
+    """Genera el HTML del digest ejecutivo para envío por correo."""
+    nivel      = result.get("nivel_alerta", "—")
+    fecha      = result.get("_fecha", "")
+    estado     = result.get("estado_mercado", "") or ""
+    impacto    = result.get("impacto_mexico", "") or ""
+    riesgos    = result.get("riesgos", []) or []
+    opors      = result.get("oportunidades", []) or []
+    rec        = result.get("recomendacion", "") or ""
+    areas_raw  = result.get("resumen_por_area") or []
+    if isinstance(areas_raw, dict):
+        areas_list = [{"area": k, "resumen": v, "ref_url": "", "ref_titulo": ""} for k, v in areas_raw.items()]
+    else:
+        areas_list = [a for a in areas_raw if isinstance(a, dict)]
+
+    nc_colors = {
+        "Alto":  ("#DC2626", "#FEE2E2"),
+        "Medio": ("#D97706", "#FEF3C7"),
+        "Bajo":  ("#059669", "#D1FAE5"),
+    }
+    nc_txt, nc_bg = nc_colors.get(nivel, ("#6B7280", "#F3F4F6"))
+
+    def _rows(items: list[dict], color: str) -> str:
+        if not items:
+            return "<tr><td style='padding:8px 14px;color:#9CA3AF;'>—</td></tr>"
+        out = ""
+        for item in items:
+            texto     = (item.get("texto") or "").strip()
+            ref_url   = (item.get("ref_url") or "").strip()
+            ref_titulo = ((item.get("ref_titulo") or "")[:60]).strip()
+            link = (
+                f'<br><a href="{ref_url}" style="color:{color};font-size:11px;">'
+                f'↗ {ref_titulo}</a>'
+            ) if ref_url else ""
+            out += (
+                f"<tr><td style='padding:8px 14px;border-left:3px solid {color};"
+                f"background:#FAFAFA;font-size:13px;color:#374151;margin-bottom:4px;'>"
+                f"{texto}{link}</td></tr>"
+            )
+        return out
+
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:Segoe UI,Arial,sans-serif;background:#F3F4F6;margin:0;padding:20px;">
+<div style="max-width:680px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;
+     box-shadow:0 2px 8px rgba(0,0,0,.08);">
+  <div style="background:#1B3A5C;padding:22px 28px;">
+    <div style="font-size:11px;color:rgba(255,255,255,.55);text-transform:uppercase;
+         letter-spacing:.08em;margin-bottom:4px;">TYASA BI · Monitor Siderúrgico</div>
+    <h1 style="color:#fff;margin:0 0 4px;font-size:20px;font-weight:800;">Digest Ejecutivo Siderúrgico</h1>
+    <div style="font-size:11px;color:rgba(255,255,255,.5);">📅 {fecha} · Generado con Gemini AI</div>
+  </div>
+  <div style="padding:18px 28px 0;">
+    <span style="background:{nc_bg};color:{nc_txt};padding:5px 14px;border-radius:20px;
+          font-size:12px;font-weight:700;">⚡ Nivel de alerta: {nivel}</span>
+  </div>
+  <div style="padding:16px 28px;">
+    <div style="font-size:11px;font-weight:700;color:#6B7280;text-transform:uppercase;
+         letter-spacing:.06em;margin-bottom:6px;">🌍 Estado del Mercado</div>
+    <p style="font-size:13px;color:#374151;line-height:1.65;margin:0;">{estado}</p>
+  </div>
+  <div style="padding:0 28px 16px;">
+    <div style="background:#EFF6FF;border-radius:8px;padding:14px 16px;">
+      <div style="font-size:11px;font-weight:700;color:#1D4ED8;text-transform:uppercase;
+           letter-spacing:.06em;margin-bottom:6px;">🇲🇽 Impacto en México / TYASA</div>
+      <p style="font-size:13px;color:#1E40AF;line-height:1.65;margin:0;">{impacto}</p>
+    </div>
+  </div>
+  {_email_area_rows(areas_list)}
+  <div style="padding:0 28px 16px;">
+    <div style="font-size:11px;font-weight:700;color:#DC2626;text-transform:uppercase;
+         letter-spacing:.06em;margin-bottom:8px;">⚠️ Riesgos Identificados</div>
+    <table style="width:100%;border-collapse:separate;border-spacing:0 4px;">{_rows(riesgos,"#DC2626")}</table>
+  </div>
+  <div style="padding:0 28px 16px;">
+    <div style="font-size:11px;font-weight:700;color:#059669;text-transform:uppercase;
+         letter-spacing:.06em;margin-bottom:8px;">✅ Oportunidades</div>
+    <table style="width:100%;border-collapse:separate;border-spacing:0 4px;">{_rows(opors,"#059669")}</table>
+  </div>
+  <div style="padding:0 28px 22px;">
+    <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:14px 16px;">
+      <div style="font-size:11px;font-weight:700;color:#1D4ED8;text-transform:uppercase;
+           letter-spacing:.06em;margin-bottom:6px;">🎯 Recomendación para TYASA</div>
+      <p style="font-size:13px;color:#1E40AF;line-height:1.65;margin:0;">{rec}</p>
+    </div>
+  </div>
+  <div style="background:#F9FAFB;padding:14px 28px;border-top:1px solid #E5E7EB;">
+    <div style="font-size:11px;color:#9CA3AF;">Generado automáticamente por TYASA BI · No responder este mensaje</div>
+  </div>
+</div>
+</body></html>"""
+
+
+def _enviar_email_digest(html_body: str, subject: str) -> tuple[bool, str]:
+    """
+    Envía el digest por Gmail SMTP (SSL, puerto 465).
+    Requiere en .streamlit/secrets.toml:
+      GMAIL_USER         = "tu@gmail.com"
+      GMAIL_APP_PASSWORD = "xxxx xxxx xxxx xxxx"   # App Password de Google
+      DIGEST_EMAIL_TO    = ["dest1@gmail.com", "dest2@hotmail.com"]  # lista o string
+    """
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    try:
+        gmail_user = st.secrets.get("GMAIL_USER", "")
+        gmail_pass = st.secrets.get("GMAIL_APP_PASSWORD", "")
+        if not gmail_user or not gmail_pass:
+            return (
+                False,
+                "Agrega GMAIL_USER y GMAIL_APP_PASSWORD en .streamlit/secrets.toml "
+                "(usa una App Password de Google, no tu contraseña normal).",
+            )
+        # Soporte para lista de destinatarios o string simple/coma-separado
+        to_raw = st.secrets.get("DIGEST_EMAIL_TO", gmail_user)
+        if isinstance(to_raw, (list, tuple)):
+            to_list = [e.strip() for e in to_raw if e.strip()]
+        elif isinstance(to_raw, str) and "," in to_raw:
+            to_list = [e.strip() for e in to_raw.split(",") if e.strip()]
+        else:
+            to_list = [str(to_raw).strip() or gmail_user]
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"]    = gmail_user
+        msg["To"]      = ", ".join(to_list)
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as srv:
+            srv.login(gmail_user, gmail_pass)
+            srv.sendmail(gmail_user, to_list, msg.as_string())
+        dest_str = ", ".join(to_list)
+        return True, f"Digest enviado a {dest_str}"
+    except Exception as exc:
+        return False, str(exc)
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # HELPERS — MAÑANERA
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -680,9 +987,8 @@ sidebar_header("Industria Siderúrgica", "🏭")
 # ════════════════════════════════════════════════════════════════════════════
 # HEADER
 # ════════════════════════════════════════════════════════════════════════════
-st.markdown(
-    f"<h2 style='color:{COLORS['primary']};margin-bottom:0;'>🏭 Monitor de la Industria Siderúrgica</h2>",
-    unsafe_allow_html=True,
+st.html(
+    f"<h2 style='color:{COLORS['primary']};margin-bottom:0;'>🏭 Monitor de la Industria Siderúrgica</h2>"
 )
 st.divider()
 
@@ -751,34 +1057,87 @@ if _man_data.get("tiene_contenido_relevante"):
 st.divider()
 
 # ════════════════════════════════════════════════════════════════════════════
-# SECCIÓN A — SÍNTESIS INDUSTRIAL IA
+# SECCIÓN A — SÍNTESIS EJECUTIVA GLOBAL (10 categorías + URLs + correo)
 # ════════════════════════════════════════════════════════════════════════════
-seccion_titulo("🤖 Síntesis Industrial")
+seccion_titulo("🤖 Síntesis Ejecutiva Global")
 
-col_btn_s, col_frz_s = st.columns([1, 1])
+# Auto-cargar desde caché si la sesión acaba de iniciar (botón correo siempre habilitado)
+if "sint_result" not in st.session_state:
+    _all_cat_keys = list(GRUPOS_NACIONAL.keys()) + list(GRUPOS_INTERNACIONAL.keys())
+    # 1) Buscar caché de hoy (mismas categorías)
+    _cached_hoy = cargar_cache_hoy("sintesis_global", cat_keys=_all_cat_keys)
+    # 2) Fallback: síntesis más reciente (aunque sea de ayer)
+    if not _cached_hoy:
+        _cached_hoy = cargar_sintesis_latest()
+    if _cached_hoy and not _cached_hoy.get("_error"):
+        st.session_state["sint_result"] = _cached_hoy
+
+col_btn_s, col_frz_s, col_email_b = st.columns([2, 1, 1])
 with col_btn_s:
-    run_sint = st.button("▶ Generar síntesis", key="sint_run")
+    run_sint = st.button("▶ Generar síntesis ejecutiva", key="sint_run",
+                         use_container_width=True)
 with col_frz_s:
     frz_sint = st.checkbox("Regenerar", key="sint_frz", value=False)
+with col_email_b:
+    enviar_email_clicked = st.button(
+        "📧 Enviar por correo", key="sint_email",
+        use_container_width=True,
+        disabled=(st.session_state.get("sint_result") is None
+                  or bool((st.session_state.get("sint_result") or {}).get("_error"))),
+    )
 
+# Generar síntesis con todas las categorías (12 artículos por grupo para mejor cobertura)
 if run_sint and _GEMINI_KEY:
-    noticias_todos = {g: _noticias_grupo(g, 8) for g in GRUPOS_INDUSTRIA}
-    st.session_state["sint_result"] = sintesis_industrial(noticias_todos, _GEMINI_KEY, force_refresh=frz_sint)
+    all_nots = {
+        **{g: _noticias_grupo(g, 12) for g in GRUPOS_NACIONAL},
+        **{g: _noticias_grupo(g, 12) for g in GRUPOS_INTERNACIONAL},
+    }
+    st.session_state["sint_result"] = sintesis_global(all_nots, _GEMINI_KEY, force_refresh=frz_sint)
 elif run_sint:
-    st.session_state["sint_result"] = {"_error": "Configura GEMINI_API_KEY en .streamlit/secrets.toml"}
+    st.session_state["sint_result"] = {
+        "_error": "Configura GEMINI_API_KEY en .streamlit/secrets.toml",
+    }
 
-st.html(_render_sintesis_full(st.session_state.get("sint_result")))
+# Enviar por correo
+_EMAIL_ST_KEY = "sint_email_status"
+if enviar_email_clicked:
+    _res = st.session_state.get("sint_result") or {}
+    if not _res.get("_error"):
+        _html_mail = _build_email_html(_res)
+        _ok, _msg  = _enviar_email_digest(
+            _html_mail,
+            f"Digest Siderúrgico TYASA · {_res.get('_fecha', '')} · Alerta {_res.get('nivel_alerta','—')}",
+        )
+        st.session_state[_EMAIL_ST_KEY] = {"ok": _ok, "msg": _msg}
 
-# ── Exportar síntesis al contexto acumulativo del sistema ────────────────────
+# DOM-STABLE: slot de estado de correo (siempre presente)
+_email_st = st.session_state.get(_EMAIL_ST_KEY)
+if _email_st:
+    _em_color  = "#D1FAE5" if _email_st["ok"] else "#FEE2E2"
+    _em_border = "#86EFAC" if _email_st["ok"] else "#FCA5A5"
+    _em_text   = "#065F46" if _email_st["ok"] else "#DC2626"
+    _em_icon   = "✅" if _email_st["ok"] else "⚠️"
+    _email_html = (
+        f"<div style='background:{_em_color};border:1px solid {_em_border};"
+        f"border-radius:8px;padding:10px 14px;font-size:13px;color:{_em_text};margin-top:6px;'>"
+        f"{_em_icon} {_email_st['msg']}</div>"
+    )
+else:
+    _email_html = "<!-- -->"
+st.html(_email_html)
+
+# Render del resultado
+st.html(_render_sintesis_global(st.session_state.get("sint_result")))
+
+# ── Exportar síntesis al contexto del chat ───────────────────────────────────
 _sint_data = st.session_state.get("sint_result") or {}
 if _sint_data and not _sint_data.get("_error") and _sint_data.get("nivel_alerta"):
     try:
         from core.chat_widget import actualizar_contexto_sistema
         actualizar_contexto_sistema("sintesis_industria", {
             "sintesis_nivel_alerta":     _sint_data.get("nivel_alerta", ""),
-            "sintesis_impacto_precios":  _sint_data.get("impacto_precios", ""),
-            "sintesis_tendencias_mexico":_sint_data.get("tendencias_mexico", ""),
-            "sintesis_riesgos_globales": _sint_data.get("riesgos_globales", ""),
+            "sintesis_estado_mercado":   _sint_data.get("estado_mercado", ""),
+            "sintesis_impacto_mexico":   _sint_data.get("impacto_mexico", ""),
             "sintesis_recomendacion":    _sint_data.get("recomendacion", ""),
         })
     except Exception:
@@ -866,52 +1225,61 @@ with col_clear:
         _busq_res   = None
         _busq_query = ""
 
-# DOM-STABLE: st.html() siempre presente — string vacío cuando no hay resultados
-st.html(_render_busqueda_libre(_busq_res, _busq_query) if _busq_res else "")
+# DOM-STABLE: st.html() siempre presente — comentario vacío cuando no hay resultados
+st.html(_render_busqueda_libre(_busq_res, _busq_query) if _busq_res else "<!-- -->")
 
 # ── Nacionales ────────────────────────────────────────────────────────────────
-st.markdown(
+st.html(
     "<div style='border-bottom:2px solid #1B3A5C;margin:20px 0 16px 0;padding-bottom:10px;"
     "display:flex;align-items:center;gap:10px;'>"
     "<div style='width:4px;height:26px;background:#DC2626;border-radius:2px;flex-shrink:0;'></div>"
     "<span style='font-size:18px;font-weight:900;color:#1B3A5C;letter-spacing:-0.02em;'>🇲🇽 Nacionales</span>"
     "<span style='margin-left:auto;font-size:10px;color:#9CA3AF;font-style:italic;'>"
     "Reforma · El Financiero · El Universal · Milenio · El Economista · ReporteAcero · +</span>"
-    "</div>",
-    unsafe_allow_html=True,
+    "</div>"
 )
 
 nac_grupos = list(GRUPOS_NACIONAL.keys())
-nac_icons  = {"Regulación": "⚖️", "Energía": "⚡", "Infraestructura": "🏗️",
-              "Industria": "🏭", "Economía": "📊"}
+nac_icons  = {
+    "T-MEC y Tratados":    "🤝",
+    "Nearshoring":         "🏭",
+    "Sustentabilidad":     "♻️",
+    "Socios Siderúrgicos": "⚙️",
+    "Macroeconomía":       "📊",
+    "Logística Nacional":  "🚛",
+}
 tabs_nac = st.tabs([f"{nac_icons.get(g,'')} {g}" for g in nac_grupos])
 
 for tab, grupo in zip(tabs_nac, nac_grupos):
     with tab:
-        noticias_raw = _noticias_grupo(grupo, 20)
+        noticias_raw = _noticias_grupo(grupo, 40)
         noticias_g   = _filtrar_por_fecha(noticias_raw, fecha_desde, fecha_hasta)
         st.html(_render_noticias_grid(noticias_g, grupo, GRUPO_STYLE_NACIONAL))
 
 # ── Internacionales ───────────────────────────────────────────────────────────
-st.markdown(
+st.html(
     "<div style='border-bottom:2px solid #1B3A5C;margin:24px 0 16px 0;padding-bottom:10px;"
     "display:flex;align-items:center;gap:10px;'>"
     "<div style='width:4px;height:26px;background:#4338CA;border-radius:2px;flex-shrink:0;'></div>"
     "<span style='font-size:18px;font-weight:900;color:#1B3A5C;letter-spacing:-0.02em;'>🌐 Internacionales</span>"
     "<span style='margin-left:auto;font-size:10px;color:#9CA3AF;font-style:italic;'>"
-    "Reuters · Bloomberg · WorldSteel · Financial Times · S&amp;P Global · +</span>"
-    "</div>",
-    unsafe_allow_html=True,
+    "Fastmarkets · Reuters · Bloomberg · WorldSteel · S&amp;P Global · CRU · +</span>"
+    "</div>"
 )
 
 int_grupos = list(GRUPOS_INTERNACIONAL.keys())
-int_icons  = {"Mercado Global": "🌍", "Materias Primas": "⛏️",
-              "Empresas": "🏢", "Comercio": "🚢"}
+int_icons  = {
+    "Precios y Commodities":   "💰",
+    "Geopolítica y Logística": "🌍",
+    "Defensa Comercial":       "🛡️",
+    "Descarbonización":        "🌿",
+    "Sectores Consumidores":   "🏗️",
+}
 tabs_int = st.tabs([f"{int_icons.get(g,'')} {g}" for g in int_grupos])
 
 for tab, grupo in zip(tabs_int, int_grupos):
     with tab:
-        noticias_raw = _noticias_grupo(grupo, 20)
+        noticias_raw = _noticias_grupo(grupo, 40)
         noticias_g   = _filtrar_por_fecha(noticias_raw, fecha_desde, fecha_hasta)
         st.html(_render_noticias_grid(noticias_g, grupo, GRUPO_STYLE_INTERNACIONAL))
 

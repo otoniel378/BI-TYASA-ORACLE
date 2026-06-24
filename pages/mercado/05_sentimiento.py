@@ -49,8 +49,11 @@ sidebar_header("Sentimiento", "🌡️")
 dias_hist = st.sidebar.slider("Período de análisis (días)", 7, 90, 30, key="sent_dias")
 grupo_filtro = st.sidebar.selectbox(
     "Filtrar por grupo",
-    ["Todos", "Urgente", "Mercado Global", "Materias Primas", "Regulación",
-     "Energía", "Infraestructura", "Industria", "Economía", "Empresas", "Comercio"],
+    ["Todos", "Urgente",
+     "T-MEC y Tratados", "Nearshoring", "Sustentabilidad",
+     "Socios Siderúrgicos", "Macroeconomía", "Logística Nacional",
+     "Precios y Commodities", "Geopolítica y Logística",
+     "Defensa Comercial", "Descarbonización", "Sectores Consumidores"],
     key="sent_grupo",
 )
 alcance_filtro = st.sidebar.radio(
@@ -464,7 +467,7 @@ Sin introducción. Sin cierre. Solo los 4 bullets."""
 
 def _render_sint(txt: str | None) -> str:
     if not txt:
-        return ""
+        return "<!-- -->"
     bullets = [l.strip() for l in txt.strip().split("\n") if l.strip()]
     items   = "".join(
         f"<li style='margin-bottom:8px;font-size:13px;color:{_T1};line-height:1.4;'>{b}</li>"
