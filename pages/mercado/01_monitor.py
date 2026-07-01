@@ -24,6 +24,7 @@ from mercado_noticias.analytics.ai_analysis import (
 )
 from core.components.filters import sidebar_header
 from core.components.kpi_cards import render_kpi_row, seccion_titulo
+from core.components.market_summary import build_indicadores_html
 
 # ── API key ───────────────────────────────────────────────────────────────────
 try:
@@ -227,6 +228,12 @@ st.divider()
 # ════════════════════════════════════════════════════════════════════════════
 with st.spinner("Cargando datos de mercado..."):
     df_vars = load_variables_mercado(dias=400)
+
+# ── Resumen de indicadores financieros al tope ────────────────────────────
+_ind_html = build_indicadores_html(df_vars)
+if _ind_html:
+    st.html(_ind_html)
+    st.divider()
 
 alertas_live: list[dict] = []
 if not df_vars.empty:
@@ -491,12 +498,13 @@ if chat_var and _GEMINI_KEY:
         messages.append({"role": "user", "content": prompt})
         # Construir prompt con contexto + historial
         hist_txt = "\n".join(
-            f"{'Analista' if m['role']=='assistant' else 'Usuario'}: {m['content']}"
+            ("Analista" if m['role'] == 'assistant' else "Usuario") + ": " + m['content']
             for m in messages[:-1]
         )
+        conv_block = ("Conversación previa:\n" + hist_txt) if hist_txt else ""
         full_prompt = (
             f"Contexto de alerta: {_ctx}\n\n"
-            f"{'Conversación previa:\n' + hist_txt if hist_txt else ''}\n\n"
+            f"{conv_block}\n\n"
             f"Usuario: {prompt}"
         )
         resp_txt = _call_gemini_text(full_prompt, _GEMINI_KEY)
@@ -579,13 +587,14 @@ if chat_compare_vars and _GEMINI_KEY:
     if prompt_cmp:
         msgs_cmp.append({"role": "user", "content": prompt_cmp})
         hist_txt_cmp = "\n".join(
-            f"{'Analista' if m['role']=='assistant' else 'Usuario'}: {m['content']}"
+            ("Analista" if m['role'] == 'assistant' else "Usuario") + ": " + m['content']
             for m in msgs_cmp[:-1]
         )
+        conv_block_cmp = ("Conversación previa:\n" + hist_txt_cmp + "\n") if hist_txt_cmp else ""
         full_prompt_cmp = (
             f"Eres un analista de materias primas y mercados siderúrgicos para TYASA México.\n\n"
             f"Datos actuales de las variables seleccionadas:\n{ctx_cmp}\n\n"
-            f"{'Conversación previa:\n' + hist_txt_cmp + chr(10) if hist_txt_cmp else ''}"
+            f"{conv_block_cmp}"
             f"Usuario: {prompt_cmp}\n\n"
             f"Responde cruzando la información de todas las variables, identifica correlaciones, "
             f"riesgos compartidos e impacto potencial en la operación de TYASA."

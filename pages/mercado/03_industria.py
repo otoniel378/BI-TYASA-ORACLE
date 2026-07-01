@@ -32,6 +32,8 @@ from mercado_noticias.analytics.ai_analysis import sintesis_industrial, _call_ge
 from mercado_noticias.analytics.mananera import analizar_mananera, MANANERA_CACHE_DIR, MANANERA_CACHE_DAYS
 from core.components.filters import sidebar_header
 from core.components.kpi_cards import seccion_titulo
+from mercado_noticias.loaders import load_variables_mercado
+from core.components.market_summary import build_indicadores_html
 
 # ── API key ───────────────────────────────────────────────────────────────────
 try:
@@ -571,7 +573,15 @@ def _email_area_rows(areas_list: list) -> str:
     )
 
 
-def _build_email_html(result: dict) -> str:
+def _build_indicadores_section(df_vars) -> str:
+    """Wrapper para el correo — envuelve en padding de email."""
+    html = build_indicadores_html(df_vars)
+    if not html:
+        return ""
+    return f"<div style='padding:0 28px 16px;'>{html}</div>"
+
+
+def _build_email_html(result: dict, df_vars=None) -> str:
     """Genera el HTML del digest ejecutivo para envío por correo."""
     nivel      = result.get("nivel_alerta", "—")
     fecha      = result.get("_fecha", "")
@@ -658,6 +668,7 @@ def _build_email_html(result: dict) -> str:
       <p style="font-size:13px;color:#1E40AF;line-height:1.65;margin:0;">{rec}</p>
     </div>
   </div>
+  {_build_indicadores_section(df_vars)}
   <div style="background:#F9FAFB;padding:14px 28px;border-top:1px solid #E5E7EB;">
     <div style="font-size:11px;color:#9CA3AF;">Generado automáticamente por TYASA BI · No responder este mensaje</div>
   </div>
@@ -1103,7 +1114,11 @@ _EMAIL_ST_KEY = "sint_email_status"
 if enviar_email_clicked:
     _res = st.session_state.get("sint_result") or {}
     if not _res.get("_error"):
-        _html_mail = _build_email_html(_res)
+        try:
+            _df_vars_email = load_variables_mercado(dias=30)
+        except Exception:
+            _df_vars_email = None
+        _html_mail = _build_email_html(_res, df_vars=_df_vars_email)
         _ok, _msg  = _enviar_email_digest(
             _html_mail,
             f"Digest Siderúrgico TYASA · {_res.get('_fecha', '')} · Alerta {_res.get('nivel_alerta','—')}",
@@ -1311,12 +1326,13 @@ if prompt_ind and _GEMINI_KEY:
     msgs = st.session_state[CHAT_KEY_IND]
     msgs.append({"role": "user", "content": prompt_ind})
     hist_txt = "\n".join(
-        f"{'Analista' if m['role']=='assistant' else 'Usuario'}: {m['content']}"
+        ("Analista" if m['role'] == 'assistant' else "Usuario") + ": " + m['content']
         for m in msgs[:-1]
     )
+    conv_block_ind = ("Conversación previa:\n" + hist_txt + "\n") if hist_txt else ""
     full_prompt_ind = (
         "Contexto: Analista de la industria siderúrgica para TYASA México.\n\n"
-        f"{'Conversación previa:\n' + hist_txt + chr(10) if hist_txt else ''}"
+        f"{conv_block_ind}"
         f"Usuario: {prompt_ind}"
     )
     resp_ind = _call_gemini_text(full_prompt_ind, _GEMINI_KEY)
