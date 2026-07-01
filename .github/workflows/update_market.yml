@@ -1,0 +1,45 @@
+name: Actualización Diaria de Mercado
+
+on:
+  schedule:
+    # Lunes a viernes a las 7:00 AM México (13:00 UTC)
+    - cron: "0 13 * * 1-5"
+  workflow_dispatch:  # permite correrlo manualmente desde GitHub
+
+jobs:
+  update-market:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: pip install oracledb yfinance pandas numpy python-dotenv scipy
+
+      - name: Extraer wallet de Oracle
+        run: |
+          mkdir -p /tmp/oracle_wallet
+          echo "${{ secrets.ORACLE_WALLET_B64 }}" | base64 -d > /tmp/oracle_wallet.zip
+          unzip -o /tmp/oracle_wallet.zip -d /tmp/oracle_wallet
+          echo "Wallet extraído:"
+          ls /tmp/oracle_wallet
+
+      - name: Actualizar variables de mercado en Oracle ADW
+        env:
+          ORACLE_USER:            ${{ secrets.ORACLE_USER }}
+          ORACLE_PASSWORD:        ${{ secrets.ORACLE_PASSWORD }}
+          ORACLE_DSN:             ${{ secrets.ORACLE_DSN }}
+          ORACLE_WALLET_DIR:      /tmp/oracle_wallet
+          ORACLE_WALLET_PASSWORD: ${{ secrets.ORACLE_WALLET_PASSWORD }}
+        run: python scripts/update_market_data.py
+
+      - name: Resultado
+        if: always()
+        run: echo "Actualización completada - $(date)"
