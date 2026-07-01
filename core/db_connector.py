@@ -4,18 +4,40 @@ Todas las consultas van al schema ADMIN del ADW de TYASA.
 
 Autenticación (se intenta en este orden):
   1. secrets.toml [oracle] — user, password, dsn, wallet_dir, wallet_password
-  2. Variables de entorno ORACLE_USER, ORACLE_PASSWORD, ORACLE_DSN
+  2. ORACLE_WALLET_B64 — wallet ZIP en base64 (para despliegues en la nube)
+  3. Variables de entorno ORACLE_USER, ORACLE_PASSWORD, ORACLE_DSN (sin wallet)
 """
 
 import os
+import base64
+import zipfile
+import tempfile
 import oracledb
 import pandas as pd
 import streamlit as st
 
 SCHEMA = "ADMIN"
 
+_WALLET_TMP_DIR: str | None = None
+
+
+def _extract_wallet_b64(b64: str) -> str:
+    """Extrae el wallet ZIP en base64 a un directorio temporal y retorna la ruta."""
+    global _WALLET_TMP_DIR
+    if _WALLET_TMP_DIR and os.path.isdir(_WALLET_TMP_DIR):
+        return _WALLET_TMP_DIR
+    tmp = tempfile.mkdtemp(prefix="oracle_wallet_")
+    zip_path = os.path.join(tmp, "wallet.zip")
+    with open(zip_path, "wb") as f:
+        f.write(base64.b64decode(b64))
+    with zipfile.ZipFile(zip_path, "r") as zf:
+        zf.extractall(tmp)
+    _WALLET_TMP_DIR = tmp
+    return tmp
+
 
 def _get_oracle_params() -> dict:
+    # 1. secrets.toml (desarrollo local)
     try:
         cfg = st.secrets["oracle"]
         params = {
@@ -32,11 +54,30 @@ def _get_oracle_params() -> dict:
                 params["wallet_password"] = wallet_pw
         return params
     except Exception:
-        return {
-            "user":     os.environ.get("ORACLE_USER", "ADMIN"),
-            "password": os.environ.get("ORACLE_PASSWORD", ""),
-            "dsn":      os.environ.get("ORACLE_DSN", ""),
+        pass
+
+    # 2. Wallet en base64 (despliegue en la nube: Streamlit Cloud, Render, Railway…)
+    wallet_b64 = os.environ.get("ORACLE_WALLET_B64", "")
+    if wallet_b64:
+        wallet_dir = _extract_wallet_b64(wallet_b64)
+        params = {
+            "user":             os.environ.get("ORACLE_USER", "ADMIN"),
+            "password":         os.environ.get("ORACLE_PASSWORD", ""),
+            "dsn":              os.environ.get("ORACLE_DSN", ""),
+            "config_dir":       wallet_dir,
+            "wallet_location":  wallet_dir,
         }
+        wallet_pw = os.environ.get("ORACLE_WALLET_PASSWORD", "")
+        if wallet_pw:
+            params["wallet_password"] = wallet_pw
+        return params
+
+    # 3. Variables de entorno sin wallet (conexión directa)
+    return {
+        "user":     os.environ.get("ORACLE_USER", "ADMIN"),
+        "password": os.environ.get("ORACLE_PASSWORD", ""),
+        "dsn":      os.environ.get("ORACLE_DSN", ""),
+    }
 
 
 @st.cache_resource(show_spinner=False)
