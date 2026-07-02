@@ -106,7 +106,7 @@ def _get_fuente_style(fuente: str) -> tuple[str, str, str]:
 # ════════════════════════════════════════════════════════════════════════════
 
 @st.cache_data(ttl=1800, show_spinner=False)
-def _noticias_grupo(grupo: str, max_r: int = 40) -> list[dict]:
+def _noticias_grupo(grupo: str, max_r: int = 15) -> list[dict]:
     return buscar_noticias_sector(grupo, max_resultados=max_r)
 
 
@@ -1267,7 +1267,7 @@ tabs_nac = st.tabs([f"{nac_icons.get(g,'')} {g}" for g in nac_grupos])
 
 for tab, grupo in zip(tabs_nac, nac_grupos):
     with tab:
-        noticias_raw = _noticias_grupo(grupo, 40)
+        noticias_raw = _noticias_grupo(grupo, 15)
         noticias_g   = _filtrar_por_fecha(noticias_raw, fecha_desde, fecha_hasta)
         st.html(_render_noticias_grid(noticias_g, grupo, GRUPO_STYLE_NACIONAL))
 
@@ -1294,7 +1294,7 @@ tabs_int = st.tabs([f"{int_icons.get(g,'')} {g}" for g in int_grupos])
 
 for tab, grupo in zip(tabs_int, int_grupos):
     with tab:
-        noticias_raw = _noticias_grupo(grupo, 40)
+        noticias_raw = _noticias_grupo(grupo, 15)
         noticias_g   = _filtrar_por_fecha(noticias_raw, fecha_desde, fecha_hasta)
         st.html(_render_noticias_grid(noticias_g, grupo, GRUPO_STYLE_INTERNACIONAL))
 

@@ -51,7 +51,7 @@ scripts/
   create_market_tables.py         ← Inicialización tablas BQ (one-time)
   update_market_data.py           ← Update diario desde yfinance
 cloud_functions/
-  update_market/main.py           ← Cloud Function HTTP (trigger 7 AM MX = 13 UTC)
+  update_market/main.py           ← Cloud Function HTTP (trigger 8:45 AM MX = 14:45 UTC)
 
 ## Convenciones
 - Naming tablas BQ: bronze_ | silver_ | gold_ + descripción

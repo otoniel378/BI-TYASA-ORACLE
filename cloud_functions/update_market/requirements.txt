@@ -2,7 +2,4 @@ functions-framework==3.*
 yfinance>=1.2.0
 pandas>=2.0.0
 numpy>=1.24.0
-google-cloud-bigquery>=3.0.0
-google-cloud-bigquery-storage>=2.0.0
-pyarrow>=12.0.0
-db-dtypes>=1.0.0
+oracledb>=2.0.0

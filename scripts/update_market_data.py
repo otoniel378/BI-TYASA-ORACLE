@@ -61,6 +61,10 @@ TICKERS = {
     'EEM'     : ('ETF_Emergentes',     'Europa'),
     'EWW'     : ('ETF_Mexico',         'Mexico'),
     'MXN=X'   : ('USD_MXN',           'Mexico'),
+    'EURMXN=X': ('EUR_MXN',           'Mexico'),
+    'CNY=X'   : ('USD_CNY',           'Asia'),
+    'CX'      : ('CEMEX',             'Mexico'),
+    'ZNC=F'   : ('Zinc_USD',          'Insumos_Acero'),
 }
 
 
