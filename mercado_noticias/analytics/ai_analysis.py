@@ -30,6 +30,10 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 # ── Timeout HTTP general ───────────────────────────────────────────────────────
 HTTP_TIMEOUT = 10  # segundos
 
+# ── Modelos Gemini disponibles (en orden de preferencia) ──────────────────────
+_DEFAULT_MODEL   = "gemini-3.5-flash"
+_FALLBACK_MODELS = ("gemini-3.5-flash", "gemini-2.5-flash-lite", "gemini-1.5-flash")
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SCRAPING DE ARTÍCULOS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -175,58 +179,73 @@ def _build_prompt(
 # LLAMADA A GEMINI API
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _call_gemini(prompt: str, api_key: str, model: str = "gemini-2.5-flash") -> dict | None:
+def _models_to_try(model: str) -> tuple:
+    """Devuelve lista única de modelos a intentar, poniendo el solicitado primero."""
+    seen: dict = {}
+    for m in (model,) + _FALLBACK_MODELS:
+        seen[m] = None
+    return tuple(seen)
+
+
+def _call_gemini(prompt: str, api_key: str, model: str = _DEFAULT_MODEL) -> dict | None:
     """
     Llama a Gemini via google-genai SDK (nuevo) con fallback a REST directo.
+    Prueba varios modelos si el principal no está disponible.
     Retorna dict con los campos del análisis, o None si falla.
     """
-    # Intentar con nuevo SDK google-genai
+    models = _models_to_try(model)
+
+    # Intentar con SDK google-genai
     try:
         from google import genai                          # type: ignore
         from google.genai import types as genai_types    # type: ignore
-
         client = genai.Client(api_key=api_key)
-        resp = client.models.generate_content(
-            model=model,
-            contents=prompt,
-            config=genai_types.GenerateContentConfig(
-                system_instruction=_SYSTEM_PROMPT,
-                temperature=0.3,
-                max_output_tokens=2048,
-                # gemini-2.5-flash tiene "thinking" que consume tokens del budget;
-                # deshabilitarlo garantiza que el JSON completo cabe en la respuesta.
-                thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
-            ),
-        )
-        raw = resp.text.strip() if resp.text else ""
-        if raw:
-            return _parse_json_response(raw)
+
+        for m in models:
+            try:
+                cfg_kwargs: dict = dict(
+                    system_instruction=_SYSTEM_PROMPT,
+                    temperature=0.3,
+                    max_output_tokens=2048,
+                )
+                try:
+                    cfg_kwargs["thinking_config"] = genai_types.ThinkingConfig(thinking_budget=0)
+                except Exception:
+                    pass
+                resp = client.models.generate_content(
+                    model=m,
+                    contents=prompt,
+                    config=genai_types.GenerateContentConfig(**cfg_kwargs),
+                )
+                raw = resp.text.strip() if resp.text else ""
+                if raw:
+                    return _parse_json_response(raw)
+            except Exception as e:
+                print(f"[ai_analysis] SDK {m} error: {e}")
     except ImportError:
         pass  # SDK no instalado → usar requests
-    except Exception as e:
-        print(f"[ai_analysis] SDK error: {e}")
 
     # Fallback: REST directo (no requiere SDK)
-    try:
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{model}:generateContent?key={api_key}"
-        )
-        body = {
-            "system_instruction": {"parts": [{"text": _SYSTEM_PROMPT}]},
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.3, "maxOutputTokens": 2048},
-        }
-        resp = requests.post(url, json=body, timeout=30)
-        if resp.status_code != 200:
-            print(f"[ai_analysis] REST {resp.status_code}: {resp.text[:300]}")
-            return None
-        data = resp.json()
-        raw  = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        return _parse_json_response(raw)
-    except Exception as e:
-        print(f"[ai_analysis] REST error: {e}")
-        return None
+    for m in models:
+        try:
+            url = (
+                f"https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{m}:generateContent?key={api_key}"
+            )
+            body = {
+                "system_instruction": {"parts": [{"text": _SYSTEM_PROMPT}]},
+                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 2048},
+            }
+            resp = requests.post(url, json=body, timeout=30)
+            if resp.status_code == 200:
+                data = resp.json()
+                raw  = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                return _parse_json_response(raw)
+            print(f"[ai_analysis] REST {m} {resp.status_code}: {resp.text[:300]}")
+        except Exception as e:
+            print(f"[ai_analysis] REST error ({m}): {e}")
+    return None
 
 
 def _parse_json_response(raw: str) -> dict | None:
@@ -287,7 +306,7 @@ def analizar_alerta(
     tendencia: str,
     noticias: list[dict],
     api_key: str,
-    model: str = "gemini-2.5-flash",
+    model: str = _DEFAULT_MODEL,
     scrape_articles: bool = False,
     force_refresh: bool = False,
 ) -> dict | None:
@@ -351,50 +370,64 @@ def _call_gemini_text(
     prompt: str,
     api_key: str,
     system: str = _SYSTEM_CHAT,
-    model: str = "gemini-2.5-flash",
+    model: str = _DEFAULT_MODEL,
     max_output_tokens: int = 600,
     temperature: float = 0.5,
 ) -> str:
-    """Llama a Gemini y retorna texto libre (para chat y síntesis abierta)."""
+    """Llama a Gemini y retorna texto libre (para chat y síntesis abierta).
+    Prueba varios modelos si el principal no está disponible."""
+    models = _models_to_try(model)
+
+    # SDK google-genai
     try:
         from google import genai                       # type: ignore
         from google.genai import types as genai_types  # type: ignore
         client = genai.Client(api_key=api_key)
-        resp = client.models.generate_content(
-            model=model,
-            contents=prompt,
-            config=genai_types.GenerateContentConfig(
-                system_instruction=system,
-                temperature=temperature,
-                max_output_tokens=max_output_tokens,
-                thinking_config=genai_types.ThinkingConfig(thinking_budget=0),
-            ),
-        )
-        return (resp.text or "").strip() or "Sin respuesta."
-    except Exception as e:
-        print(f"[ai_analysis] _call_gemini_text error: {e}")
+
+        for m in models:
+            try:
+                cfg_kwargs: dict = dict(
+                    system_instruction=system,
+                    temperature=temperature,
+                    max_output_tokens=max_output_tokens,
+                )
+                try:
+                    cfg_kwargs["thinking_config"] = genai_types.ThinkingConfig(thinking_budget=0)
+                except Exception:
+                    pass
+                resp = client.models.generate_content(
+                    model=m,
+                    contents=prompt,
+                    config=genai_types.GenerateContentConfig(**cfg_kwargs),
+                )
+                return (resp.text or "").strip() or "Sin respuesta."
+            except Exception as e:
+                print(f"[ai_analysis] _call_gemini_text SDK {m} error: {e}")
+    except ImportError:
+        pass
+
     # REST fallback
-    try:
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{model}:generateContent?key={api_key}"
-        )
-        body = {
-            "system_instruction": {"parts": [{"text": system}]},
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "temperature": temperature,
-                "maxOutputTokens": max_output_tokens,
-                "thinkingConfig": {"thinkingBudget": 0},
-            },
-        }
-        resp = requests.post(url, json=body, timeout=60)
-        if resp.status_code == 200:
-            data = resp.json()
-            return data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        print(f"[ai_analysis] REST {resp.status_code}: {resp.text[:200]}")
-    except Exception as e2:
-        print(f"[ai_analysis] _call_gemini_text REST error: {e2}")
+    for m in models:
+        try:
+            url = (
+                f"https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{m}:generateContent?key={api_key}"
+            )
+            body = {
+                "system_instruction": {"parts": [{"text": system}]},
+                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": temperature,
+                    "maxOutputTokens": max_output_tokens,
+                },
+            }
+            resp = requests.post(url, json=body, timeout=60)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+            print(f"[ai_analysis] REST {m} {resp.status_code}: {resp.text[:200]}")
+        except Exception as e2:
+            print(f"[ai_analysis] _call_gemini_text REST error ({m}): {e2}")
     return "Error al consultar la IA."
 
 
@@ -423,7 +456,7 @@ en JSON con EXACTAMENTE este formato (sin markdown extra):
 def sintesis_industrial(
     noticias_por_grupo: dict[str, list[dict]],
     api_key: str,
-    model: str = "gemini-2.5-flash",
+    model: str = _DEFAULT_MODEL,
     force_refresh: bool = False,
 ) -> dict | None:
     """
@@ -550,7 +583,7 @@ def cargar_cache_hoy(tipo: str, cat_keys: list[str] | None = None) -> dict | Non
 def sintesis_global(
     noticias_por_grupo: dict[str, list[dict]],
     api_key: str,
-    model: str = "gemini-2.5-flash",
+    model: str = _DEFAULT_MODEL,
     force_refresh: bool = False,
 ) -> dict:
     """

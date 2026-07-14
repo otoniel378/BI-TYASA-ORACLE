@@ -15,6 +15,7 @@ import re
 import datetime
 import urllib.request
 from pathlib import Path
+import requests
 
 # ── Rutas ─────────────────────────────────────────────────────────────────────
 _ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -353,31 +354,66 @@ def _get_transcript(video_id: str) -> tuple[str | None, str]:
 
 # ── Gemini ────────────────────────────────────────────────────────────────────
 
+_MANANERA_MODELS = ("gemini-3.5-flash", "gemini-2.5-flash-lite", "gemini-1.5-flash")
+
+
 def _call_gemini(prompt: str, api_key: str) -> dict | None:
+    # SDK google-genai — prueba modelos en orden hasta que uno responda
     try:
         from google import genai  # type: ignore
         from google.genai import types as T  # type: ignore
 
         client = genai.Client(api_key=api_key)
-        resp = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=T.GenerateContentConfig(
-                system_instruction=_SYSTEM,
-                temperature=0.2,
-                max_output_tokens=3000,
-                thinking_config=T.ThinkingConfig(thinking_budget=0),
-            ),
-        )
-        raw = (resp.text or "").strip()
-        if not raw:
-            return None
-        clean = re.sub(r"```(?:json)?", "", raw, flags=re.IGNORECASE).strip("`").strip()
-        m = re.search(r"\{.*\}", clean, re.DOTALL)
-        return json.loads(m.group()) if m else None
-    except Exception as e:
-        print(f"[mananera] Gemini error: {e}")
-        return None
+        for model in _MANANERA_MODELS:
+            try:
+                cfg_kwargs: dict = dict(
+                    system_instruction=_SYSTEM,
+                    temperature=0.2,
+                    max_output_tokens=3000,
+                )
+                try:
+                    cfg_kwargs["thinking_config"] = T.ThinkingConfig(thinking_budget=0)
+                except Exception:
+                    pass
+                resp = client.models.generate_content(
+                    model=model,
+                    contents=prompt,
+                    config=T.GenerateContentConfig(**cfg_kwargs),
+                )
+                raw = (resp.text or "").strip()
+                if not raw:
+                    continue
+                clean = re.sub(r"```(?:json)?", "", raw, flags=re.IGNORECASE).strip("`").strip()
+                m = re.search(r"\{.*\}", clean, re.DOTALL)
+                return json.loads(m.group()) if m else None
+            except Exception as e:
+                print(f"[mananera] Gemini SDK {model} error: {e}")
+    except ImportError:
+        pass
+
+    # REST fallback
+    for model in _MANANERA_MODELS:
+        try:
+            url = (
+                f"https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{model}:generateContent?key={api_key}"
+            )
+            body = {
+                "system_instruction": {"parts": [{"text": _SYSTEM}]},
+                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.2, "maxOutputTokens": 3000},
+            }
+            resp = requests.post(url, json=body, timeout=60)
+            if resp.status_code == 200:
+                data = resp.json()
+                raw  = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                clean = re.sub(r"```(?:json)?", "", raw, flags=re.IGNORECASE).strip("`").strip()
+                m = re.search(r"\{.*\}", clean, re.DOTALL)
+                return json.loads(m.group()) if m else None
+            print(f"[mananera] REST {model} {resp.status_code}: {resp.text[:200]}")
+        except Exception as e:
+            print(f"[mananera] REST error ({model}): {e}")
+    return None
 
 
 # ── API pública ───────────────────────────────────────────────────────────────

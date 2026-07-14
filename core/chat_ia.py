@@ -388,7 +388,7 @@ def ejecutar_herramienta(nombre: str, args: dict, gemini_key: str = "") -> dict:
 def chat_turno(
     historial: list[dict],
     gemini_key: str,
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-3.5-flash",
     contexto_previo: str = "",
 ) -> dict:
     try:

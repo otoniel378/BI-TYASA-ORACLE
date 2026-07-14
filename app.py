@@ -270,6 +270,7 @@ SUBSECCIONES = {
         "mkt_industria": ("🏭", "Monitor Siderúrgico"),
         "mkt_inegi": ("📈", "Indicadores INEGI"),
         "mkt_sentimiento": ("🌡️", "Sentimiento"),
+        "mkt_competencia": ("🎯", "Competencia"),
     },
     "chat_ia": {
         "chat": ("💬", "Chat con los datos"),
@@ -312,6 +313,7 @@ PAGINAS = {
     "mkt_industria": "pages.mercado.03_industria",
     "mkt_inegi": "pages.mercado.04_indicadores",
     "mkt_sentimiento": "pages.mercado.05_sentimiento",
+    "mkt_competencia": "pages.mercado.06_competencia",
 
     # CHAT IA
     "chat": "pages.chat_ia.chat",

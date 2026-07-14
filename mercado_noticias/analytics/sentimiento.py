@@ -125,7 +125,7 @@ def _parse_json(raw: str) -> dict | None:
 def clasificar_noticia(
     noticia: dict,
     gemini_key: str,
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-3.5-flash",
     force_refresh: bool = False,
 ) -> dict:
     """
@@ -219,7 +219,7 @@ def _llamar_gemini(prompt: str, api_key: str, model: str) -> dict | None:
 def clasificar_lote(
     noticias: list[dict],
     gemini_key: str,
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-3.5-flash",
     max_noticias: int = 30,
 ) -> list[dict]:
     """Clasifica un lote de noticias. Respeta caché — solo llama Gemini para noticias nuevas."""

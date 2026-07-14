@@ -126,7 +126,7 @@ def cargar_memorias_contexto(usuario: str = "sistema", n: int = _MAX_MEMORIAS_CO
 def extraer_memorias_de_conversacion(
     mensajes: list[dict],
     gemini_key: str,
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-3.5-flash",
 ) -> list[dict]:
     """
     Usa Gemini para extraer insights clave de una conversación y convertirlos

@@ -1097,12 +1097,14 @@ with col_email_b:
                   or bool((st.session_state.get("sint_result") or {}).get("_error"))),
     )
 
-# Generar síntesis con todas las categorías (12 artículos por grupo para mejor cobertura)
+# Generar síntesis solo con noticias de hoy (12 artículos por grupo para mejor cobertura)
 if run_sint and _GEMINI_KEY:
-    all_nots = {
-        **{g: _noticias_grupo(g, 12) for g in GRUPOS_NACIONAL},
-        **{g: _noticias_grupo(g, 12) for g in GRUPOS_INTERNACIONAL},
-    }
+    _hoy_str = str(datetime.date.today())
+    all_nots = {}
+    for g in list(GRUPOS_NACIONAL.keys()) + list(GRUPOS_INTERNACIONAL.keys()):
+        nots_raw = _noticias_grupo(g, 12)
+        nots_hoy = _filtrar_por_fecha(nots_raw, _hoy_str, _hoy_str)
+        all_nots[g] = nots_hoy
     st.session_state["sint_result"] = sintesis_global(all_nots, _GEMINI_KEY, force_refresh=frz_sint)
 elif run_sint:
     st.session_state["sint_result"] = {
