@@ -333,6 +333,7 @@ st.divider()
 # ════════════════════════════════════════════════════════════════════════════
 hoy        = datetime.date.today()
 hace_90d   = hoy - datetime.timedelta(days=90)
+hace_7d    = hoy - datetime.timedelta(days=7)
 todas_empresas = list(EMPRESAS_COMPETENCIA.keys())
 
 col_emp, col_rng, col_act = st.columns([3, 3, 1])
@@ -349,7 +350,7 @@ with col_emp:
 with col_rng:
     rango = st.date_input(
         "Período",
-        value=(hoy - datetime.timedelta(days=30), hoy),
+        value=(hace_7d, hoy),
         min_value=hace_90d,
         max_value=hoy,
         key="comp_rango",
@@ -365,7 +366,7 @@ with col_act:
 if isinstance(rango, (list, tuple)) and len(rango) == 2:
     fecha_desde, fecha_hasta = str(rango[0]), str(rango[1])
 else:
-    fecha_desde = str(hoy - datetime.timedelta(days=30))
+    fecha_desde = str(hace_7d)
     fecha_hasta = str(hoy)
 
 if not empresas_sel:

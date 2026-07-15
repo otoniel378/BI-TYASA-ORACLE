@@ -1168,6 +1168,7 @@ st.divider()
 seccion_titulo("📰 Noticias de la Industria")
 
 hoy      = datetime.date.today()
+hace_7d  = hoy - datetime.timedelta(days=7)
 hace_30d = hoy - datetime.timedelta(days=30)
 
 # ── Fila 1: rango de fechas + Hoy + Actualizar ───────────────────────────────
@@ -1175,7 +1176,7 @@ col_rng, col_hoy, col_act = st.columns([3, 1, 1])
 with col_rng:
     rango = st.date_input(
         "Rango de fechas",
-        value=(hoy - datetime.timedelta(days=30), hoy),
+        value=(hace_7d, hoy),
         min_value=hace_30d,
         max_value=hoy,
         key="ind_fecha_rango",
@@ -1196,7 +1197,7 @@ if hoy_clicked:
 elif isinstance(rango, (list, tuple)) and len(rango) == 2:
     fecha_desde, fecha_hasta = str(rango[0]), str(rango[1])
 else:
-    fecha_desde = str(hoy - datetime.timedelta(days=30))
+    fecha_desde = str(hace_7d)
     fecha_hasta = str(hoy)
 
 st.caption(
