@@ -27,8 +27,9 @@ from mercado_noticias.analytics.noticias import (
     GRUPOS_INTERNACIONAL,
     GRUPO_STYLE_NACIONAL,
     GRUPO_STYLE_INTERNACIONAL,
+    _resolve_gnews_batch,
 )
-from mercado_noticias.analytics.ai_analysis import sintesis_industrial, _call_gemini_text, sintesis_global, cargar_cache_hoy, cargar_sintesis_latest
+from mercado_noticias.analytics.ai_analysis import sintesis_industrial, _call_gemini_text, sintesis_global, cargar_cache_hoy
 from mercado_noticias.analytics.mananera import analizar_mananera, MANANERA_CACHE_DIR, MANANERA_CACHE_DAYS
 from core.components.filters import sidebar_header
 from core.components.kpi_cards import seccion_titulo
@@ -431,6 +432,14 @@ def _render_sintesis_global(result: dict | None) -> str:
     ) if result.get("_cached") else ""
     fecha    = result.get("_fecha", "")
 
+    hoy_str = str(datetime.date.today())
+    stale_banner = (
+        f"<div style='background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;"
+        f"padding:10px 14px;font-size:12px;color:#92400E;margin-bottom:12px;'>"
+        f"⚠️ <b>Datos desactualizados:</b> esta síntesis corresponde al <b>{fecha}</b>, "
+        f"no al día de hoy. Haz clic en <b>▶ Generar síntesis ejecutiva</b> para actualizar.</div>"
+    ) if fecha and fecha != hoy_str else ""
+
     header = (
         f"<div style='display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;'>"
         f"<span style='background:{nc_bg};color:{nc_txt};padding:5px 14px;"
@@ -453,9 +462,12 @@ def _render_sintesis_global(result: dict | None) -> str:
         "</div>"
     )
 
+    def _safe_url(u: str) -> str:
+        return u.replace('"', "%22").replace("'", "%27").replace(" ", "%20")
+
     def _item(data: dict, color: str, bg: str) -> str:
         texto     = (data.get("texto") or "").strip()
-        ref_url   = (data.get("ref_url") or "").strip()
+        ref_url   = _safe_url((data.get("ref_url") or "").strip())
         ref_titulo = ((data.get("ref_titulo") or "")[:55]).strip()
         link = (
             f'<br><a href="{ref_url}" target="_blank" '
@@ -484,7 +496,7 @@ def _render_sintesis_global(result: dict | None) -> str:
         for item in areas_list:
             area      = (item.get("area") or "").strip()
             resumen   = (item.get("resumen") or "").strip()
-            ref_url   = (item.get("ref_url") or "").strip()
+            ref_url   = _safe_url((item.get("ref_url") or "").strip())
             ref_titulo = ((item.get("ref_titulo") or "")[:55]).strip()
             if not area:
                 continue
@@ -545,7 +557,7 @@ def _render_sintesis_global(result: dict | None) -> str:
         f"🎯 <b>Recomendación para TYASA:</b> {rec}</div>"
     ) if rec else ""
 
-    return header + dos_col + areas_html + two_col + rec_html
+    return stale_banner + header + dos_col + areas_html + two_col + rec_html
 
 
 def _email_area_rows(areas_list: list) -> str:
@@ -1077,9 +1089,7 @@ if "sint_result" not in st.session_state:
     _all_cat_keys = list(GRUPOS_NACIONAL.keys()) + list(GRUPOS_INTERNACIONAL.keys())
     # 1) Buscar caché de hoy (mismas categorías)
     _cached_hoy = cargar_cache_hoy("sintesis_global", cat_keys=_all_cat_keys)
-    # 2) Fallback: síntesis más reciente (aunque sea de ayer)
-    if not _cached_hoy:
-        _cached_hoy = cargar_sintesis_latest()
+    # Solo cargamos caché del día actual — no mostrar datos de días anteriores
     if _cached_hoy and not _cached_hoy.get("_error"):
         st.session_state["sint_result"] = _cached_hoy
 
@@ -1101,10 +1111,25 @@ with col_email_b:
 if run_sint and _GEMINI_KEY:
     _hoy_str = str(datetime.date.today())
     all_nots = {}
+    _arts_para_resolver: list[dict] = []
     for g in list(GRUPOS_NACIONAL.keys()) + list(GRUPOS_INTERNACIONAL.keys()):
         nots_raw = _noticias_grupo(g, 12)
-        nots_hoy = _filtrar_por_fecha(nots_raw, _hoy_str, _hoy_str)
+        # Para la síntesis: solo artículos CON fecha de hoy (excluir sin fecha y días anteriores)
+        nots_hoy = [
+            n for n in nots_raw
+            if (n.get("fecha_pub") or "")[:10] == _hoy_str
+        ]
+        # Si no hay noticias de hoy para esta categoría, usar las más recientes disponibles
+        if not nots_hoy:
+            nots_hoy = sorted(
+                [n for n in nots_raw if (n.get("fecha_pub") or "")],
+                key=lambda x: x.get("fecha_pub", ""),
+                reverse=True,
+            )[:3]
         all_nots[g] = nots_hoy
+        _arts_para_resolver.extend(nots_hoy)
+    # Resolver URLs de Google News (redirect → URL real) solo para artículos de la síntesis
+    _resolve_gnews_batch(_arts_para_resolver)
     st.session_state["sint_result"] = sintesis_global(all_nots, _GEMINI_KEY, force_refresh=frz_sint)
 elif run_sint:
     st.session_state["sint_result"] = {

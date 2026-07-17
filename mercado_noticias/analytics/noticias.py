@@ -13,6 +13,7 @@ import pandas as pd
 import requests
 from datetime import datetime, timedelta
 import hashlib
+import concurrent.futures
 
 NEWSAPI_KEY = "6207d70b95eb40ea89b8081860b73aa3"
 NEWSAPI_URL = "https://newsapi.org/v2/everything"
@@ -55,6 +56,69 @@ QUERIES = {
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# RESOLVER DE REDIRECT URLS DE GOOGLE NEWS
+# Las URLs del tipo news.google.com/rss/articles/CBMi... son redirects internos
+# diseñados para lectores RSS; abren con error 400 en navegadores.
+# Estas funciones las resuelven a las URLs reales de los artículos.
+# ════════════════════════════════════════════════════════════════════════════
+
+_BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/125.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "es-MX,es;q=0.9,en;q=0.8",
+}
+
+
+def _resolve_gnews_url(url: str) -> str:
+    """Sigue el redirect de una Google News RSS URL para obtener la URL real del artículo."""
+    if not url or "news.google.com/rss/articles/" not in url:
+        return url
+    try:
+        resp = requests.get(url, timeout=6, allow_redirects=True, headers=_BROWSER_HEADERS)
+        final = resp.url
+        if final and "news.google.com" not in final and final.startswith("http"):
+            return final
+    except Exception:
+        pass
+    return url
+
+
+def _resolve_gnews_batch(articulos: list[dict]) -> list[dict]:
+    """Resuelve redirect URLs de Google News en paralelo para una lista de artículos."""
+    targets = [
+        (i, a.get("url", ""))
+        for i, a in enumerate(articulos)
+        if "news.google.com/rss/articles/" in (a.get("url") or "")
+    ]
+    if not targets:
+        return articulos
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(targets), 6)) as ex:
+            future_to_idx = {ex.submit(_resolve_gnews_url, url): i for i, url in targets}
+            # Sin timeout global: cada request ya tiene timeout=6s individual
+            done, _ = concurrent.futures.wait(
+                future_to_idx.keys(),
+                timeout=12,
+                return_when=concurrent.futures.ALL_COMPLETED,
+            )
+            for fut in done:
+                idx = future_to_idx[fut]
+                try:
+                    new_url = fut.result()
+                    if new_url:
+                        articulos[idx]["url"] = new_url
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"[resolve_gnews_batch] error: {e}")
+    return articulos
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # FUENTE 1 — Google News RSS (principal, gratis, sin límites)
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -88,6 +152,9 @@ def _buscar_google_news(query: str, max_resultados: int = 10) -> list[dict]:
             for item in channel.findall("item")[:max_resultados]:
                 titulo = item.findtext("title", "").strip()
                 link   = item.findtext("link",  "").strip()
+                # Google News RSS a veces devuelve <link/> vacío; usar <guid> como respaldo
+                if not link:
+                    link = item.findtext("guid", "").strip()
                 desc   = item.findtext("description", "").strip()
                 # Limpiar HTML del description si viene de Google
                 if "<" in desc:
@@ -595,8 +662,8 @@ def buscar_noticias_sector(grupo: str, max_resultados: int = 40) -> list[dict]:
     if not queries:
         queries = [grupo]
     todos: list[dict] = []
-    # Todas las queries del grupo, 10 resultados cada una
-    for q in queries:
+    # Usar las primeras 5 queries por grupo (balance entre cobertura y velocidad)
+    for q in queries[:5]:
         res = _buscar_google_news(q, max_resultados=10)
         for r in res:
             r["grupo"] = grupo
