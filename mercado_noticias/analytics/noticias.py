@@ -14,6 +14,7 @@ import requests
 from datetime import datetime, timedelta
 import hashlib
 import concurrent.futures
+import re
 
 NEWSAPI_KEY = "6207d70b95eb40ea89b8081860b73aa3"
 NEWSAPI_URL = "https://newsapi.org/v2/everything"
@@ -53,6 +54,41 @@ QUERIES = {
     "ETF_Corea":         ["Korea economy Samsung",     "Corea economía manufactura", "Korea exports"],
     "ETF_Emergentes":    ["emerging markets economy",  "mercados emergentes", "EM stocks global"],
 }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# EXTRACTOR DE FECHA REAL DESDE URL
+# Google News RSS resurfea artículos viejos con fecha de hoy en pubDate.
+# Muchos medios incluyen la fecha real en su URL: /2026/06/28/ o -2026-06-28
+# Usamos esto para corregir la fecha antes de filtrar.
+# ════════════════════════════════════════════════════════════════════════════
+
+def _extract_date_from_url(url: str) -> str:
+    """
+    Intenta extraer la fecha de publicación real desde la URL del artículo.
+    Retorna 'YYYY-MM-DD' si encuentra un patrón válido, '' si no.
+    """
+    if not url:
+        return ""
+    # Patrón /YYYY/MM/DD/  →  la mayoría de medios latinos y anglosajones
+    m = re.search(r'/(\d{4})/(\d{1,2})/(\d{1,2})/', url)
+    if m:
+        try:
+            y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if 2020 <= y <= 2035 and 1 <= mo <= 12 and 1 <= d <= 31:
+                return f"{y:04d}-{mo:02d}-{d:02d}"
+        except Exception:
+            pass
+    # Patrón -YYYY-MM-DD o _YYYY-MM-DD en la URL
+    m = re.search(r'[/_-](\d{4})-(\d{2})-(\d{2})(?:[/_-]|$)', url)
+    if m:
+        try:
+            y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            if 2020 <= y <= 2035 and 1 <= mo <= 12 and 1 <= d <= 31:
+                return f"{y:04d}-{mo:02d}-{d:02d}"
+        except Exception:
+            pass
+    return ""
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -167,6 +203,11 @@ def _buscar_google_news(query: str, max_resultados: int = 10) -> list[dict]:
                     fecha_pub = parsedate_to_datetime(pub_raw).strftime("%Y-%m-%d")
                 except Exception:
                     fecha_pub = pub_raw[:10] if pub_raw else ""
+                # Corregir fecha: Google News resurfea artículos viejos con fecha de hoy.
+                # Si la URL contiene una fecha más antigua que la del RSS, usamos la del URL.
+                url_date = _extract_date_from_url(link)
+                if url_date and url_date < fecha_pub:
+                    fecha_pub = url_date
                 # Fuente: viene en <source> o en el título "- Fuente"
                 fuente_el = item.find("source")
                 fuente = fuente_el.text if fuente_el is not None else ""

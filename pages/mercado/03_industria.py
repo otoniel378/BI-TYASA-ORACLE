@@ -112,14 +112,20 @@ def _noticias_grupo(grupo: str, max_r: int = 15) -> list[dict]:
 
 
 def _filtrar_por_fecha(noticias: list[dict], desde: str, hasta: str) -> list[dict]:
-    """Filtra por rango; incluye artículos sin fecha para no perder contenido."""
-    out = []
+    """Filtra por rango de fechas. Artículos con fecha van primero (más reciente → más antiguo),
+    artículos sin fecha van al final para no perder contenido."""
+    con_fecha = []
+    sin_fecha = []
     for n in noticias:
         fp = (n.get("fecha_pub") or "")[:10]
-        # Sin fecha → incluir siempre (Google News a veces omite la fecha)
-        if not fp or (desde <= fp <= hasta):
-            out.append(n)
-    return out
+        if fp:
+            if desde <= fp <= hasta:
+                con_fecha.append(n)
+        else:
+            sin_fecha.append(n)
+    # Ordenar con_fecha del más reciente al más antiguo
+    con_fecha.sort(key=lambda x: x.get("fecha_pub", ""), reverse=True)
+    return con_fecha + sin_fecha
 
 
 _BUSQ_STYLE: dict[str, tuple[str, str]] = {
@@ -1119,10 +1125,11 @@ if run_sint and _GEMINI_KEY:
             n for n in nots_raw
             if (n.get("fecha_pub") or "")[:10] == _hoy_str
         ]
-        # Si no hay noticias de hoy para esta categoría, usar las más recientes disponibles
+        # Si no hay noticias de hoy, buscar en los últimos 3 días (no semanas anteriores)
         if not nots_hoy:
+            _hace_3d = (datetime.date.today() - datetime.timedelta(days=3)).strftime("%Y-%m-%d")
             nots_hoy = sorted(
-                [n for n in nots_raw if (n.get("fecha_pub") or "")],
+                [n for n in nots_raw if (n.get("fecha_pub") or "")[:10] >= _hace_3d],
                 key=lambda x: x.get("fecha_pub", ""),
                 reverse=True,
             )[:3]
