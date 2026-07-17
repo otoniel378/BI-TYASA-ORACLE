@@ -662,9 +662,9 @@ def buscar_noticias_sector(grupo: str, max_resultados: int = 40) -> list[dict]:
     if not queries:
         queries = [grupo]
     todos: list[dict] = []
-    # Usar las primeras 5 queries por grupo (balance entre cobertura y velocidad)
-    for q in queries[:5]:
-        res = _buscar_google_news(q, max_resultados=10)
+    # Usar las primeras 8 queries por grupo (balance entre cobertura y velocidad)
+    for q in queries[:8]:
+        res = _buscar_google_news(q, max_resultados=15)
         for r in res:
             r["grupo"] = grupo
         todos.extend(res)
