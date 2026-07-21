@@ -544,6 +544,7 @@ Genera EXCLUSIVAMENTE este JSON (sin markdown, sin explicaciones adicionales):
 
 REGLAS CRÍTICAS:
 - "resumen_por_area" DEBE ser un ARRAY con un objeto por CADA categoría de CATEGORÍAS ANALIZADAS
+- EXCEPCIÓN — categoría "Alertas de Mercado": es una lista de variables de mercado con comportamiento anómalo (no un tema único). Genera UN objeto de resumen_por_area POR CADA alerta listada en esa sección (no la resumas en una sola línea) — todas son importantes y deben reportarse todas, cada una con "area": "Alertas de Mercado" y su propia "ref_url" apuntando a la noticia de esa alerta específica
 - Cada objeto en resumen_por_area DEBE incluir "ref_url" con la URL literal de una noticia de esa categoría
 - Los riesgos y oportunidades deben cubrir al menos 3 categorías distintas
 - Si hay bloqueos, accidentes o disrupciones en Logística Nacional, DEBEN aparecer en riesgos
@@ -600,12 +601,14 @@ def sintesis_global(
         cached["_cached"] = True
         return cached
 
-    # Construir texto de noticias (máx 5 por categoría para mejor cobertura)
+    # Construir texto de noticias (máx 5 por categoría para mejor cobertura;
+    # "Alertas de Mercado" no se trunca porque cada alerta debe reportarse individualmente)
     lineas: list[str] = []
     referencias_pool: list[dict] = []
 
     for grupo, nots in noticias_por_grupo.items():
-        top = [n for n in (nots or []) if n.get("url") and n.get("titulo")][:5]
+        cap = None if grupo == "Alertas de Mercado" else 5
+        top = [n for n in (nots or []) if n.get("url") and n.get("titulo")][:cap]
         if not top:
             lineas.append(f"[{grupo}]")
             lineas.append("  (sin noticias disponibles hoy)")

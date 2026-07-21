@@ -28,9 +28,11 @@ from mercado_noticias.analytics.noticias import (
     GRUPO_STYLE_NACIONAL,
     GRUPO_STYLE_INTERNACIONAL,
     _resolve_gnews_batch,
+    buscar_noticias_multifuente,
 )
 from mercado_noticias.analytics.ai_analysis import sintesis_industrial, _call_gemini_text, sintesis_global, cargar_cache_hoy
 from mercado_noticias.analytics.mananera import analizar_mananera, MANANERA_CACHE_DIR, MANANERA_CACHE_DAYS
+from mercado_noticias.analytics.detector import detectar_quiebres_automatico
 from core.components.filters import sidebar_header
 from core.components.kpi_cards import seccion_titulo
 from mercado_noticias.loaders import load_variables_mercado
@@ -109,6 +111,12 @@ def _get_fuente_style(fuente: str) -> tuple[str, str, str]:
 @st.cache_data(ttl=1800, show_spinner=False)
 def _noticias_grupo(grupo: str, max_r: int = 15) -> list[dict]:
     return buscar_noticias_sector(grupo, max_resultados=max_r)
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def _noticias_alerta_cached(variable: str, max_r: int = 3) -> list[dict]:
+    """Noticias del Monitor de Quiebres para una variable en alerta (caché 15 min)."""
+    return buscar_noticias_multifuente(variable, ventana_dias=7, max_resultados=max_r)
 
 
 def _filtrar_por_fecha(noticias: list[dict], desde: str, hasta: str) -> list[dict]:
@@ -599,6 +607,19 @@ def _build_indicadores_section(df_vars) -> str:
     return f"<div style='padding:0 28px 16px;'>{html}</div>"
 
 
+def _find_logo_path() -> tuple[str | None, str, str]:
+    """Busca el logo TYASA en assets/img. Retorna (path, mime, subtype) o (None, "", "")."""
+    for fname, mime, subtype in [
+        ("tyasa_logo.webp", "image/webp", "webp"),
+        ("tyasa_logo.png",  "image/png",  "png"),
+        ("tyasa_logo.jpg",  "image/jpeg", "jpeg"),
+    ]:
+        path = os.path.join(_root, "assets", "img", fname)
+        if os.path.exists(path):
+            return path, mime, subtype
+    return None, "", ""
+
+
 def _build_email_html(result: dict, df_vars=None) -> str:
     """Genera el HTML del digest ejecutivo para envío por correo."""
     nivel      = result.get("nivel_alerta", "—")
@@ -647,10 +668,18 @@ def _build_email_html(result: dict, df_vars=None) -> str:
 <div style="max-width:680px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;
      box-shadow:0 2px 8px rgba(0,0,0,.08);">
   <div style="background:#1B3A5C;padding:22px 28px;">
-    <div style="font-size:11px;color:rgba(255,255,255,.55);text-transform:uppercase;
-         letter-spacing:.08em;margin-bottom:4px;">TYASA BI · Monitor Siderúrgico</div>
-    <h1 style="color:#fff;margin:0 0 4px;font-size:20px;font-weight:800;">Digest Ejecutivo Siderúrgico</h1>
-    <div style="font-size:11px;color:rgba(255,255,255,.5);">📅 {fecha} · Generado con Gemini AI</div>
+    <table role="presentation" style="border-collapse:collapse;">
+      <tr>
+        <td style="padding-right:14px;vertical-align:middle;">
+          <img src="cid:tyasa_logo" alt="TYASA" style="height:40px;width:auto;display:block;object-fit:contain;">
+        </td>
+        <td style="vertical-align:middle;">
+          <h1 style="color:#fff;margin:0;font-size:26px;font-weight:800;letter-spacing:.02em;">TYASA BI</h1>
+          <div style="font-size:11px;color:rgba(255,255,255,.55);text-transform:uppercase;
+               letter-spacing:.08em;margin-top:2px;">Monitor Siderúrgico · {fecha}</div>
+        </td>
+      </tr>
+    </table>
   </div>
   <div style="padding:18px 28px 0;">
     <span style="background:{nc_bg};color:{nc_txt};padding:5px 14px;border-radius:20px;
@@ -705,6 +734,7 @@ def _enviar_email_digest(html_body: str, subject: str) -> tuple[bool, str]:
     import smtplib
     from email.mime.multipart import MIMEMultipart
     from email.mime.text import MIMEText
+    from email.mime.image import MIMEImage
     try:
         gmail_user = st.secrets.get("GMAIL_USER", "")
         gmail_pass = st.secrets.get("GMAIL_APP_PASSWORD", "")
@@ -723,11 +753,23 @@ def _enviar_email_digest(html_body: str, subject: str) -> tuple[bool, str]:
         else:
             to_list = [str(to_raw).strip() or gmail_user]
 
-        msg = MIMEMultipart("alternative")
+        msg = MIMEMultipart("related")
         msg["Subject"] = subject
         msg["From"]    = gmail_user
         msg["To"]      = ", ".join(to_list)
-        msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+        msg_alt = MIMEMultipart("alternative")
+        msg_alt.attach(MIMEText(html_body, "html", "utf-8"))
+        msg.attach(msg_alt)
+
+        logo_path, _logo_mime, logo_subtype = _find_logo_path()
+        if logo_path:
+            with open(logo_path, "rb") as f:
+                logo_img = MIMEImage(f.read(), _subtype=logo_subtype)
+            logo_img.add_header("Content-ID", "<tyasa_logo>")
+            logo_img.add_header("Content-Disposition", "inline", filename=os.path.basename(logo_path))
+            msg.attach(logo_img)
+
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as srv:
             srv.login(gmail_user, gmail_pass)
             srv.sendmail(gmail_user, to_list, msg.as_string())
@@ -1090,9 +1132,11 @@ st.divider()
 # ════════════════════════════════════════════════════════════════════════════
 seccion_titulo("🤖 Síntesis Ejecutiva Global")
 
+_ALERTAS_CAT_KEY = "Alertas de Mercado"
+
 # Auto-cargar desde caché si la sesión acaba de iniciar (botón correo siempre habilitado)
 if "sint_result" not in st.session_state:
-    _all_cat_keys = list(GRUPOS_NACIONAL.keys()) + list(GRUPOS_INTERNACIONAL.keys())
+    _all_cat_keys = list(GRUPOS_NACIONAL.keys()) + list(GRUPOS_INTERNACIONAL.keys()) + [_ALERTAS_CAT_KEY]
     # 1) Buscar caché de hoy (mismas categorías)
     _cached_hoy = cargar_cache_hoy("sintesis_global", cat_keys=_all_cat_keys)
     # Solo cargamos caché del día actual — no mostrar datos de días anteriores
@@ -1135,6 +1179,45 @@ if run_sint and _GEMINI_KEY:
             )[:3]
         all_nots[g] = nots_hoy
         _arts_para_resolver.extend(nots_hoy)
+
+    # Incorporar la primera noticia (no repetida) de cada alerta activa del
+    # Monitor de Quiebres, para que la síntesis global refleje también esas alertas.
+    _urls_ya_usadas = {
+        (n.get("url") or "").strip()
+        for _nots in all_nots.values() for n in _nots if n.get("url")
+    }
+    _titulos_ya_usados = {
+        (n.get("titulo") or "").strip().lower()
+        for _nots in all_nots.values() for n in _nots if n.get("titulo")
+    }
+    _noticias_alertas: list[dict] = []
+    try:
+        _df_vars_alertas = load_variables_mercado(dias=400)
+        _alertas_activas = (
+            detectar_quiebres_automatico(_df_vars_alertas, umbral_sigma=2.0)
+            if not _df_vars_alertas.empty else []
+        )
+    except Exception:
+        _alertas_activas = []
+    for _alerta in _alertas_activas[:10]:
+        _var_alerta = _alerta.get("variable", "")
+        if not _var_alerta:
+            continue
+        for _n in _noticias_alerta_cached(_var_alerta):
+            _url_n    = (_n.get("url") or "").strip()
+            _titulo_n = (_n.get("titulo") or "").strip().lower()
+            if not _titulo_n or _titulo_n in _titulos_ya_usados:
+                continue
+            if _url_n and _url_n in _urls_ya_usadas:
+                continue
+            _noticias_alertas.append(_n)
+            _titulos_ya_usados.add(_titulo_n)
+            if _url_n:
+                _urls_ya_usadas.add(_url_n)
+            break  # solo la primera noticia nueva de esta alerta
+    all_nots[_ALERTAS_CAT_KEY] = _noticias_alertas
+    _arts_para_resolver.extend(_noticias_alertas)
+
     # Resolver URLs de Google News (redirect → URL real) solo para artículos de la síntesis
     _resolve_gnews_batch(_arts_para_resolver)
     st.session_state["sint_result"] = sintesis_global(all_nots, _GEMINI_KEY, force_refresh=frz_sint)
