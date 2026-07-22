@@ -473,14 +473,34 @@ with tab_pub:
         ap_redes   = [ap_red_val] if ap_red_val else ["instagram", "facebook", "twitter", "linkedin"]
         ap_empresas   = [ap_emp_label] if ap_emp_label != "Todas las empresas" else empresas_sel
 
-        with st.spinner(f"Obteniendo publicaciones reales de {', '.join(ap_empresas)}…"):
-            apify_posts: list[dict] = []
-            for _emp in ap_empresas:
-                apify_posts.extend(
-                    get_apify_posts(_emp, _APIFY_KEY, ap_redes, n=8,
-                                    force_refresh=ap_refresh)
-                )
-            apify_posts.sort(key=lambda x: x.get("fecha_pub", "") or "", reverse=True)
+        # Cache en session_state — evita re-fetch al navegar entre tabs
+        _AP_POSTS_KEY = "apify_pub_posts"
+        _AP_TS_KEY    = "apify_pub_ts"
+        _AP_SEL_KEY   = "apify_pub_sel"
+        _ap_sel_curr  = f"{'|'.join(sorted(ap_empresas))}_{'|'.join(sorted(ap_redes))}"
+
+        _needs_fetch = (
+            ap_refresh
+            or _AP_POSTS_KEY not in st.session_state
+            or st.session_state.get(_AP_SEL_KEY) != _ap_sel_curr
+        )
+
+        if _needs_fetch:
+            with st.spinner(f"Obteniendo publicaciones reales de {', '.join(ap_empresas)}…"):
+                _posts: list[dict] = []
+                for _emp in ap_empresas:
+                    _posts.extend(
+                        get_apify_posts(_emp, _APIFY_KEY, ap_redes, n=8,
+                                        force_refresh=ap_refresh)
+                    )
+                _posts.sort(key=lambda x: x.get("fecha_pub", "") or "", reverse=True)
+                st.session_state[_AP_POSTS_KEY] = _posts
+                st.session_state[_AP_TS_KEY]    = datetime.datetime.now()
+                st.session_state[_AP_SEL_KEY]   = _ap_sel_curr
+
+        apify_posts: list[dict] = st.session_state.get(_AP_POSTS_KEY, [])
+        _ap_loaded_ts = st.session_state.get(_AP_TS_KEY)
+        _ap_ts_str = _ap_loaded_ts.strftime("%H:%M") if _ap_loaded_ts else "—"
 
         # Filtrar por período
         apify_filtrados = [
@@ -488,8 +508,11 @@ with tab_pub:
             if fecha_desde <= (p.get("fecha_pub", "") or "")[:10] <= fecha_hasta
         ]
 
-        st.caption(f"**{len(apify_filtrados)}** publicaciones encontradas en el período "
-                   f"{fecha_desde} → {fecha_hasta} (total cargadas: {len(apify_posts)})")
+        st.caption(
+            f"**{len(apify_filtrados)}** publicaciones en el período "
+            f"{fecha_desde} → {fecha_hasta} (total: {len(apify_posts)}) · "
+            f"cargadas a las {_ap_ts_str} — usa 🔄 para actualizar"
+        )
 
         if not apify_filtrados and apify_posts:
             st.info(f"Hay {len(apify_posts)} publicaciones pero ninguna cae en el período seleccionado. "

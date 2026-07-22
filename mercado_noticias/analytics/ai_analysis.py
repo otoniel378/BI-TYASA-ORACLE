@@ -511,7 +511,7 @@ _GLOBAL_SYSTEM = (
     "Responde SIEMPRE con JSON válido únicamente, sin texto antes ni después del JSON."
 )
 
-_GLOBAL_TMPL = """Hoy es {hoy}. Eres analista senior de TYASA México. Analiza las noticias de TODAS las siguientes categorías y genera un resumen ejecutivo completo.
+_GLOBAL_TMPL = """Hoy es {hoy}. Eres analista senior de TYASA México (produce lámina negra, galvanizado y acero SBQ). Analiza las noticias de TODAS las categorías y genera un resumen ejecutivo completo.
 
 CATEGORÍAS ANALIZADAS: {categorias}
 
@@ -523,10 +523,6 @@ Genera EXCLUSIVAMENTE este JSON (sin markdown, sin explicaciones adicionales):
   "estado_mercado": "2-3 oraciones sobre precios HRC/CRC/chatarra, demanda global y tendencias relevantes",
   "impacto_mexico": "2-3 oraciones sobre T-MEC, nearshoring, costos CFE/gas, logística, aranceles y demanda local para TYASA",
   "nivel_alerta": "Medio",
-  "resumen_por_area": [
-    {{"area": "NOMBRE EXACTO DE LA CATEGORÍA", "resumen": "1 oración con el hallazgo más relevante", "ref_url": "https://url-del-articulo-fuente", "ref_titulo": "título corto del artículo"}},
-    {{"area": "...", "resumen": "...", "ref_url": "https://...", "ref_titulo": "..."}}
-  ],
   "riesgos": [
     {{"texto": "riesgo en máx 18 palabras — puede ser de CUALQUIER categoría incluida Logística", "ref_titulo": "título corto", "ref_url": "https://..."}},
     {{"texto": "segundo riesgo", "ref_titulo": "...", "ref_url": "https://..."}},
@@ -539,13 +535,26 @@ Genera EXCLUSIVAMENTE este JSON (sin markdown, sin explicaciones adicionales):
     {{"texto": "tercera oportunidad", "ref_titulo": "...", "ref_url": "https://..."}},
     {{"texto": "cuarta oportunidad si hay algo relevante", "ref_titulo": "...", "ref_url": "https://..."}}
   ],
+  "noticias_por_linea": [
+    {{"linea": "Aceros Planos", "hallazgo": "hallazgo relevante para lámina negra o galvanizado — máx 20 palabras", "ref_titulo": "título corto del artículo", "ref_url": "https://..."}},
+    {{"linea": "Aceros Planos", "hallazgo": "segundo hallazgo para aceros planos si hay otro relevante", "ref_titulo": "...", "ref_url": "..."}},
+    {{"linea": "Aceros Especiales (SBQ)", "hallazgo": "hallazgo sobre barras especiales, autopartes o maquinaria — máx 20 palabras", "ref_titulo": "...", "ref_url": "..."}},
+    {{"linea": "Aceros Largos", "hallazgo": "hallazgo sobre varilla, perfiles, construcción o infraestructura — máx 20 palabras", "ref_titulo": "...", "ref_url": "..."}},
+    {{"linea": "General / Industria", "hallazgo": "hallazgo sobre aranceles, T-MEC, macroeconomía, energía o logística — máx 20 palabras", "ref_titulo": "...", "ref_url": "..."}},
+    {{"linea": "General / Industria", "hallazgo": "segundo hallazgo general si hay otro relevante", "ref_titulo": "...", "ref_url": "..."}}
+  ],
   "recomendacion": "acción concreta para TYASA esta semana integrando logística, precios y política comercial — máx 35 palabras"
 }}
 
 REGLAS CRÍTICAS:
-- "resumen_por_area" DEBE ser un ARRAY con un objeto por CADA categoría de CATEGORÍAS ANALIZADAS
-- EXCEPCIÓN — categoría "Alertas de Mercado": es una lista de variables de mercado con comportamiento anómalo (no un tema único). Genera UN objeto de resumen_por_area POR CADA alerta listada en esa sección (no la resumas en una sola línea) — todas son importantes y deben reportarse todas, cada una con "area": "Alertas de Mercado" y su propia "ref_url" apuntando a la noticia de esa alerta específica
-- Cada objeto en resumen_por_area DEBE incluir "ref_url" con la URL literal de una noticia de esa categoría
+- "noticias_por_linea" DEBE ser un ARRAY; incluye al menos 1 item por cada línea de producto
+- Líneas válidas (EXACTAMENTE así): "Aceros Planos", "Aceros Especiales (SBQ)", "Aceros Largos", "General / Industria"
+- Clasifica en "Aceros Planos": HRC, CRC, chatarra/scrap, galvanizado, lámina negra, acero plano, precios de commodities acero, mineral de hierro, Nucor/Steel Dynamics/ArcelorMittal
+- Clasifica en "Aceros Especiales (SBQ)": barras de calidad especial SBQ, autopartes, vehículos, maquinaria, HVAC, equipos industriales — también reglas de origen T-MEC para sector automotriz
+- Clasifica en "Aceros Largos": varilla corrugada, perfiles, vigas, construcción, vivienda, infraestructura pública/hospitalaria, cemento, proyectos de inversión en obra
+- Clasifica en "General / Industria" TODAS las noticias que afectan transversalmente a TYASA: aranceles (Section 232, USMCA, dumping), T-MEC/USMCA negociaciones, nearshoring, inversión extranjera, macroeconomía (tipo cambio, inflación, PIB, Banxico), CFE/energía eléctrica, gas natural, logística y fletes (ferroviarios, portuarios, carreteros, marítimos), descarbonización/CBAM/acero verde, geopolítica (Estrecho de Ormuz, Mar Rojo, rutas marítimas), China sobrecapacidad/exportaciones, competidores siderúrgicos globales, política comercial global
+- Puedes incluir hasta 4 items por línea; si una línea no tiene noticias relevantes, pon "hallazgo": "Sin novedades específicas para esta línea hoy" y "ref_url": ""
+- Es OBLIGATORIO incluir en "noticias_por_linea" los hallazgos de Nearshoring, Descarbonización, Sectores Consumidores y Geopolítica y Logística — NO los ignores
 - Los riesgos y oportunidades deben cubrir al menos 3 categorías distintas
 - Si hay bloqueos, accidentes o disrupciones en Logística Nacional, DEBEN aparecer en riesgos
 - nivel_alerta: "Alto", "Medio" o "Bajo" según urgencia real para TYASA
@@ -633,7 +642,7 @@ def sintesis_global(
             "estado_mercado": "",
             "impacto_mexico": "",
             "nivel_alerta": "—",
-            "resumen_por_area": {},
+            "noticias_por_linea": [],
             "riesgos": [],
             "oportunidades": [],
             "recomendacion": "",
@@ -651,7 +660,7 @@ def sintesis_global(
         noticias_txt=noticias_txt,
     )
 
-    # 8192 tokens: necesario para JSON con 11 categorías + resumen_por_area con URLs
+    # 8192 tokens: necesario para JSON con noticias_por_linea × 4 líneas + riesgos/oportunidades
     raw = _call_gemini_text(
         prompt, api_key,
         system=_GLOBAL_SYSTEM,
@@ -663,7 +672,7 @@ def sintesis_global(
     resultado = _parse_json_response(raw) if raw and raw != "Error al consultar la IA." else None
 
     if resultado:
-        resultado.setdefault("resumen_por_area", [])
+        resultado.setdefault("noticias_por_linea", [])
         resultado["_cached"]      = False
         resultado["_error"]       = None
         resultado["_fecha"]       = hoy
@@ -678,7 +687,7 @@ def sintesis_global(
         "estado_mercado": "",
         "impacto_mexico": "",
         "nivel_alerta": "—",
-        "resumen_por_area": [],
+        "noticias_por_linea": [],
         "riesgos": [],
         "oportunidades": [],
         "recomendacion": "",

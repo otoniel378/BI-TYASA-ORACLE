@@ -495,56 +495,6 @@ def _render_sintesis_global(result: dict | None) -> str:
             f"</div>"
         )
 
-    # ── Resumen por área (lista con URLs) ────────────────────────────────────
-    areas_raw = result.get("resumen_por_area") or []
-    # Normalizar: acepta lista de dicts o dict legado
-    if isinstance(areas_raw, dict):
-        areas_list = [{"area": k, "resumen": v, "ref_url": "", "ref_titulo": ""} for k, v in areas_raw.items()]
-    else:
-        areas_list = [a for a in areas_raw if isinstance(a, dict)]
-
-    areas_html = ""
-    if areas_list:
-        _all_styles = {**GRUPO_STYLE_NACIONAL, **GRUPO_STYLE_INTERNACIONAL}
-        area_chips = []
-        for item in areas_list:
-            area      = (item.get("area") or "").strip()
-            resumen   = (item.get("resumen") or "").strip()
-            ref_url   = _safe_url((item.get("ref_url") or "").strip())
-            ref_titulo = ((item.get("ref_titulo") or "")[:55]).strip()
-            if not area:
-                continue
-            ac_txt, ac_bg = _all_styles.get(area, ("#374151", "#F3F4F6"))
-            link = (
-                f'<a href="{ref_url}" target="_blank" '
-                f'style="color:{ac_txt};font-size:10px;font-weight:600;'
-                f'text-decoration:none;display:inline-block;margin-top:3px;">'
-                f'↗ {ref_titulo}</a>'
-            ) if ref_url and ref_titulo else (
-                f'<a href="{ref_url}" target="_blank" '
-                f'style="color:{ac_txt};font-size:10px;font-weight:600;'
-                f'text-decoration:none;display:inline-block;margin-top:3px;">'
-                f'↗ Ver artículo</a>'
-            ) if ref_url else ""
-            area_chips.append(
-                f"<div style='background:#FAFAFA;border:1px solid #E5E7EB;"
-                f"border-left:3px solid {ac_txt};border-radius:0 8px 8px 0;"
-                f"padding:8px 12px;margin-bottom:4px;'>"
-                f"<span style='font-size:10px;font-weight:700;color:{ac_txt};"
-                f"background:{ac_bg};padding:2px 8px;border-radius:10px;'>{area}</span>"
-                f"<div style='font-size:12px;color:#374151;margin-top:4px;line-height:1.5;'>{resumen}</div>"
-                f"{link}"
-                f"</div>"
-            )
-        areas_html = (
-            "<div style='margin-bottom:14px;'>"
-            "<div style='font-size:11px;font-weight:800;color:#1B3A5C;letter-spacing:.06em;"
-            "margin-bottom:8px;'>📋 RESUMEN POR ÁREA</div>"
-            "<div style='display:grid;grid-template-columns:1fr 1fr;gap:4px;'>"
-            + "".join(area_chips)
-            + "</div></div>"
-        )
-
     riesgos   = result.get("riesgos", []) or []
     opors     = result.get("oportunidades", []) or []
     r_html    = "".join(_item(r, "#DC2626", "#FEF2F2") for r in riesgos)
@@ -564,6 +514,74 @@ def _render_sintesis_global(result: dict | None) -> str:
         "</div>"
     )
 
+    # ── Noticias por línea de producto ───────────────────────────────────────
+    _LINEA_STYLE: dict[str, tuple[str, str, str]] = {
+        "Aceros Planos":          ("#1B3A5C", "#E8EFF6", "🔩"),
+        "Aceros Especiales (SBQ)": ("#0F766E", "#CCFBF1", "⚙️"),
+        "Aceros Largos":           ("#D97706", "#FEF3C7", "🏗️"),
+        "General / Industria":     ("#6B7280", "#F3F4F6", "🌐"),
+    }
+    _LINEA_ORDER = ["Aceros Planos", "Aceros Especiales (SBQ)", "Aceros Largos", "General / Industria"]
+
+    lineas_raw = result.get("noticias_por_linea") or []
+    # Agrupar por línea manteniendo el orden definido
+    lineas_dict: dict[str, list[dict]] = {k: [] for k in _LINEA_ORDER}
+    for item in lineas_raw:
+        if isinstance(item, dict):
+            linea = (item.get("linea") or "").strip()
+            if linea in lineas_dict:
+                lineas_dict[linea].append(item)
+            else:
+                lineas_dict.setdefault("General / Industria", []).append(item)
+
+    lineas_html = ""
+    if any(lineas_dict.values()):
+        col_cards = ["", ""]
+        for i, linea in enumerate(_LINEA_ORDER):
+            items = lineas_dict[linea]
+            lt, lb, icon = _LINEA_STYLE.get(linea, ("#374151", "#F3F4F6", "📌"))
+            items_html = ""
+            for it in items:
+                hallazgo  = (it.get("hallazgo") or "").strip()
+                ref_url   = _safe_url((it.get("ref_url") or "").strip())
+                ref_titulo = ((it.get("ref_titulo") or "")[:55]).strip()
+                if not hallazgo or "sin novedades" in hallazgo.lower():
+                    items_html += (
+                        f"<div style='font-size:11.5px;color:#9CA3AF;"
+                        f"padding:4px 0;font-style:italic;'>Sin novedades específicas hoy</div>"
+                    )
+                    continue
+                link = (
+                    f'<a href="{ref_url}" target="_blank" '
+                    f'style="color:{lt};font-size:10px;font-weight:600;'
+                    f'text-decoration:none;display:block;margin-top:2px;">'
+                    f'↗ {ref_titulo or "Ver artículo"}</a>'
+                ) if ref_url else ""
+                items_html += (
+                    f"<div style='border-left:2px solid {lt};padding:5px 8px;"
+                    f"margin-bottom:5px;background:#fff;border-radius:0 5px 5px 0;'>"
+                    f"<div style='font-size:12px;color:#374151;line-height:1.5;'>{hallazgo}</div>"
+                    f"{link}"
+                    f"</div>"
+                )
+            col_cards[i % 2] += (
+                f"<div style='background:{lb};border:1px solid {lt}22;border-radius:10px;"
+                f"padding:10px 12px;margin-bottom:8px;'>"
+                f"<div style='font-size:11px;font-weight:800;color:{lt};"
+                f"letter-spacing:.04em;margin-bottom:6px;'>{icon} {linea.upper()}</div>"
+                f"{items_html or _vacio}"
+                f"</div>"
+            )
+        lineas_html = (
+            "<div style='margin-bottom:14px;'>"
+            "<div style='font-size:11px;font-weight:800;color:#1B3A5C;letter-spacing:.06em;"
+            "margin-bottom:8px;'>📦 NOTICIAS POR LÍNEA DE PRODUCTO</div>"
+            "<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;'>"
+            f"<div>{col_cards[0]}</div>"
+            f"<div>{col_cards[1]}</div>"
+            "</div></div>"
+        )
+
     rec     = result.get("recomendacion", "") or ""
     rec_html = (
         f"<div style='background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;"
@@ -571,28 +589,186 @@ def _render_sintesis_global(result: dict | None) -> str:
         f"🎯 <b>Recomendación para TYASA:</b> {rec}</div>"
     ) if rec else ""
 
-    return stale_banner + header + dos_col + areas_html + two_col + rec_html
+    return stale_banner + header + dos_col + two_col + lineas_html + rec_html
 
 
-def _email_area_rows(areas_list: list) -> str:
-    if not areas_list:
-        return ""
-    rows = []
-    for a in areas_list:
-        area    = a.get("area", "")
-        resumen = a.get("resumen", "")
-        url     = a.get("ref_url", "") or ""
-        titulo  = (a.get("ref_titulo") or "Ver artículo")[:55]
-        link    = f'<br><a href="{url}" style="color:#1B3A5C;font-size:10px;">↗ {titulo}</a>' if url else ""
-        rows.append(
-            f"<tr><td style='padding:6px 10px;border-left:3px solid #1B3A5C;"
-            f"background:#F8FAFC;font-size:12px;color:#374151;margin-bottom:3px;'>"
-            f"<b style='color:#1B3A5C;'>{area}:</b> {resumen}{link}</td></tr>"
+def _render_alertas_mercado(alertas: list[dict], noticias_por_alerta: dict) -> str:
+    """Sección de noticias de las variables en alerta — debajo de la síntesis."""
+    if not alertas or not noticias_por_alerta:
+        return "<!-- sin noticias de alertas -->"
+
+    _SEV_STYLE = {
+        "Crítico":  ("#C0392B", "#FCEBEB"),
+        "Alto":     ("#D68910", "#FAEEDA"),
+        "Moderado": ("#185FA5", "#E6F1FB"),
+    }
+
+    def _safe_u(u: str) -> str:
+        return u.replace('"', "%22").replace("'", "%27").replace(" ", "%20")
+
+    alerta_lookup = {a["variable"]: a for a in alertas}
+    col_cards = ["", ""]
+    idx = 0
+
+    for var, nots in noticias_por_alerta.items():
+        if not nots:
+            continue
+        a    = alerta_lookup.get(var, {})
+        sev  = a.get("severidad", "Moderado")
+        sigma = a.get("sigma_actual", 0.0)
+        cam7  = a.get("cambio_7d_pct", 0.0)
+        tend  = a.get("tendencia", "")
+        ct, cb = _SEV_STYLE.get(sev, ("#6B7280", "#F3F4F6"))
+        flecha = "↑" if tend == "sube" else "↓"
+
+        items_html = ""
+        for n in nots[:1]:
+            tit  = (n.get("titulo") or "")[:75]
+            url  = _safe_u((n.get("url") or "").strip())
+            src  = (n.get("fuente") or "")
+            fech = (n.get("fecha_pub") or "")[:10]
+            lo   = f'<a href="{url}" target="_blank" style="font-size:12px;color:#1B3A5C;text-decoration:none;line-height:1.4;display:block;">' if url else '<span style="font-size:12px;color:#374151;">'
+            lc   = "</a>" if url else "</span>"
+            items_html += (
+                f"<div style='border-left:2px solid {ct};padding:4px 8px;"
+                f"margin-bottom:5px;background:#fff;border-radius:0 5px 5px 0;'>"
+                f"{lo}{tit}{lc}"
+                f"<span style='font-size:10px;color:#9CA3AF;display:block;'>"
+                f"{src} · {fech}</span>"
+                f"</div>"
+            )
+
+        col_cards[idx % 2] += (
+            f"<div style='background:{cb};border:1px solid {ct}33;border-radius:8px;"
+            f"padding:10px 12px;margin-bottom:8px;'>"
+            f"<div style='font-size:11px;font-weight:700;color:{ct};"
+            f"letter-spacing:.03em;margin-bottom:6px;'>"
+            f"📡 {var.replace('_', ' ').upper()}&nbsp;"
+            f"<span style='background:{ct};color:#fff;padding:1px 7px;"
+            f"border-radius:10px;font-size:10px;font-weight:700;'>{sev}</span>"
+            f"<span style='font-size:10px;font-weight:400;margin-left:6px;'>"
+            f"{flecha} {cam7:+.1f}% · {sigma:+.2f}σ</span>"
+            f"</div>"
+            f"{items_html}"
+            f"</div>"
         )
+        idx += 1
+
+    if not col_cards[0] and not col_cards[1]:
+        return "<!-- sin noticias de alertas -->"
+
+    return (
+        "<div style='margin-top:14px;border-top:1px solid #E5E7EB;padding-top:14px;'>"
+        "<div style='font-size:11px;font-weight:800;color:#D97706;letter-spacing:.06em;"
+        "margin-bottom:4px;'>⚡ NOTICIAS DE LAS ALERTAS DE MERCADO</div>"
+        "<div style='font-size:11px;color:#9CA3AF;margin-bottom:10px;'>"
+        "Artículos recientes de las variables con comportamiento anómalo · "
+        "Análisis detallado en <b>Monitor de Quiebres</b></div>"
+        "<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;'>"
+        f"<div>{col_cards[0]}</div>"
+        f"<div>{col_cards[1]}</div>"
+        "</div></div>"
+    )
+
+
+def _email_lineas_rows(lineas_raw: list) -> str:
+    """Sección de email: noticias agrupadas por línea de producto TYASA."""
+    if not lineas_raw:
+        return ""
+    _LINEA_COLORS = {
+        "Aceros Planos":           ("#1B3A5C", "🔩"),
+        "Aceros Especiales (SBQ)": ("#0F766E", "⚙️"),
+        "Aceros Largos":           ("#D97706", "🏗️"),
+        "General / Industria":     ("#6B7280", "🌐"),
+    }
+    _ORDER = ["Aceros Planos", "Aceros Especiales (SBQ)", "Aceros Largos", "General / Industria"]
+    grouped: dict[str, list] = {k: [] for k in _ORDER}
+    for item in lineas_raw:
+        if isinstance(item, dict):
+            linea = (item.get("linea") or "").strip()
+            grouped.setdefault(linea, []).append(item)
+
+    rows = []
+    for linea in _ORDER:
+        items = grouped.get(linea, [])
+        color, icon = _LINEA_COLORS.get(linea, ("#374151", "📌"))
+        rows.append(
+            f"<tr><td colspan='2' style='padding:6px 10px 2px;"
+            f"font-size:10px;font-weight:700;color:{color};"
+            f"text-transform:uppercase;letter-spacing:.06em;'>"
+            f"{icon} {linea}</td></tr>"
+        )
+        if not items:
+            rows.append(
+                f"<tr><td style='padding:2px 10px 6px;border-left:3px solid {color};"
+                f"background:#F8FAFC;font-size:11px;color:#9CA3AF;'>"
+                f"Sin novedades específicas hoy</td></tr>"
+            )
+            continue
+        for it in items:
+            hallazgo  = (it.get("hallazgo") or "").strip()
+            url       = (it.get("ref_url") or "").strip()
+            titulo    = ((it.get("ref_titulo") or "Ver artículo")[:55]).strip()
+            if "sin novedades" in hallazgo.lower():
+                continue
+            link = f'<br><a href="{url}" style="color:{color};font-size:10px;">↗ {titulo}</a>' if url else ""
+            rows.append(
+                f"<tr><td style='padding:3px 10px 6px;border-left:3px solid {color};"
+                f"background:#F8FAFC;font-size:12px;color:#374151;'>"
+                f"{hallazgo}{link}</td></tr>"
+            )
     return (
         '<div style="padding:0 28px 16px;">'
         '<div style="font-size:11px;font-weight:700;color:#1B3A5C;text-transform:uppercase;'
-        'letter-spacing:.06em;margin-bottom:8px;">📋 Resumen por Área</div>'
+        'letter-spacing:.06em;margin-bottom:8px;">📦 Noticias por Línea de Producto</div>'
+        '<table style="width:100%;border-collapse:separate;border-spacing:0 3px;">'
+        + "".join(rows)
+        + "</table></div>"
+    )
+
+
+def _email_alertas_rows(alertas: list[dict], noticias_por_alerta: dict) -> str:
+    """Sección de email: una noticia por cada variable en alerta."""
+    if not alertas or not noticias_por_alerta:
+        return ""
+    _SEV_COLORS = {
+        "Crítico":  "#C0392B",
+        "Alto":     "#D68910",
+        "Moderado": "#185FA5",
+    }
+    rows = []
+    for a in alertas[:8]:
+        var  = a.get("variable", "")
+        sev  = a.get("severidad", "Moderado")
+        sigma = a.get("sigma_actual", 0.0)
+        cam7  = a.get("cambio_7d_pct", 0.0)
+        tend  = a.get("tendencia", "")
+        nots  = noticias_por_alerta.get(var, [])
+        if not nots:
+            continue
+        color  = _SEV_COLORS.get(sev, "#6B7280")
+        flecha = "↑" if tend == "sube" else "↓"
+        n      = nots[0]
+        tit    = (n.get("titulo") or "")[:75]
+        url    = (n.get("url") or "").strip()
+        src    = (n.get("fuente") or "")
+        fech   = (n.get("fecha_pub") or "")[:10]
+        link   = f'<br><a href="{url}" style="color:{color};font-size:10px;">↗ {src} · {fech}</a>' if url else f"<br><span style='font-size:10px;color:#9CA3AF;'>{src} · {fech}</span>"
+        rows.append(
+            f"<tr><td style='padding:5px 10px 5px 0;vertical-align:top;width:130px;"
+            f"font-size:11px;font-weight:700;color:{color};white-space:nowrap;'>"
+            f"📡 {var.replace('_',' ')}<br>"
+            f"<span style='font-weight:400;'>{flecha} {cam7:+.1f}% · {sigma:+.2f}σ</span></td>"
+            f"<td style='padding:5px 10px;border-left:3px solid {color};"
+            f"background:#FAFAFA;font-size:12px;color:#374151;'>"
+            f"{tit}{link}</td></tr>"
+        )
+    if not rows:
+        return ""
+    return (
+        '<div style="padding:0 28px 16px;">'
+        '<div style="font-size:11px;font-weight:700;color:#D97706;text-transform:uppercase;'
+        'letter-spacing:.06em;margin-bottom:8px;">⚡ Noticias de las Alertas de Mercado</div>'
         '<table style="width:100%;border-collapse:separate;border-spacing:0 4px;">'
         + "".join(rows)
         + "</table></div>"
@@ -620,7 +796,9 @@ def _find_logo_path() -> tuple[str | None, str, str]:
     return None, "", ""
 
 
-def _build_email_html(result: dict, df_vars=None) -> str:
+def _build_email_html(result: dict, df_vars=None,
+                       alertas: list | None = None,
+                       alertas_nots: dict | None = None) -> str:
     """Genera el HTML del digest ejecutivo para envío por correo."""
     nivel      = result.get("nivel_alerta", "—")
     fecha      = result.get("_fecha", "")
@@ -629,11 +807,7 @@ def _build_email_html(result: dict, df_vars=None) -> str:
     riesgos    = result.get("riesgos", []) or []
     opors      = result.get("oportunidades", []) or []
     rec        = result.get("recomendacion", "") or ""
-    areas_raw  = result.get("resumen_por_area") or []
-    if isinstance(areas_raw, dict):
-        areas_list = [{"area": k, "resumen": v, "ref_url": "", "ref_titulo": ""} for k, v in areas_raw.items()]
-    else:
-        areas_list = [a for a in areas_raw if isinstance(a, dict)]
+    lineas_raw = result.get("noticias_por_linea") or []
 
     nc_colors = {
         "Alto":  ("#DC2626", "#FEE2E2"),
@@ -697,7 +871,6 @@ def _build_email_html(result: dict, df_vars=None) -> str:
       <p style="font-size:13px;color:#1E40AF;line-height:1.65;margin:0;">{impacto}</p>
     </div>
   </div>
-  {_email_area_rows(areas_list)}
   <div style="padding:0 28px 16px;">
     <div style="font-size:11px;font-weight:700;color:#DC2626;text-transform:uppercase;
          letter-spacing:.06em;margin-bottom:8px;">⚠️ Riesgos Identificados</div>
@@ -708,6 +881,7 @@ def _build_email_html(result: dict, df_vars=None) -> str:
          letter-spacing:.06em;margin-bottom:8px;">✅ Oportunidades</div>
     <table style="width:100%;border-collapse:separate;border-spacing:0 4px;">{_rows(opors,"#059669")}</table>
   </div>
+  {_email_lineas_rows(lineas_raw)}
   <div style="padding:0 28px 22px;">
     <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;padding:14px 16px;">
       <div style="font-size:11px;font-weight:700;color:#1D4ED8;text-transform:uppercase;
@@ -715,6 +889,7 @@ def _build_email_html(result: dict, df_vars=None) -> str:
       <p style="font-size:13px;color:#1E40AF;line-height:1.65;margin:0;">{rec}</p>
     </div>
   </div>
+  {_email_alertas_rows(alertas or [], alertas_nots or {})}
   {_build_indicadores_section(df_vars)}
   <div style="background:#F9FAFB;padding:14px 28px;border-top:1px solid #E5E7EB;">
     <div style="font-size:11px;color:#9CA3AF;">Generado automáticamente por TYASA BI · No responder este mensaje</div>
@@ -1143,6 +1318,28 @@ if "sint_result" not in st.session_state:
     if _cached_hoy and not _cached_hoy.get("_error"):
         st.session_state["sint_result"] = _cached_hoy
 
+# Alertas activas: computar una vez por sesión (necesario para la sección de alertas)
+if "sint_alertas" not in st.session_state:
+    try:
+        _df_a = load_variables_mercado(dias=400)
+        st.session_state["sint_alertas"] = (
+            detectar_quiebres_automatico(_df_a, umbral_sigma=2.0)
+            if not _df_a.empty else []
+        )
+    except Exception:
+        st.session_state["sint_alertas"] = []
+
+# Noticias de las alertas: computar una vez por sesión (caché 15 min por variable)
+if "sint_alertas_nots" not in st.session_state:
+    _sn: dict[str, list] = {}
+    for _a in st.session_state["sint_alertas"][:8]:
+        _v = _a.get("variable", "")
+        if _v:
+            _nts = _noticias_alerta_cached(_v, max_r=3)
+            if _nts:
+                _sn[_v] = _nts
+    st.session_state["sint_alertas_nots"] = _sn
+
 col_btn_s, col_frz_s, col_email_b = st.columns([2, 1, 1])
 with col_btn_s:
     run_sint = st.button("▶ Generar síntesis ejecutiva", key="sint_run",
@@ -1220,7 +1417,17 @@ if run_sint and _GEMINI_KEY:
 
     # Resolver URLs de Google News (redirect → URL real) solo para artículos de la síntesis
     _resolve_gnews_batch(_arts_para_resolver)
-    st.session_state["sint_result"] = sintesis_global(all_nots, _GEMINI_KEY, force_refresh=frz_sint)
+    st.session_state["sint_result"]  = sintesis_global(all_nots, _GEMINI_KEY, force_refresh=frz_sint)
+    st.session_state["sint_alertas"] = _alertas_activas
+    # Actualizar noticias de alertas con datos frescos (ya se resolvieron URLs arriba)
+    _sn_new: dict[str, list] = {}
+    for _a in _alertas_activas[:8]:
+        _v = _a.get("variable", "")
+        if _v:
+            _nts = _noticias_alerta_cached(_v, max_r=3)
+            if _nts:
+                _sn_new[_v] = _nts
+    st.session_state["sint_alertas_nots"] = _sn_new
 elif run_sint:
     st.session_state["sint_result"] = {
         "_error": "Configura GEMINI_API_KEY en .streamlit/secrets.toml",
@@ -1235,7 +1442,12 @@ if enviar_email_clicked:
             _df_vars_email = load_variables_mercado(dias=30)
         except Exception:
             _df_vars_email = None
-        _html_mail = _build_email_html(_res, df_vars=_df_vars_email)
+        _html_mail = _build_email_html(
+            _res,
+            df_vars=_df_vars_email,
+            alertas=st.session_state.get("sint_alertas") or [],
+            alertas_nots=st.session_state.get("sint_alertas_nots") or {},
+        )
         _ok, _msg  = _enviar_email_digest(
             _html_mail,
             f"Digest Siderúrgico TYASA · {_res.get('_fecha', '')} · Alerta {_res.get('nivel_alerta','—')}",
@@ -1260,6 +1472,14 @@ st.html(_email_html)
 
 # Render del resultado
 st.html(_render_sintesis_global(st.session_state.get("sint_result")))
+
+# Sección de noticias de alertas de mercado (debajo de la síntesis)
+_sint_ok = (st.session_state.get("sint_result") or {})
+if _sint_ok and not _sint_ok.get("_error") and _sint_ok.get("nivel_alerta"):
+    _alertas_render    = st.session_state.get("sint_alertas") or []
+    _alertas_nots_render = st.session_state.get("sint_alertas_nots") or {}
+    if _alertas_render and _alertas_nots_render:
+        st.html(_render_alertas_mercado(_alertas_render, _alertas_nots_render))
 
 # ── Exportar síntesis al contexto del chat ───────────────────────────────────
 _sint_data = st.session_state.get("sint_result") or {}

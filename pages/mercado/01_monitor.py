@@ -324,6 +324,61 @@ if alertas_filt:
             st.markdown("**📰 Noticias relacionadas:**")
             _render_noticias_tabs(var, color_txt, color_bg)
 
+    # ── Noticias consolidadas de las alertas más críticas ─────────────────────
+    _top_alertas = [a for a in alertas_filt if a["severidad"] in ("Crítico", "Alto")][:4]
+    if not _top_alertas:
+        _top_alertas = alertas_filt[:3]
+
+    _cards_nots = ""
+    for _alerta in _top_alertas:
+        _var    = _alerta["variable"]
+        _sev    = _alerta["severidad"]
+        _ct, _cb = SEV_COLORS.get(_sev, ("#6B7280", "#F3F4F6"))
+        _sigma  = _alerta["sigma_actual"]
+        _cam7   = _alerta["cambio_7d_pct"]
+        _flecha = "↑" if _alerta["tendencia"] == "sube" else "↓"
+        _nots   = _noticias_var_cached(_var, max_r=5)[:3]
+        if not _nots:
+            continue
+        _nots_html = ""
+        for _n in _nots:
+            _tit   = (_n.get("titulo") or "")[:75]
+            _url   = (_n.get("url") or "").replace('"', "%22").replace("'", "%27")
+            _src   = _n.get("fuente", "")
+            _fech  = (_n.get("fecha_pub") or "")[:10]
+            _link_open  = f'<a href="{_url}" target="_blank" style="font-size:11.5px;color:#1B3A5C;text-decoration:none;line-height:1.4;display:block;">' if _url else '<span style="font-size:11.5px;color:#374151;">'
+            _link_close = "</a>" if _url else "</span>"
+            _nots_html += (
+                f"<div style='border-left:2px solid {_ct};padding:4px 8px;"
+                f"margin-bottom:4px;background:#FAFAFA;border-radius:0 5px 5px 0;'>"
+                f"{_link_open}{_tit}{_link_close}"
+                f"<span style='font-size:10px;color:#9CA3AF;'>{_src} · {_fech}</span>"
+                f"</div>"
+            )
+        _cards_nots += (
+            f"<div style='background:{_cb};border:1px solid {_ct}33;"
+            f"border-radius:8px;padding:10px 12px;'>"
+            f"<div style='font-size:11px;font-weight:700;color:{_ct};"
+            f"letter-spacing:.03em;margin-bottom:6px;'>"
+            f"📡 {_var.replace('_', ' ')}&nbsp;"
+            f"<span style='background:{_ct};color:#fff;padding:1px 7px;"
+            f"border-radius:10px;font-size:10px;'>{_sev}</span> "
+            f"<span style='font-size:10px;font-weight:400;'>"
+            f"{_flecha} {_cam7:+.1f}% · {_sigma:+.2f}σ</span></div>"
+            f"{_nots_html}"
+            f"</div>"
+        )
+
+    if _cards_nots:
+        seccion_titulo("📰 Noticias relacionadas con las alertas",
+                       "Artículos recientes de las variables con mayor anomalía")
+        st.html(
+            "<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;"
+            "margin-bottom:8px;'>"
+            + _cards_nots
+            + "</div>"
+        )
+
     st.divider()
 
 else:
