@@ -1,0 +1,67 @@
+name: Descarga Mensual SNICE (Siderúrgico)
+
+on:
+  schedule:
+    # Día 5 de cada mes, 9:00 AM México (15:00 UTC) — da margen a que SNICE publique el reporte del mes
+    - cron: "0 15 5 * *"
+  workflow_dispatch:  # permite correrlo manualmente desde GitHub
+
+permissions:
+  contents: write
+
+jobs:
+  download-snice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: |
+          pip install playwright openpyxl oracledb python-dotenv
+          playwright install --with-deps chromium
+
+      - name: Descargar reporte Siderúrgico de SNICE
+        run: python scripts/download_snice_siderurgico.py --out data/snice
+
+      - name: Subir screenshot de depuración (solo si falló)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: snice-debug-screenshot
+          path: data/snice/_debug_snice_failure.png
+          if-no-files-found: ignore
+
+      - name: Extraer wallet de Oracle
+        run: |
+          mkdir -p /tmp/oracle_wallet
+          echo "${{ secrets.ORACLE_WALLET_B64 }}" | base64 -d > /tmp/oracle_wallet.zip
+          unzip -o /tmp/oracle_wallet.zip -d /tmp/oracle_wallet
+
+      - name: Cargar a Oracle ADW (BRONZE + recálculo GOLD)
+        env:
+          ORACLE_USER:            ${{ secrets.ORACLE_USER }}
+          ORACLE_PASSWORD:        ${{ secrets.ORACLE_PASSWORD }}
+          ORACLE_DSN:             ${{ secrets.ORACLE_DSN }}
+          ORACLE_WALLET_DIR:      /tmp/oracle_wallet
+          ORACLE_WALLET_PASSWORD: ${{ secrets.ORACLE_WALLET_PASSWORD }}
+        run: python scripts/load_snice_to_oracle.py --dir data/snice
+
+      - name: Commit y push si hay cambios (archivo nuevo o retención)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A data/snice
+          if git diff --cached --quiet; then
+            echo "Sin cambios, nada que commitear."
+          else
+            git commit -m "chore: descarga automática SNICE Siderúrgico $(date +%Y-%m)"
+            git push
+          fi
