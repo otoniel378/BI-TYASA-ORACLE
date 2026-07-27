@@ -62,11 +62,17 @@ MESES_ES = {
 
 
 def _dismiss_privacy_notice(page):
-    """Cierra el modal 'Aviso de privacidad simplificado' (botón 'Acepto'). No es fatal si no aparece."""
-    boton = page.get_by_role("button", name="Acepto")
+    """
+    Cierra el modal 'Aviso de privacidad simplificado' (botón 'Acepto').
+    click() espera (auto-wait) a que el botón exista y sea clickeable en vez de
+    solo revisar el DOM en el instante actual (con .count() había una carrera:
+    en CI, más rápido/headless, el modal a veces aún no había renderizado
+    cuando se revisaba, y el script seguía de largo dejándolo abierto y
+    bloqueando todos los clics posteriores). No es fatal si nunca aparece.
+    """
     try:
-        if boton.count() > 0:
-            boton.first.click(timeout=5000)
+        page.get_by_role("button", name="Acepto").first.click(timeout=15_000)
+        page.locator("#modalAvisoPrivacidad").wait_for(state="hidden", timeout=10_000)
     except Exception:
         pass
 
