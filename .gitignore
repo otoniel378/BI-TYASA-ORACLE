@@ -24,6 +24,9 @@ exports/
 *.xlsx
 *.csv
 
+# Excel descargado automáticamente de SNICE (sí se versiona, es dato fuente del pipeline)
+!data/snice/*.xlsx
+
 # IDE y OS
 .vscode/
 .idea/
