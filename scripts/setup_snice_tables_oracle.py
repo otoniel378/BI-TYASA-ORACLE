@@ -46,6 +46,8 @@ TABLES_DDL = {
             FECHA_RESOLUCION       DATE,
             INICIO_VIGENCIA        DATE,
             FIN_VIGENCIA           DATE,
+            CATEGORIA_PRODUCTO     VARCHAR2(500),
+            SUBCATEGORIA           VARCHAR2(300),
             PERIODO                VARCHAR2(7)   NOT NULL,
             FECHA_CARGA            TIMESTAMP     DEFAULT SYSTIMESTAMP
         )
@@ -91,6 +93,18 @@ TABLES_DDL = {
             AVISOS                NUMBER,
             EMPRESAS_DISTINTAS    NUMBER,
             CONSTRAINT PK_SNICE_FRACCIONES PRIMARY KEY (PERIODO, FRACCION_ARANCELARIA)
+        )
+    """,
+    "GOLD_SNICE_TOP_CATEGORIAS": """
+        CREATE TABLE ADMIN.GOLD_SNICE_TOP_CATEGORIAS (
+            PERIODO             VARCHAR2(7)   NOT NULL,
+            PARTIDA              VARCHAR2(4)   NOT NULL,
+            CATEGORIA_PRODUCTO   VARCHAR2(500),
+            SUBCATEGORIA         VARCHAR2(300),
+            VOLUMEN_TOTAL        NUMBER,
+            AVISOS               NUMBER,
+            EMPRESAS_DISTINTAS   NUMBER,
+            CONSTRAINT PK_SNICE_CATEGORIAS PRIMARY KEY (PERIODO, PARTIDA)
         )
     """,
 }
