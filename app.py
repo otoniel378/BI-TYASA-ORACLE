@@ -271,6 +271,7 @@ SUBSECCIONES = {
         "mkt_inegi": ("📈", "Indicadores INEGI"),
         "mkt_sentimiento": ("🌡️", "Sentimiento"),
         "mkt_competencia": ("🎯", "Competencia"),
+        "mkt_comercio": ("🌍", "Comercio Exterior"),
     },
     "chat_ia": {
         "chat": ("💬", "Chat con los datos"),
@@ -314,6 +315,7 @@ PAGINAS = {
     "mkt_inegi": "pages.mercado.04_indicadores",
     "mkt_sentimiento": "pages.mercado.05_sentimiento",
     "mkt_competencia": "pages.mercado.06_competencia",
+    "mkt_comercio": "pages.mercado.07_comercio_exterior",
 
     # CHAT IA
     "chat": "pages.chat_ia.chat",

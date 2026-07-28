@@ -20,10 +20,13 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.dirname(__file__))
 
 import openpyxl
 import oracledb
 from dotenv import load_dotenv
+
+from tigie_partidas import categoria_de, FRACCIONES_NO_KG
 
 load_dotenv()
 
@@ -96,12 +99,18 @@ def _leer_avisos(xlsx_path: Path, periodo: str) -> list:
              pais_origen, pais_exportador, numero_aviso, fecha_resolucion,
              inicio_vigencia, fin_vigencia) = r[:12]
 
+            fraccion_str = str(fraccion) if fraccion else None
+            categoria, subcategoria = categoria_de(fraccion_str) if fraccion_str else (None, None)
+            if fraccion_str and fraccion_str[:6] in FRACCIONES_NO_KG:
+                print(f"  ADVERTENCIA: fracción {fraccion_str} (folio {folio}) no está en Kg "
+                      f"(es 'Pza') — su VOLUMEN_AVISO no es comparable con el resto, revisar antes de sumar.")
+
             rows.append((
                 str(folio)[:50] if folio else None,
                 str(razon_social)[:300] if razon_social else None,
                 _parse_fecha(fecha_tramite, con_hora=True),
                 float(volumen) if isinstance(volumen, (int, float)) else None,
-                str(fraccion)[:20] if fraccion else None,
+                fraccion_str[:20] if fraccion_str else None,
                 _truncar_bytes(str(descripcion)) if descripcion else None,
                 str(pais_origen)[:150] if pais_origen else None,
                 str(pais_exportador)[:150] if pais_exportador else None,
@@ -109,6 +118,8 @@ def _leer_avisos(xlsx_path: Path, periodo: str) -> list:
                 _parse_fecha(fecha_resolucion, con_hora=True),
                 _parse_fecha(inicio_vigencia, con_hora=False),
                 _parse_fecha(fin_vigencia, con_hora=False),
+                categoria,
+                subcategoria,
                 periodo,
             ))
         return rows
@@ -128,8 +139,8 @@ def cargar_bronze(rows: list, periodo: str):
                 FOLIO_TRAMITE, RAZON_SOCIAL, FECHA_TRAMITE, VOLUMEN_AVISO,
                 FRACCION_ARANCELARIA, DESCRIPCION_MERCANCIA, PAIS_ORIGEN,
                 PAIS_EXPORTADOR, NUMERO_AVISO, FECHA_RESOLUCION,
-                INICIO_VIGENCIA, FIN_VIGENCIA, PERIODO
-            ) VALUES (:1,:2,:3,:4,:5,:6,:7,:8,:9,:10,:11,:12,:13)
+                INICIO_VIGENCIA, FIN_VIGENCIA, CATEGORIA_PRODUCTO, SUBCATEGORIA, PERIODO
+            ) VALUES (:1,:2,:3,:4,:5,:6,:7,:8,:9,:10,:11,:12,:13,:14,:15)
         """
         n_batches = math.ceil(len(rows) / INSERT_BATCH)
         for i in range(n_batches):
@@ -158,7 +169,7 @@ def recalcular_gold(periodo: str):
     try:
         for tabla in (
             "GOLD_SNICE_RESUMEN_MENSUAL", "GOLD_SNICE_TOP_EMPRESAS",
-            "GOLD_SNICE_TOP_PAISES", "GOLD_SNICE_TOP_FRACCIONES",
+            "GOLD_SNICE_TOP_PAISES", "GOLD_SNICE_TOP_FRACCIONES", "GOLD_SNICE_TOP_CATEGORIAS",
         ):
             cursor.execute(f"DELETE FROM ADMIN.{tabla} WHERE PERIODO = :1", [periodo])
         conn.commit()
@@ -199,6 +210,17 @@ def recalcular_gold(periodo: str):
             FROM ADMIN.BRONZE_SNICE_SIDERURGICO
             WHERE PERIODO = :1 AND FRACCION_ARANCELARIA IS NOT NULL
             GROUP BY PERIODO, FRACCION_ARANCELARIA
+        """, [periodo])
+
+        cursor.execute("""
+            INSERT INTO ADMIN.GOLD_SNICE_TOP_CATEGORIAS
+                (PERIODO, PARTIDA, CATEGORIA_PRODUCTO, SUBCATEGORIA, VOLUMEN_TOTAL, AVISOS, EMPRESAS_DISTINTAS)
+            SELECT PERIODO, SUBSTR(FRACCION_ARANCELARIA, 1, 4),
+                   MIN(CATEGORIA_PRODUCTO), MIN(SUBCATEGORIA),
+                   SUM(VOLUMEN_AVISO), COUNT(*), COUNT(DISTINCT RAZON_SOCIAL)
+            FROM ADMIN.BRONZE_SNICE_SIDERURGICO
+            WHERE PERIODO = :1 AND FRACCION_ARANCELARIA IS NOT NULL
+            GROUP BY PERIODO, SUBSTR(FRACCION_ARANCELARIA, 1, 4)
         """, [periodo])
 
         conn.commit()
