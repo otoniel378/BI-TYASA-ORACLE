@@ -103,6 +103,23 @@ def run_query(sql: str) -> pd.DataFrame:
             cursor.close()
 
 
+def run_query_params(sql: str, params: list | dict) -> pd.DataFrame:
+    """Como run_query(), pero con bind variables (:1, :2, ... o :nombre) para
+    evitar inyección SQL cuando el filtro viene de texto libre del usuario."""
+    pool = get_oracle_pool()
+    with pool.acquire() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(sql, params)
+            cols = [d[0] for d in cursor.description]
+            rows = cursor.fetchall()
+            return pd.DataFrame(rows, columns=cols)
+        except Exception as e:
+            raise RuntimeError(f"Error Oracle:\n{sql}\n\nDetalle: {e}") from e
+        finally:
+            cursor.close()
+
+
 def list_tables() -> list[str]:
     """Devuelve la lista de tablas disponibles en el schema ADMIN."""
     pool = get_oracle_pool()
