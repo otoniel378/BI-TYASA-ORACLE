@@ -1300,6 +1300,37 @@ if _man_data.get("tiene_contenido_relevante"):
     except Exception:
         pass
 
+# ── Noticias de inversión del día (complemento a la mañanera) ─────────────────
+_nots_nearsh = _noticias_grupo("Nearshoring", 8)
+_hoy_man_str = str(fecha_man)
+_nots_inv_hoy = [
+    n for n in _nots_nearsh
+    if (n.get("fecha_pub") or "")[:10] >= _hoy_man_str
+][:4]
+if _nots_inv_hoy:
+    _inv_cards = ""
+    for _n in _nots_inv_hoy:
+        _t  = (_n.get("titulo") or "")[:90]
+        _u  = _n.get("url") or "#"
+        _f  = (_n.get("fuente") or "").upper()
+        _fd = (_n.get("fecha_pub") or "")[:10]
+        _inv_cards += (
+            f"<a href='{_u}' target='_blank' style='text-decoration:none;'>"
+            f"<div style='background:#F0F9FF;border:1px solid #BAE6FD;border-radius:8px;"
+            f"padding:10px 14px;margin-bottom:8px;'>"
+            f"<span style='font-size:11px;color:#0284C7;font-weight:700;'>{_f}</span>"
+            f"<span style='font-size:10px;color:#9CA3AF;margin-left:8px;'>{_fd}</span>"
+            f"<div style='font-size:13px;color:#1B3A5C;font-weight:600;margin-top:4px;line-height:1.4;'>{_t}</div>"
+            f"</div></a>"
+        )
+    st.html(
+        "<div style='background:#EFF6FF;border:1px solid #BFDBFE;border-radius:10px;"
+        "padding:14px 16px;margin-top:12px;'>"
+        "<div style='font-size:13px;font-weight:800;color:#1D4ED8;margin-bottom:10px;'>"
+        "🏭 Noticias de inversión y nearshoring del día</div>"
+        + _inv_cards + "</div>"
+    )
+
 st.divider()
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1312,9 +1343,12 @@ _ALERTAS_CAT_KEY = "Alertas de Mercado"
 # Auto-cargar desde caché si la sesión acaba de iniciar (botón correo siempre habilitado)
 if "sint_result" not in st.session_state:
     _all_cat_keys = list(GRUPOS_NACIONAL.keys()) + list(GRUPOS_INTERNACIONAL.keys()) + [_ALERTAS_CAT_KEY]
-    # 1) Buscar caché de hoy (mismas categorías)
-    _cached_hoy = cargar_cache_hoy("sintesis_global", cat_keys=_all_cat_keys)
-    # Solo cargamos caché del día actual — no mostrar datos de días anteriores
+    _base_cat_keys = list(GRUPOS_NACIONAL.keys()) + list(GRUPOS_INTERNACIONAL.keys())
+    # Intentar con clave nueva (incluye "Alertas de Mercado"); fallback a clave legada
+    _cached_hoy = (
+        cargar_cache_hoy("sintesis_global", cat_keys=_all_cat_keys)
+        or cargar_cache_hoy("sintesis_global", cat_keys=_base_cat_keys)
+    )
     if _cached_hoy and not _cached_hoy.get("_error"):
         st.session_state["sint_result"] = _cached_hoy
 
