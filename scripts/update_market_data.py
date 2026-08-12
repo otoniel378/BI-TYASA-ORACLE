@@ -38,6 +38,7 @@ TICKERS = {
     'TIO=F'   : ('Mineral_Hierro',     'Insumos_Acero'),
     'HG=F'    : ('Cobre_USD',          'Insumos_Acero'),
     'ALI=F'   : ('Aluminio_USD',       'Insumos_Acero'),
+    'HRC=F'   : ('HRC_CME_USD',        'Sector_Acero'),
     'SLX'     : ('ETF_Acero_Global',   'Sector_Acero'),
     'TX'      : ('Ternium_MX',         'Sector_Acero'),
     'MT'      : ('ArcelorMittal',      'Sector_Acero'),
@@ -132,7 +133,7 @@ def update_variables(full: bool = False, batch_size: int = 5000):
             if len(df_t) < 1:
                 continue
 
-            s = df_t["Close"].squeeze()
+            s = df_t["Close"]
             if isinstance(s, pd.DataFrame):
                 s = s.iloc[:, 0]
             s = s.dropna()
