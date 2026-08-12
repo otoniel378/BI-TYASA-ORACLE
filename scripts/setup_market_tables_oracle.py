@@ -114,7 +114,10 @@ TABLES_DDL = {
             SCORE               NUMBER,
             VARIABLE_PRINCIPAL  VARCHAR2(100),
             ALCANCE             VARCHAR2(50),
-            GRUPO_TEMATICO      VARCHAR2(50)
+            GRUPO_TEMATICO      VARCHAR2(50),
+            SENAL               VARCHAR2(60),
+            RAZON               VARCHAR2(300),
+            CONFIANZA           VARCHAR2(20)
         )
     """,
     "GOLD_INDICADORES_INEGI": """

@@ -72,14 +72,14 @@ st.html(f"""
 """)
 st.divider()
 
-# ── Carga de datos BQ ─────────────────────────────────────────────────────────
+# ── Carga de datos ────────────────────────────────────────────────────────────
 _bq_ok = False
 df_sent = pd.DataFrame()
 df_hist = pd.DataFrame()
 
 try:
     from mercado_noticias.loaders import load_sentimiento_noticias, load_sentimiento_historico
-    with st.spinner("Cargando sentimiento desde BigQuery..."):
+    with st.spinner("Cargando sentimiento desde Oracle ADW..."):
         df_sent = load_sentimiento_noticias(dias=dias_hist)
         df_hist = load_sentimiento_historico(dias=dias_hist)
     _bq_ok = True
