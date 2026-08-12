@@ -1015,16 +1015,21 @@ def _render_mananera_full(result: dict | None, loading: bool = False) -> str:
         vid_id = result.get("_video_id", "")
         yt = (
             f" &nbsp;<a href='https://www.youtube.com/watch?v={vid_id}' target='_blank'"
-            f" style='color:#4A7BA7;font-size:11px;'>▶ Ver video</a>"
+            f" style='color:#4A7BA7;font-size:11px;'>▶ Ver video en vivo</a>"
         ) if vid_id else ""
-        live_badge = (
-            "<span style='background:#FEF3C7;color:#92400E;padding:2px 8px;"
-            "border-radius:10px;font-size:10px;font-weight:700;'>🔴 EN VIVO</span> "
-        ) if is_live else ""
+        if is_live:
+            # Conferencia en vivo sin transcripción aún — estilo informativo, no error
+            return (
+                f"<div style='background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;"
+                f"padding:16px;color:#92400E;font-size:13px;'>"
+                f"<span style='background:#DC2626;color:#FFF;padding:2px 8px;"
+                f"border-radius:10px;font-size:10px;font-weight:700;margin-right:8px;'>🔴 EN VIVO</span>"
+                f"{err}{yt}</div>"
+            )
         return (
             f"<div style='background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;"
             f"padding:16px;color:#DC2626;font-size:13px;'>"
-            f"{live_badge}⚠️ {err}{yt}</div>"
+            f"⚠️ {err}{yt}</div>"
         )
     if not result.get("tiene_contenido_relevante"):
         fecha  = result.get("fecha", "")

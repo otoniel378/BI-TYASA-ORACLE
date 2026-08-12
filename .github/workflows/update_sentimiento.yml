@@ -1,0 +1,46 @@
+name: Actualización Diaria de Sentimiento de Noticias
+
+on:
+  schedule:
+    # Lunes a viernes a las 9:00 AM México (15:00 UTC) — después de update_market
+    - cron: "0 15 * * 1-5"
+  workflow_dispatch:  # permite correrlo manualmente desde GitHub
+
+jobs:
+  update-sentimiento:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: pip install oracledb pandas python-dotenv requests
+
+      - name: Extraer wallet de Oracle
+        run: |
+          mkdir -p /tmp/oracle_wallet
+          echo "${{ secrets.ORACLE_WALLET_B64 }}" | base64 -d > /tmp/oracle_wallet.zip
+          unzip -o /tmp/oracle_wallet.zip -d /tmp/oracle_wallet
+          echo "Wallet extraído:"
+          ls /tmp/oracle_wallet
+
+      - name: Clasificar y guardar sentimiento de noticias en Oracle ADW
+        env:
+          ORACLE_USER:            ${{ secrets.ORACLE_USER }}
+          ORACLE_PASSWORD:        ${{ secrets.ORACLE_PASSWORD }}
+          ORACLE_DSN:             ${{ secrets.ORACLE_DSN }}
+          ORACLE_WALLET_DIR:      /tmp/oracle_wallet
+          ORACLE_WALLET_PASSWORD: ${{ secrets.ORACLE_WALLET_PASSWORD }}
+          GEMINI_API_KEY:         ${{ secrets.GEMINI_API_KEY }}
+        run: python scripts/update_sentimiento_noticias.py
+
+      - name: Resultado
+        if: always()
+        run: echo "Actualización completada - $(date)"

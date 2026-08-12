@@ -32,6 +32,65 @@ _MESES = {
 # Palabras clave para identificar el canal oficial
 _OFFICIAL_KW = {"presidencia", "gobierno", "sheinbaum", "claudia", "gob.mx"}
 
+
+def _date_matches(e: dict, fecha: str) -> bool:
+    """True si el video es claramente de la fecha indicada.
+    Retorna False cuando no se puede confirmar la fecha (evita usar videos de otros días).
+    """
+    try:
+        dt = datetime.date.fromisoformat(fecha)
+    except ValueError:
+        return False
+
+    mes_full = _MESES[dt.month]                  # "agosto"
+    mes_frag = mes_full[:3]                       # "ago"
+    dia_pad  = f"{dt.day:02d}"                    # "04"
+    dia_str  = str(dt.day)                        # "4"
+    year_str = str(dt.year)                       # "2026"
+
+    # 1) upload_date de yt-dlp (YYYYMMDD) — más fiable
+    upload_date = (e.get("upload_date") or "").strip()
+    if len(upload_date) == 8:
+        try:
+            vd = datetime.date(int(upload_date[:4]), int(upload_date[4:6]), int(upload_date[6:8]))
+            return abs((vd - dt).days) <= 1
+        except (ValueError, TypeError):
+            pass
+
+    # 2) timestamp Unix
+    ts = e.get("timestamp")
+    if ts:
+        try:
+            vd = datetime.date.fromtimestamp(int(ts))
+            return abs((vd - dt).days) <= 1
+        except (ValueError, TypeError, OSError):
+            pass
+
+    # 3) Título: busca el nombre completo del mes + año (patrón más fiable)
+    title = (e.get("title") or "").lower()
+
+    # "04 de agosto 2026" / "4 de agosto de 2026" / "agosto 2026"
+    if mes_full in title and year_str in title:
+        return True
+
+    # "4 ago 2026" / "04 ago 2026"
+    if mes_frag in title and year_str in title:
+        return True
+
+    # Formatos numéricos: "04/08/2026", "04-08-2026", "2026-08-04"
+    mes_pad = f"{dt.month:02d}"
+    for pat in (
+        f"{dia_pad}/{mes_pad}/{year_str}",
+        f"{dia_pad}-{mes_pad}-{year_str}",
+        f"{year_str}-{mes_pad}-{dia_pad}",
+        f"{dia_pad}/{mes_pad}/{year_str[2:]}",  # "04/08/26"
+    ):
+        if pat in title:
+            return True
+
+    # 4) Sin información de fecha confirmable → no asumir que es el video correcto
+    return False
+
 # ── System prompt ─────────────────────────────────────────────────────────────
 _SYSTEM = """\
 Eres el analista senior de inteligencia comercial de TYASA, empresa siderúrgica \
@@ -234,6 +293,7 @@ def _find_video_candidates(fecha: str) -> tuple[list[dict], str]:
                     is_official = _is_official(e)
                     is_live = _is_live(e)
                     duration = e.get("duration") or 0
+                    date_ok  = _date_matches(e, fecha)
 
                     if is_official and duration >= 2700:
                         priority = 1
@@ -251,13 +311,14 @@ def _find_video_candidates(fecha: str) -> tuple[list[dict], str]:
                         "is_live": is_live,
                         "duration": duration,
                         "priority": priority,
+                        "date_ok": date_ok,
                     })
 
         except Exception:
             continue
 
-    # Ordenar por prioridad y deduplicar
-    candidates.sort(key=lambda c: (c["priority"], c["duration"] * -1))
+    # Ordenar: fecha correcta primero, luego por prioridad y duración
+    candidates.sort(key=lambda c: (not c["date_ok"], c["priority"], -c["duration"]))
     return candidates, ""
 
 
@@ -455,24 +516,51 @@ def analizar_mananera(
             "_is_live": False,
         }
 
-    # Paso 2 — intentar transcripción en cada candidato hasta que funcione
+    # Paso 2 — intentar transcripción en cada candidato hasta que funcione.
+    # REGLAS:
+    # a) Los candidatos ya vienen ordenados: date_ok=True primero.
+    # b) Si un candidato date_ok=True está en vivo sin transcripción → parar
+    #    y NO caer a videos de otra fecha.
+    # c) Si un candidato date_ok=False está en vivo y fue el primero intentado
+    #    (sin candidatos date_ok=True) → también parar (conferencia en curso).
     transcript = None
-    video_id = None
-    is_live = False
-    tried = 0
+    video_id   = None
+    is_live    = False
+    tried      = 0
+    found_live_today   = False   # video del día (date_ok) en vivo, sin transcript
+    found_any_live     = False   # cualquier live intentado sin transcript
+    has_date_ok_cands  = any(c.get("date_ok") for c in candidates)
+
     for cand in candidates:
+        date_ok_cand = cand.get("date_ok", False)
+
+        # Si ya tenemos evidencia de una conferencia en vivo del día correcto,
+        # no analizar videos de otras fechas como sustituto.
+        if found_live_today and not date_ok_cand:
+            break
+        # Si no hay candidatos date_ok en absoluto pero ya probamos un live,
+        # tampoco caer a videos sin live.
+        if found_any_live and not has_date_ok_cands and not cand.get("is_live"):
+            break
+
         tried += 1
         transcript, _ = _get_transcript(cand["id"])
         if transcript:
             video_id = cand["id"]
-            is_live = cand["is_live"]
+            is_live  = cand["is_live"]
             break
-        # Si no funciona, seguir con el siguiente candidato
+
+        # Registrar si este candidato era en vivo
+        if cand.get("is_live"):
+            found_any_live = True
+            if date_ok_cand:
+                found_live_today = True
 
     if not transcript:
-        if is_live:
+        live_detected = found_live_today or (found_any_live and not has_date_ok_cands)
+        if live_detected or is_live:
             msg = (
-                "La conferencia está en vivo o acaba de terminar. "
+                "La conferencia de hoy está en vivo o acaba de terminar. "
                 "Las transcripciones automáticas de YouTube quedan disponibles "
                 "aproximadamente 15-30 minutos después de finalizar la transmisión. "
                 "Intenta de nuevo en unos minutos."
@@ -485,7 +573,7 @@ def analizar_mananera(
             "_cached": False,
             "fecha": fecha,
             "_video_id": candidates[0]["id"] if candidates else None,
-            "_is_live": False,
+            "_is_live": live_detected or is_live,
         }
 
     # Paso 3 — Gemini (truncar a 40 000 chars ≈ 1 h de discurso)

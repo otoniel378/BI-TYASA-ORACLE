@@ -1,11 +1,12 @@
 """
 update_sentimiento_noticias.py — Procesa noticias siderúrgicas y clasifica sentimiento con Gemini.
+Guarda en Oracle ADW (ADMIN.GOLD_SENTIMIENTO_NOTICIAS) via MERGE sobre ID (hash de URL+fecha).
 
 Uso:
-  python scripts/update_sentimiento_noticias.py            # usa token de secrets.toml
+  python scripts/update_sentimiento_noticias.py            # usa token de secrets.toml o .env
   GEMINI_API_KEY=xxx python scripts/update_sentimiento_noticias.py
 
-Corre diariamente (recomendado). Guarda en gold_sentimiento_noticias via MERGE.
+Corre diariamente (recomendado).
 """
 
 import os, sys
@@ -15,13 +16,11 @@ _root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_root))
 
 import pandas as pd
-from datetime import date
+import oracledb
+from datetime import date, datetime
+from dotenv import load_dotenv
 
-# ── Config ────────────────────────────────────────────────────────────────────
-PROJECT_ID   = "project-d0cf2519-d089-47d3-930"
-DATASET      = "tyasa_bi"
-TABLE_SENT   = f"{PROJECT_ID}.{DATASET}.gold_sentimiento_noticias"
-TABLE_STAGING = f"{PROJECT_ID}.{DATASET}._staging_sentimiento"
+load_dotenv()
 
 MAX_POR_GRUPO = 8   # noticias a buscar por grupo temático
 MAX_TOTAL     = 60  # límite total para no exceder tokens de Gemini
@@ -44,81 +43,79 @@ def _get_gemini_key() -> str:
             return ""
 
 
-def _get_bq_client():
-    from google.cloud import bigquery
-    return bigquery.Client(project=PROJECT_ID)
+def get_conn() -> oracledb.Connection:
+    wallet_dir = os.environ.get("ORACLE_WALLET_DIR", "")
+    params = {
+        "user":     os.environ.get("ORACLE_USER", "ADMIN"),
+        "password": os.environ.get("ORACLE_PASSWORD", ""),
+        "dsn":      os.environ.get("ORACLE_DSN", ""),
+    }
+    if wallet_dir:
+        params["config_dir"]      = wallet_dir
+        params["wallet_location"] = wallet_dir
+        wallet_pw = os.environ.get("ORACLE_WALLET_PASSWORD", "")
+        if wallet_pw:
+            params["wallet_password"] = wallet_pw
+    return oracledb.connect(**params)
 
 
-def _crear_tabla_si_no_existe(client):
-    from google.cloud import bigquery
-    schema = [
-        bigquery.SchemaField("hash_url",           "STRING",    mode="REQUIRED"),
-        bigquery.SchemaField("fecha_pub",           "DATE"),
-        bigquery.SchemaField("fecha_analisis",      "DATE"),
-        bigquery.SchemaField("titulo",              "STRING"),
-        bigquery.SchemaField("fuente",              "STRING"),
-        bigquery.SchemaField("url",                 "STRING"),
-        bigquery.SchemaField("grupo_tematico",      "STRING"),
-        bigquery.SchemaField("variable_principal",  "STRING"),
-        bigquery.SchemaField("alcance",             "STRING"),
-        bigquery.SchemaField("sentimiento",         "STRING"),
-        bigquery.SchemaField("score",               "FLOAT64"),
-        bigquery.SchemaField("señal",               "STRING"),
-        bigquery.SchemaField("razon",               "STRING"),
-        bigquery.SchemaField("confianza",           "STRING"),
-    ]
-    table = bigquery.Table(TABLE_SENT, schema=schema)
-    client.create_table(table, exists_ok=True)
-    print(f"  Tabla {TABLE_SENT} lista.")
+def _to_pydate(v):
+    """Convierte a datetime.date; NaT/None/'' -> None (oracledb no acepta NaT ni strings sueltas)."""
+    ts = pd.to_datetime(v, errors="coerce")
+    return None if pd.isna(ts) else ts.to_pydatetime()
 
 
-def _upsert_bq(client, df: pd.DataFrame) -> int:
-    """Carga df a staging y hace MERGE sobre hash_url."""
+def _upsert_oracle(conn: oracledb.Connection, df: pd.DataFrame) -> int:
+    """MERGE sobre ID (hash_url) — inserta noticias nuevas, actualiza las que ya existían."""
     if df.empty:
         return 0
 
-    from google.cloud import bigquery
-    job_cfg = bigquery.LoadJobConfig(
-        write_disposition="WRITE_TRUNCATE",
-        schema=[
-            bigquery.SchemaField("hash_url",          "STRING"),
-            bigquery.SchemaField("fecha_pub",          "DATE"),
-            bigquery.SchemaField("fecha_analisis",     "DATE"),
-            bigquery.SchemaField("titulo",             "STRING"),
-            bigquery.SchemaField("fuente",             "STRING"),
-            bigquery.SchemaField("url",                "STRING"),
-            bigquery.SchemaField("grupo_tematico",     "STRING"),
-            bigquery.SchemaField("variable_principal", "STRING"),
-            bigquery.SchemaField("alcance",            "STRING"),
-            bigquery.SchemaField("sentimiento",        "STRING"),
-            bigquery.SchemaField("score",              "FLOAT64"),
-            bigquery.SchemaField("señal",              "STRING"),
-            bigquery.SchemaField("razon",              "STRING"),
-            bigquery.SchemaField("confianza",          "STRING"),
-        ]
-    )
-    df["fecha_pub"]       = pd.to_datetime(df["fecha_pub"], errors="coerce").dt.date
-    df["fecha_analisis"]  = pd.to_datetime(df["fecha_analisis"], errors="coerce").dt.date
+    rows = [
+        {
+            "id": r["hash_url"], "fecha_pub": _to_pydate(r["fecha_pub"]),
+            "fecha_analisis": r["fecha_analisis"], "titulo": r["titulo"], "fuente": r["fuente"],
+            "url": r["url"], "grupo_tematico": r["grupo_tematico"],
+            "variable_principal": r["variable_principal"], "alcance": r["alcance"],
+            "sentimiento": r["sentimiento"], "score": r["score"], "senal": r["señal"],
+            "razon": r["razon"], "confianza": r["confianza"],
+        }
+        for r in df.to_dict(orient="records")
+    ]
 
-    client.load_table_from_dataframe(df, TABLE_STAGING, job_config=job_cfg).result()
-
-    merge_sql = f"""
-    MERGE `{TABLE_SENT}` T
-    USING `{TABLE_STAGING}` S ON T.hash_url = S.hash_url
-    WHEN NOT MATCHED THEN INSERT ROW
-    WHEN MATCHED THEN UPDATE SET
-      fecha_analisis     = S.fecha_analisis,
-      sentimiento        = S.sentimiento,
-      score              = S.score,
-      variable_principal = S.variable_principal,
-      señal              = S.señal,
-      alcance            = S.alcance,
-      razon              = S.razon,
-      confianza          = S.confianza
+    # Binds nombrados (no posicionales): oracledb cuenta cada *ocurrencia* de un
+    # bind posicional como un valor distinto, así que ":1" repetido en USING/VALUES
+    # exige duplicar el valor en la tupla — con binds nombrados cada valor se
+    # provee una sola vez aunque se use varias veces en el SQL.
+    merge_sql = """
+        MERGE INTO ADMIN.GOLD_SENTIMIENTO_NOTICIAS T
+        USING (SELECT :id AS ID FROM dual) S
+        ON (T.ID = S.ID)
+        WHEN MATCHED THEN UPDATE SET
+            FECHA_ANALISIS     = :fecha_analisis,
+            SENTIMIENTO        = :sentimiento,
+            SCORE              = :score,
+            VARIABLE_PRINCIPAL = :variable_principal,
+            SENAL              = :senal,
+            ALCANCE            = :alcance,
+            RAZON              = :razon,
+            CONFIANZA          = :confianza
+        WHEN NOT MATCHED THEN INSERT
+            (ID, FECHA_PUB, FECHA_ANALISIS, TITULO, FUENTE, URL, GRUPO_TEMATICO,
+             VARIABLE_PRINCIPAL, ALCANCE, SENTIMIENTO, SCORE, SENAL, RAZON, CONFIANZA)
+        VALUES
+            (:id, :fecha_pub, :fecha_analisis, :titulo, :fuente, :url, :grupo_tematico,
+             :variable_principal, :alcance, :sentimiento, :score, :senal, :razon, :confianza)
     """
-    client.query(merge_sql).result()
-    client.delete_table(TABLE_STAGING, not_found_ok=True)
-    return len(df)
+    cursor = conn.cursor()
+    try:
+        # ADW paraleliza DML por default; varios MERGE seguidos sobre la misma
+        # tabla en una transacción sin esto disparan ORA-12838.
+        cursor.execute("ALTER SESSION DISABLE PARALLEL DML")
+        cursor.executemany(merge_sql, rows)
+        conn.commit()
+    finally:
+        cursor.close()
+    return len(rows)
 
 
 def run():
@@ -186,11 +183,15 @@ def run():
     df_sent = resultados_a_dataframe(resultados)
     print(f"  DataFrame: {len(df_sent)} filas")
 
-    # Guardar en BigQuery
-    print("\n  Guardando en BigQuery...")
-    client = _get_bq_client()
-    _crear_tabla_si_no_existe(client)
-    n_guardadas = _upsert_bq(client, df_sent)
+    df_sent["fecha_analisis"] = datetime.utcnow()
+
+    # Guardar en Oracle ADW
+    print("\n  Guardando en Oracle ADW...")
+    conn = get_conn()
+    try:
+        n_guardadas = _upsert_oracle(conn, df_sent)
+    finally:
+        conn.close()
     print(f"  Guardadas/actualizadas: {n_guardadas} noticias")
 
     # Resumen de sentimiento
@@ -199,9 +200,9 @@ def run():
     n_neu = (df_sent["sentimiento"] == "neutro").sum()
     score_avg = df_sent["score"].mean()
     print(f"\n  Sentimiento del día:")
-    print(f"    ✅ Positivas: {n_pos} | ❌ Negativas: {n_neg} | ⚪ Neutras: {n_neu}")
+    print(f"    Positivas: {n_pos} | Negativas: {n_neg} | Neutras: {n_neu}")
     print(f"    Score promedio: {score_avg:+.3f}")
-    print("\n  ✅ LISTO")
+    print("\n  LISTO")
 
 
 if __name__ == "__main__":
