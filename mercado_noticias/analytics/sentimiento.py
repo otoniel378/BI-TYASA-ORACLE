@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import time
 from datetime import date
 from pathlib import Path
 
@@ -207,6 +208,7 @@ def _llamar_gemini(prompt: str, api_key: str, model: str) -> dict | None:
         }
         resp = requests.post(url, json=body, timeout=25)
         if resp.status_code != 200:
+            print(f"[sentimiento] REST HTTP {resp.status_code}: {resp.text[:300]}")
             return None
         raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
         return _parse_json(raw)
@@ -228,6 +230,8 @@ def clasificar_lote(
         try:
             r = clasificar_noticia(n, gemini_key, model=model)
             resultados.append(r)
+            if not r.get("_cached"):
+                time.sleep(0.5)  # margen defensivo contra rate limit por ráfaga
         except Exception as e:
             print(f"[sentimiento] Error clasificando {n.get('url','')[:50]}: {e}")
     return resultados
