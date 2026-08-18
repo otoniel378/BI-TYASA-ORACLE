@@ -339,14 +339,14 @@ if _bq_ok and not df_sent.empty:
     st.divider()
 
 # ── SECCIÓN: Noticias clasificadas ────────────────────────────────────────────
-seccion_titulo("Noticias Clasificadas", "Ordenadas por impacto en TYASA")
+seccion_titulo("Noticias Clasificadas", "Ordena por fecha o por impacto en TYASA")
 
-# Fuente: tiempo real o BQ
+# Fuente: tiempo real o BQ (sin ordenar aún — el orden se decide con el toggle de abajo)
 noticias_mostrar = []
 if usar_rt and resultados_activos:
-    noticias_mostrar = sorted(resultados_activos, key=lambda x: abs(x.get("score", 0.0)), reverse=True)
+    noticias_mostrar = list(resultados_activos)
 elif _bq_ok and not df_sent.empty:
-    noticias_mostrar = df_sent.sort_values("score", ascending=False, key=abs).to_dict("records")
+    noticias_mostrar = df_sent.to_dict("records")
 
 _SENT_STYLE = {
     "positivo": (_OK, "#DCFCE7", "✅"),
@@ -354,10 +354,28 @@ _SENT_STYLE = {
     "neutro":   (_T3, "#F1F5F9", "ℹ️"),
 }
 
-filtro_sent = st.radio(
-    "Mostrar:", ["Todas", "Positivas para TYASA", "Negativas para TYASA"],
-    horizontal=True, key="sent_filtro_noticia",
-)
+col_orden, col_filtro = st.columns([1, 2])
+with col_orden:
+    orden_sent = st.radio(
+        "Ordenar por:", ["Más reciente", "Mayor impacto"],
+        horizontal=True, key="sent_orden_noticia",
+    )
+with col_filtro:
+    filtro_sent = st.radio(
+        "Mostrar:", ["Todas", "Positivas para TYASA", "Negativas para TYASA"],
+        horizontal=True, key="sent_filtro_noticia",
+    )
+
+def _fecha_pub_dt(n):
+    ts = pd.to_datetime(n.get("fecha_pub"), errors="coerce")
+    return ts if pd.notna(ts) else pd.Timestamp.min
+
+if orden_sent == "Más reciente":
+    noticias_mostrar = sorted(noticias_mostrar, key=_fecha_pub_dt, reverse=True)
+else:
+    noticias_mostrar = sorted(
+        noticias_mostrar, key=lambda n: abs(float(n.get("score", 0.0) or 0.0)), reverse=True
+    )
 
 if filtro_sent == "Positivas para TYASA":
     noticias_mostrar = [n for n in noticias_mostrar if n.get("sentimiento") == "positivo"]
