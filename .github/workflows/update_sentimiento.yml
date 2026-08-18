@@ -41,6 +41,15 @@ jobs:
           GEMINI_API_KEY:         ${{ secrets.GEMINI_API_KEY }}
         run: python scripts/update_sentimiento_noticias.py
 
+      - name: Cruzar quiebres activos con noticias clasificadas
+        env:
+          ORACLE_USER:            ${{ secrets.ORACLE_USER }}
+          ORACLE_PASSWORD:        ${{ secrets.ORACLE_PASSWORD }}
+          ORACLE_DSN:             ${{ secrets.ORACLE_DSN }}
+          ORACLE_WALLET_DIR:      /tmp/oracle_wallet
+          ORACLE_WALLET_PASSWORD: ${{ secrets.ORACLE_WALLET_PASSWORD }}
+        run: python scripts/link_noticias_quiebres.py
+
       - name: Resultado
         if: always()
         run: echo "Actualización completada - $(date)"
