@@ -120,6 +120,38 @@ def run_query_params(sql: str, params: list | dict) -> pd.DataFrame:
             cursor.close()
 
 
+def run_write(sql: str, params: list | dict | None = None) -> int:
+    """Ejecuta un INSERT/UPDATE/DELETE de una sola sentencia contra el pool
+    y hace commit. Devuelve cursor.rowcount."""
+    pool = get_oracle_pool()
+    with pool.acquire() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(sql, params or [])
+            conn.commit()
+            return cursor.rowcount
+        except Exception as e:
+            raise RuntimeError(f"Error Oracle:\n{sql}\n\nDetalle: {e}") from e
+        finally:
+            cursor.close()
+
+
+def run_executemany(sql: str, rows: list[tuple]) -> int:
+    """INSERT/UPDATE masivo (executemany) contra el pool. Hace commit al final
+    y devuelve el número de filas de <rows> (equivalente al rowcount total)."""
+    pool = get_oracle_pool()
+    with pool.acquire() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.executemany(sql, rows)
+            conn.commit()
+            return len(rows)
+        except Exception as e:
+            raise RuntimeError(f"Error Oracle:\n{sql}\n\nDetalle: {e}") from e
+        finally:
+            cursor.close()
+
+
 def list_tables() -> list[str]:
     """Devuelve la lista de tablas disponibles en el schema ADMIN."""
     pool = get_oracle_pool()

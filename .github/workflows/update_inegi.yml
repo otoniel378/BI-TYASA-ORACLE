@@ -1,0 +1,48 @@
+name: Actualización Mensual de Indicadores INEGI
+
+on:
+  schedule:
+    # Día 10 de cada mes, 9:00 AM México (15:00 UTC) — da margen a que INEGI
+    # publique las actualizaciones del mes (ENEC, IMAI, INPP, etc. tienen
+    # calendarios de publicación distintos dentro del mes)
+    - cron: "0 15 10 * *"
+  workflow_dispatch:  # permite correrlo manualmente desde GitHub
+
+jobs:
+  update-inegi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: pip install oracledb requests pandas python-dotenv
+
+      - name: Extraer wallet de Oracle
+        run: |
+          mkdir -p /tmp/oracle_wallet
+          echo "${{ secrets.ORACLE_WALLET_B64 }}" | base64 -d > /tmp/oracle_wallet.zip
+          unzip -o /tmp/oracle_wallet.zip -d /tmp/oracle_wallet
+          echo "Wallet extraído:"
+          ls /tmp/oracle_wallet
+
+      - name: Descargar indicadores INEGI y actualizar Oracle ADW
+        env:
+          ORACLE_USER:            ${{ secrets.ORACLE_USER }}
+          ORACLE_PASSWORD:        ${{ secrets.ORACLE_PASSWORD }}
+          ORACLE_DSN:             ${{ secrets.ORACLE_DSN }}
+          ORACLE_WALLET_DIR:      /tmp/oracle_wallet
+          ORACLE_WALLET_PASSWORD: ${{ secrets.ORACLE_WALLET_PASSWORD }}
+          INEGI_TOKEN:            ${{ secrets.INEGI_TOKEN }}
+        run: python scripts/update_inegi_data.py
+
+      - name: Resultado
+        if: always()
+        run: echo "Actualización INEGI completada - $(date)"
