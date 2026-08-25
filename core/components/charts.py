@@ -23,6 +23,11 @@ _LAYOUT_BASE = dict(
     plot_bgcolor="#FFFFFF",
     font=_FONT,
     margin=dict(l=42, r=12, t=36, b=32),
+    # Streamlit reutiliza el mismo componente Plotly entre reruns (Plotly.react
+    # por debajo) cuando el gráfico no cambia de posición/key, así que esta
+    # transición sí anima cambios de datos (ej. cambiar un filtro) en vez de
+    # solo redibujar de golpe.
+    transition=dict(duration=400, easing="cubic-in-out"),
     legend=dict(
         orientation="h", yanchor="bottom", y=-0.32,
         xanchor="center", x=0.5,

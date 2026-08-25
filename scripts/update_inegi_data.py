@@ -66,6 +66,12 @@ INDICADORES = {
     "701407": "ICE_Construccion",
     "701401": "ICE_Global",
     "334497": "ICC_Confianza_Consumidor",
+    # ── ENEC ANUAL — Sector 23 Construcción (valor de producción por subsector) ─
+    "796426": "ENEC_Anual_ValorProd_Sector23",
+    "796427": "ENEC_Anual_ValorProd_Subsector236_Edificacion",
+    "796428": "ENEC_Anual_ValorProd_Subsector237_ObrasIngCivil",
+    "796429": "ENEC_Anual_ValorProd_Subsector238_TrabEspecializados",
+    "5300000027": "ENEC_Anual_Remuneraciones_Sector23",
 }
 
 BIE_BASE   = "https://www.inegi.org.mx/app/api/indicadores/desarrolladores/jsonxml"
@@ -83,6 +89,11 @@ _HEADERS = {
 
 def _parse_periodo(periodo: str) -> str | None:
     if "/" not in periodo:
+        # Series anuales (FREQ Anual): TIME_PERIOD viene como "2024", sin sufijo.
+        # Se guarda como cierre de año (YYYY-12) para respetar el formato YYYY-MM
+        # que usan el resto de los indicadores en GOLD_INDICADORES_INEGI.
+        if periodo.isdigit() and len(periodo) == 4:
+            return f"{periodo}-12"
         return None
     year, sub = periodo.split("/", 1)
     if sub.startswith("T"):
@@ -96,10 +107,18 @@ def _parse_periodo(periodo: str) -> str | None:
         return None
 
 
-def fetch_batch(ids: list[str], token: str) -> list[tuple]:
-    """Descarga un batch de indicadores INEGI (área=00, banco=BIE-BISE)."""
+# Indicadores descontinuados/legado que solo existen en el banco "BISE"
+# (el resto del catálogo vive en "BIE-BISE"; mezclarlos en un mismo batch
+# devuelve 401 en vez del 400 individual, por eso se separan aquí).
+BANCO_ESPECIAL: dict[str, str] = {
+    "5300000027": "BISE",
+}
+
+
+def fetch_batch(ids: list[str], token: str, banco: str = "BIE-BISE") -> list[tuple]:
+    """Descarga un batch de indicadores INEGI (área=00, banco configurable)."""
     ids_str = ",".join(ids)
-    url = f"{BIE_BASE}/INDICATOR/{ids_str}/es/00/false/BIE-BISE/2.0/{token}?type=json"
+    url = f"{BIE_BASE}/INDICATOR/{ids_str}/es/00/false/{banco}/2.0/{token}?type=json"
     try:
         resp = requests.get(url, timeout=30, headers=_HEADERS)
         resp.raise_for_status()
@@ -152,7 +171,7 @@ def cargar_indicadores(truncate: bool = False, insert_batch: int = 2000):
         sys.exit(1)
 
     import time
-    ids     = list(INDICADORES.keys())
+    ids     = [c for c in INDICADORES.keys() if c not in BANCO_ESPECIAL]
     batches = [ids[i:i + BATCH_SIZE] for i in range(0, len(ids), BATCH_SIZE)]
     print(f"Descargando {len(ids)} indicadores en {len(batches)} batch(es)...")
 
@@ -166,6 +185,14 @@ def cargar_indicadores(truncate: bool = False, insert_batch: int = 2000):
             print(f"  Batch {i}/{len(batches)}: sin datos")
         if i < len(batches):
             time.sleep(0.5)
+
+    for clave, banco in BANCO_ESPECIAL.items():
+        rows = fetch_batch([clave], token, banco=banco)
+        if rows:
+            all_rows.extend(rows)
+            print(f"  {clave} (banco {banco}): {len(rows)} obs OK")
+        else:
+            print(f"  {clave} (banco {banco}): sin datos")
 
     if not all_rows:
         print("Sin datos para cargar.")

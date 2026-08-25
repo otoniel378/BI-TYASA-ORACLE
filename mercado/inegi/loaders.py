@@ -63,6 +63,12 @@ INDICADORES_CONFIG = {
     "701407": "ICE_Construccion",
     "701401": "ICE_Global",
     "334497": "ICC_Confianza_Consumidor",
+    # ── ENEC ANUAL — Sector 23 Construcción (valor de producción por subsector) ─
+    "796426": "ENEC_Anual_ValorProd_Sector23",
+    "796427": "ENEC_Anual_ValorProd_Subsector236_Edificacion",
+    "796428": "ENEC_Anual_ValorProd_Subsector237_ObrasIngCivil",
+    "796429": "ENEC_Anual_ValorProd_Subsector238_TrabEspecializados",
+    "5300000027": "ENEC_Anual_Remuneraciones_Sector23",
 }
 
 # ── Etiquetas cortas legibles ────────────────────────────────────────────────
@@ -104,6 +110,11 @@ INDICADORES_LABEL = {
     "701407": "ICE Construcción",
     "701401": "ICE Global",
     "334497": "ICC Consumidor",
+    "796426": "ENEC Anual Sector 23 (total)",
+    "796427": "ENEC Anual Subsector 236 Edificación",
+    "796428": "ENEC Anual Subsector 237 Obras Ing. Civil",
+    "796429": "ENEC Anual Subsector 238 Trab. Especializados",
+    "5300000027": "ENEC Anual Remuneraciones Sector 23",
 }
 
 # ── Grupos con metadatos ─────────────────────────────────────────────────────
@@ -177,6 +188,13 @@ GRUPOS_INEGI = {
         "claves": ["701407","701401","334497"],
         "color": "#E05C2D",
         "icon": "💡",
+    },
+    "ENEC_ANUAL": {
+        "label": "Construcción — Sector 23 Anual",
+        "desc": "Valor de producción anual desglosado por subsector (236 Edificación, 237 Obras de ingeniería civil, 238 Trabajos especializados) — vista estructural del sector construcción, complementa el ENEC mensual",
+        "claves": ["796426","796427","796428","796429","5300000027"],
+        "color": "#A1887F",
+        "icon": "🧱",
     },
 }
 

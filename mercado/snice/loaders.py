@@ -114,6 +114,77 @@ def load_empresas_filtradas(
     return _lc(run_query_params(sql, params))
 
 
+@st.cache_data(ttl=600, show_spinner="Filtrando empresas por fracciones TYASA...")
+def load_empresas_fracciones(
+    periodo: str,
+    fracciones_exactas: tuple[str, ...],
+    fracciones_prefijo: tuple[str, ...] = (),
+    limite: int = 200,
+) -> pd.DataFrame:
+    """
+    Como load_empresas_filtradas(), pero filtra por una LISTA de fracciones
+    (ej. el catálogo de TYASA) en vez de una sola partida de 4 dígitos.
+    <fracciones_exactas>: códigos completos de 8 dígitos, match exacto contra
+    los primeros 8 dígitos de FRACCION_ARANCELARIA (que puede venir a 8 o 10).
+    <fracciones_prefijo>: códigos de 6 dígitos (subpartida), match por prefijo.
+    Los valores vienen de un catálogo interno fijo, no de input de usuario.
+    """
+    if not fracciones_exactas and not fracciones_prefijo:
+        return pd.DataFrame()
+
+    condiciones_fraccion = []
+    if fracciones_exactas:
+        exactas = ",".join(f"'{f}'" for f in sorted(set(fracciones_exactas)))
+        condiciones_fraccion.append(f"SUBSTR(FRACCION_ARANCELARIA,1,8) IN ({exactas})")
+    for prefijo in sorted(set(fracciones_prefijo)):
+        condiciones_fraccion.append(f"SUBSTR(FRACCION_ARANCELARIA,1,6) = '{prefijo}'")
+    where_fraccion = "(" + " OR ".join(condiciones_fraccion) + ")"
+
+    sql = f"""
+        SELECT RAZON_SOCIAL, SUM(VOLUMEN_AVISO) AS VOLUMEN_TOTAL, COUNT(*) AS AVISOS,
+               COUNT(DISTINCT SUBSTR(FRACCION_ARANCELARIA,1,8)) AS FRACCIONES_DISTINTAS,
+               COUNT(DISTINCT PAIS_ORIGEN) AS PAISES_DISTINTOS
+        FROM {T_BRONZE}
+        WHERE PERIODO = :periodo AND {where_fraccion} AND RAZON_SOCIAL IS NOT NULL
+        GROUP BY RAZON_SOCIAL
+        ORDER BY VOLUMEN_TOTAL DESC
+        FETCH FIRST {int(limite)} ROWS ONLY
+    """
+    return _lc(run_query_params(sql, {"periodo": periodo}))
+
+
+@st.cache_data(ttl=600, show_spinner="Cargando empresas para esta fracción...")
+def load_empresas_fraccion_exacta(periodo: str, fraccion: str, limite: int = 50) -> pd.DataFrame:
+    """Empresas SNICE para UNA fracción exacta (8 dígitos) — para el drill-down
+    lado a lado con el volumen nacional CANACERO de esa misma fracción."""
+    sql = f"""
+        SELECT RAZON_SOCIAL, SUM(VOLUMEN_AVISO) AS VOLUMEN_TOTAL, COUNT(*) AS AVISOS,
+               COUNT(DISTINCT PAIS_ORIGEN) AS PAISES_DISTINTOS
+        FROM {T_BRONZE}
+        WHERE PERIODO = :periodo AND SUBSTR(FRACCION_ARANCELARIA,1,8) = :fraccion AND RAZON_SOCIAL IS NOT NULL
+        GROUP BY RAZON_SOCIAL
+        ORDER BY VOLUMEN_TOTAL DESC
+        FETCH FIRST {int(limite)} ROWS ONLY
+    """
+    return _lc(run_query_params(sql, {"periodo": periodo, "fraccion": fraccion[:8]}))
+
+
+@st.cache_data(ttl=600, show_spinner="Cargando avisos de esta fracción...")
+def load_avisos_fraccion_exacta(periodo: str, fraccion: str, limite: int = 100) -> pd.DataFrame:
+    """Detalle por aviso (una fila por trámite, no agregado) para UNA fracción
+    exacta — incluye país e inicio/fin de vigencia, para 'Consulta por fracción
+    específica'. Solo cubre los periodos que aún viven en BRONZE (~2 meses)."""
+    sql = f"""
+        SELECT RAZON_SOCIAL, PAIS_ORIGEN, VOLUMEN_AVISO, FECHA_TRAMITE,
+               INICIO_VIGENCIA, FIN_VIGENCIA
+        FROM {T_BRONZE}
+        WHERE PERIODO = :periodo AND SUBSTR(FRACCION_ARANCELARIA,1,8) = :fraccion
+        ORDER BY FECHA_TRAMITE DESC
+        FETCH FIRST {int(limite)} ROWS ONLY
+    """
+    return _lc(run_query_params(sql, {"periodo": periodo, "fraccion": fraccion[:8]}))
+
+
 @st.cache_data(ttl=600, show_spinner="Filtrando categorías...")
 def load_categorias_filtradas(
     periodo: str, pais: str | None = None, busqueda: str | None = None, limite: int = 60
