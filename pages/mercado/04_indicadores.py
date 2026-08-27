@@ -388,7 +388,7 @@ def render():
     with col_title:
         st.markdown(
             "<h2 style='color:#E2E8F0;margin-bottom:2px;'>Indicadores INEGI</h2>"
-            "<p style='color:#64748B;margin:0;'>37 series macroeconómicas · 10 grupos · "
+            "<p style='color:#64748B;margin:0;'>52 series macroeconómicas · 12 grupos · "
             "alertas Z-score · análisis IA por indicador</p>",
             unsafe_allow_html=True,
         )
@@ -408,12 +408,12 @@ def render():
             df_alerts  = calcular_alertas()
             sparklines = load_sparklines(12)
     except Exception as exc:
-        st.error(f"Error al conectar con BigQuery: {exc}")
-        st.info("Verifica que `gold_indicadores_inegi` exista y que la autenticación GCP esté activa.")
+        st.error(f"Error al conectar con Oracle ADW: {exc}")
+        st.info("Verifica que `GOLD_INDICADORES_INEGI` exista y que las credenciales de Oracle (secrets.toml / .env) estén activas.")
         return
 
     if df_alerts.empty:
-        st.info("Sin datos en `gold_indicadores_inegi`. Ejecuta `scripts/script_inegi.py` para cargar datos.")
+        st.info("Sin datos en `GOLD_INDICADORES_INEGI`. Ejecuta `scripts/update_inegi_data.py` para cargar datos.")
         return
 
     df_alerts["clave"] = df_alerts["clave"].astype(str)
