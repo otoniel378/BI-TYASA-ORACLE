@@ -14,10 +14,20 @@ import plotly.graph_objects as go
 
 from mercado.inegi.loaders import (
     GRUPOS_INEGI,
+    GRUPOS_MENSUALES,
+    GRUPOS_ANUALES,
     INDICADORES_LABEL,
     calcular_alertas,
     load_sparklines,
     load_serie,
+    load_comparacion_anual,
+)
+from mercado.inegi.noticias_inegi import buscar_noticias_indicador
+from mercado.inegi.reportes import (
+    generar_word_indicador,
+    generar_pdf_indicador,
+    generar_word_grupo,
+    generar_pdf_grupo,
 )
 from mercado_noticias.analytics.ai_analysis import analizar_indicador_inegi
 
@@ -26,6 +36,9 @@ try:
     _GEMINI_KEY = st.secrets["GEMINI_API_KEY"]
 except Exception:
     _GEMINI_KEY = ""
+
+_MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+_RANGOS = {"12M": 12, "24M": 24, "36M": 36, "5A": 60, "Todo": 999}
 
 # ── Paleta de alertas ────────────────────────────────────────────────────────
 _ALERT = {
@@ -210,16 +223,102 @@ def _make_chart(df_serie: pd.DataFrame, label: str, color: str) -> go.Figure:
     fig.update_layout(
         paper_bgcolor="#0F1923", plot_bgcolor="#1A2535",
         font=dict(color="#94A3B8", size=11),
-        xaxis=dict(gridcolor="#2A3A52", showgrid=True, title=None, tickformat="%b %Y"),
+        xaxis=dict(
+            gridcolor="#2A3A52", showgrid=True, title=None, tickformat="%b %Y",
+            rangeslider=dict(visible=True, bgcolor="#0F1923", bordercolor="#2A3A52", thickness=0.06),
+        ),
         yaxis=dict(gridcolor="#2A3A52", showgrid=True, title=None),
-        margin=dict(l=50, r=20, t=20, b=50),
-        height=280, showlegend=False, hovermode="x unified",
+        margin=dict(l=50, r=20, t=20, b=20),
+        height=320, showlegend=False, hovermode="x unified",
     )
     return fig
 
 
+# ── Gráfica de comparación anual (YoY overlay, Ene-Dic) ─────────────────────
+def _make_yoy_chart(comp: dict, label: str, color: str) -> go.Figure:
+    anio_actual, anio_anterior = comp["anio_actual"], comp["anio_anterior"]
+    series = comp["series"]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=_MESES_CORTOS, y=[series[anio_anterior].get(m) for m in range(1, 13)],
+        mode="lines+markers", name=str(anio_anterior),
+        line=dict(color="#5B6B85", width=2, dash="dot"),
+        marker=dict(size=6, color="#5B6B85"),
+        hovertemplate="%{x} " + str(anio_anterior) + ": %{y:,.2f}<extra></extra>",
+    ))
+    fig.add_trace(go.Scatter(
+        x=_MESES_CORTOS, y=[series[anio_actual].get(m) for m in range(1, 13)],
+        mode="lines+markers", name=str(anio_actual),
+        line=dict(color=color, width=3),
+        marker=dict(size=7, color=color),
+        hovertemplate="%{x} " + str(anio_actual) + ": %{y:,.2f}<extra></extra>",
+    ))
+    fig.update_layout(
+        paper_bgcolor="#0F1923", plot_bgcolor="#1A2535",
+        font=dict(color="#94A3B8", size=11),
+        xaxis=dict(gridcolor="#2A3A52", showgrid=False, title=None),
+        yaxis=dict(gridcolor="#2A3A52", showgrid=True, title=None),
+        margin=dict(l=50, r=20, t=10, b=30),
+        height=300, hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.01, x=0, bgcolor="rgba(0,0,0,0)"),
+    )
+    return fig
+
+
+def _tendencia_reciente(comp: dict) -> str:
+    """Describe la tendencia de los últimos meses del año en curso (racha al alza/baja)."""
+    if not comp or not comp.get("anio_actual"):
+        return ""
+    serie = comp["series"].get(comp["anio_actual"], {})
+    meses = sorted(serie.keys())
+    if len(meses) < 3:
+        return ""
+    vals = [serie[m] for m in meses[-4:]]
+    deltas = [vals[i] - vals[i - 1] for i in range(1, len(vals))]
+    if all(d > 0 for d in deltas):
+        return f"📈 {len(deltas)} meses consecutivos al alza"
+    if all(d < 0 for d in deltas):
+        return f"📉 {len(deltas)} meses consecutivos a la baja"
+    return "➡️ sin racha definida en meses recientes"
+
+
+# ── Lenguaje ejecutivo (sin jerga estadística) ───────────────────────────────
+_ALERTA_FRASE = {
+    "Critico":  "Movimiento muy atípico — fuera de su comportamiento habitual",
+    "Alto":     "Fuera de lo habitual — vale la pena dar seguimiento",
+    "Moderado": "Ligera desviación de lo habitual",
+    "Normal":   "Dentro de su comportamiento habitual",
+}
+
+
+def _frase_resumen(var_mom, var_yoy, alerta: str) -> str:
+    def _desc(v):
+        try:
+            f = float(v)
+            return ("subió" if f >= 0 else "bajó", abs(f))
+        except Exception:
+            return None
+
+    m, y = _desc(var_mom), _desc(var_yoy)
+    partes = []
+    if m:
+        partes.append(f"{m[0]} {m[1]:.1f}% respecto al mes anterior")
+    if y:
+        partes.append(f"{y[0]} {y[1]:.1f}% respecto al mismo mes del año pasado")
+    if not partes:
+        return "Historial insuficiente para comparar este indicador todavía."
+
+    cola = {
+        "Critico":  " — un movimiento fuera de lo común que conviene revisar.",
+        "Alto":     " — un movimiento notorio, vale la pena seguirlo de cerca.",
+        "Moderado": " — una variación algo mayor a la usual.",
+        "Normal":   " — dentro de lo esperado para este indicador.",
+    }.get(alerta, "")
+    return f"Este indicador {' y '.join(partes)}{cola}"
+
+
 # ── Panel de estadísticas ────────────────────────────────────────────────────
-def _stats_card(row, df_serie: pd.DataFrame, color: str) -> str:
+def _stats_card(row, df_serie: pd.DataFrame, color: str, comp: dict | None = None) -> str:
     if row is None:
         return '<div style="color:#64748B;padding:8px;font-size:12px;">Sin estadísticas disponibles.</div>'
 
@@ -238,13 +337,6 @@ def _stats_card(row, df_serie: pd.DataFrame, color: str) -> str:
     mom_c, mom_s = arrow(row.get("var_mom"))
     yoy_c, yoy_s = arrow(var_yoy) if var_yoy is not None else ("#64748B", "—")
 
-    try:
-        z  = float(row.get("z_score") or 0)
-        zs = "—" if z != z else f"{z:+.2f}σ"   # z != z → NaN check
-        zc = am["color"] if alerta != "Normal" else "#66BB6A"
-    except Exception:
-        zs, zc = "—", "#64748B"
-
     def row_html(lbl, val, vc="#E2E8F0"):
         return (
             f'<div style="display:flex;justify-content:space-between;'
@@ -255,24 +347,42 @@ def _stats_card(row, df_serie: pd.DataFrame, color: str) -> str:
 
     ult_fecha = str(row.get("ult_fecha", ""))[:7]
     badge = (
-        f'<div style="display:inline-block;padding:4px 12px;background:{am["bg"]};'
-        f'border-radius:20px;font-size:11px;font-weight:700;color:{am["color"]};">'
-        f'{am["icon"]} {alerta.upper()}</div>'
+        f'<div style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;'
+        f'background:{am["bg"]};border-radius:20px;font-size:11.5px;font-weight:700;'
+        f'color:{am["color"]};">{am["icon"]} {_ALERTA_FRASE.get(alerta, _ALERTA_FRASE["Normal"])}</div>'
+    )
+    resumen_html = (
+        f'<div style="margin:10px 0 14px;font-size:12.5px;color:#CBD5E1;line-height:1.55;">'
+        f'{_frase_resumen(row.get("var_mom"), var_yoy, alerta)}</div>'
     )
     rows = (
-        row_html("Último dato", ult_fecha) +
+        row_html("Dato más reciente", ult_fecha) +
         row_html("Valor actual", _fmt(row.get("ult_valor"))) +
-        row_html("Variación MoM", mom_s, mom_c) +
-        row_html("Variación YoY", yoy_s, yoy_c) +
-        row_html("Media 24 meses", _fmt(row.get("media"))) +
-        row_html("Desv. estándar", _fmt(row.get("std"))) +
-        row_html("Z-score", zs, zc)
+        row_html("Vs. mes anterior", mom_s, mom_c) +
+        row_html("Vs. mismo mes del año pasado", yoy_s, yoy_c) +
+        row_html("Promedio últimos 24 meses", _fmt(row.get("media")))
     )
+
+    ytd_html = ""
+    if comp and comp.get("yoy_ytd") is not None:
+        ytd_c, ytd_s = arrow(comp["yoy_ytd"])
+        rows += row_html(
+            f"Acumulado {comp['meses_ytd']} meses de {comp['anio_actual']} vs. {comp['anio_anterior']}",
+            ytd_s, ytd_c,
+        )
+        tendencia = _tendencia_reciente(comp)
+        if tendencia:
+            ytd_html = (
+                f'<div style="margin-top:10px;padding:8px 10px;background:rgba(255,255,255,0.03);'
+                f'border-radius:8px;font-size:11px;color:#94A3B8;">{tendencia}</div>'
+            )
+
     return (
         f'<div style="background:{_SURFACE};border-radius:12px;padding:16px 18px;'
         f'border-left:4px solid {color};">'
-        f'<div style="margin-bottom:12px;">{badge}</div>'
-        f'{rows}</div>'
+        f'<div>{badge}</div>'
+        f'{resumen_html}'
+        f'{rows}{ytd_html}</div>'
     )
 
 
@@ -309,29 +419,127 @@ def _render_ai_result(result: dict | None) -> str:
     )
 
 
+# ── Noticias relacionadas ────────────────────────────────────────────────────
+@st.cache_data(ttl=1800, show_spinner=False)
+def _noticias_indicador_cached(clave: str, grupo: str, max_r: int = 8) -> list:
+    return buscar_noticias_indicador(clave, grupo, max_resultados=max_r)
+
+
+def _noticias_html(noticias: list) -> str:
+    if not noticias:
+        return (
+            f'<div style="color:#475569;font-size:12px;padding:12px;text-align:center;'
+            f'background:{_SURFACE};border-radius:10px;">Sin noticias relacionadas recientes.</div>'
+        )
+    items = ""
+    for n in noticias[:8]:
+        titulo  = n.get("titulo", "")
+        url     = n.get("url", "#")
+        fuente  = n.get("fuente", "")
+        fecha   = n.get("fecha_pub", "")
+        meta = "  ·  ".join(x for x in [fuente, fecha] if x)
+        items += (
+            f'<a href="{url}" target="_blank" style="text-decoration:none;">'
+            f'<div style="padding:10px 12px;border-bottom:1px solid #2A3A52;">'
+            f'<div style="color:#CBD5E1;font-size:12.5px;font-weight:500;line-height:1.4;">{titulo}</div>'
+            f'<div style="color:#64748B;font-size:10.5px;margin-top:3px;">{meta}</div>'
+            f'</div></a>'
+        )
+    return f'<div style="background:{_SURFACE};border-radius:12px;overflow:hidden;">{items}</div>'
+
+
+# ── Sección de generación de reportes ────────────────────────────────────────
+def _render_reporte_section(clave: str, tab_key: str, g: dict, periodos: int,
+                             incluir_noticias: bool, api_key: str) -> None:
+    label = INDICADORES_LABEL.get(clave, clave)
+    nota_ia = (
+        "Incluye gráfica, estadísticas en lenguaje ejecutivo, comparación anual, noticias y un "
+        "análisis con proyección e implicaciones para TYASA generado por IA."
+        if api_key else
+        "Incluye gráfica, estadísticas en lenguaje ejecutivo, comparación anual y noticias. "
+        "Configura GEMINI_API_KEY para agregar el análisis con proyección e implicaciones para TYASA."
+    )
+    st.markdown(
+        f"<p style='color:#94A3B8;font-size:12px;margin:8px 0 10px;'>{nota_ia}</p>",
+        unsafe_allow_html=True,
+    )
+    col_w, col_p = st.columns(2)
+    fname_base = f"INEGI_{clave}_{label}".replace(" ", "_").replace("/", "-")
+    with col_w:
+        if st.button("📄 Generar Word", key=f"genw_{clave}_{tab_key}", use_container_width=True):
+            with st.spinner("Generando documento Word (con análisis IA)..." if api_key else "Generando documento Word..."):
+                data = generar_word_indicador(clave, periodos=periodos, incluir_noticias=incluir_noticias,
+                                               api_key=api_key)
+            st.session_state[f"docx_{clave}_{tab_key}"] = data
+        if st.session_state.get(f"docx_{clave}_{tab_key}"):
+            st.download_button(
+                "⬇️ Descargar .docx", data=st.session_state[f"docx_{clave}_{tab_key}"],
+                file_name=f"{fname_base}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key=f"dlw_{clave}_{tab_key}", use_container_width=True,
+            )
+    with col_p:
+        if st.button("📑 Generar PDF", key=f"genp_{clave}_{tab_key}", use_container_width=True):
+            with st.spinner("Generando documento PDF (con análisis IA)..." if api_key else "Generando documento PDF..."):
+                data = generar_pdf_indicador(clave, periodos=periodos, incluir_noticias=incluir_noticias,
+                                              api_key=api_key)
+            st.session_state[f"pdf_{clave}_{tab_key}"] = data
+        if st.session_state.get(f"pdf_{clave}_{tab_key}"):
+            st.download_button(
+                "⬇️ Descargar .pdf", data=st.session_state[f"pdf_{clave}_{tab_key}"],
+                file_name=f"{fname_base}.pdf", mime="application/pdf",
+                key=f"dlp_{clave}_{tab_key}", use_container_width=True,
+            )
+
+
 # ── Contenido del expander (chart + stats + AI) ──────────────────────────────
 def _render_detail(clave: str, tab_key: str, g: dict,
                    alerts_idx: pd.DataFrame, gemini_key: str) -> None:
     label = INDICADORES_LABEL.get(clave, clave)
     row   = alerts_idx.loc[clave] if clave in alerts_idx.index else None
+    es_mensual = g.get("freq") == "mensual"
 
-    # Cargar serie histórica (cached en BQ)
+    # ── Filtros de la gráfica ────────────────────────────────────────────────
+    col_rango, col_vista = st.columns([2, 1.3])
+    with col_rango:
+        rango_key = f"rango_{clave}_{tab_key}"
+        rango_lbl = st.segmented_control(
+            "Rango", options=list(_RANGOS.keys()), default="24M",
+            key=rango_key, label_visibility="collapsed",
+        ) or "24M"
+    with col_vista:
+        vista = "Serie histórica"
+        if es_mensual:
+            vista_key = f"vista_{clave}_{tab_key}"
+            vista = st.segmented_control(
+                "Vista", options=["Serie histórica", "Comparación anual"], default="Serie histórica",
+                key=vista_key, label_visibility="collapsed",
+            ) or "Serie histórica"
+
+    periodos = _RANGOS[rango_lbl]
     with st.spinner(f"Cargando {label}..."):
-        df_serie = load_serie(clave, periodos=36)
+        df_serie = load_serie(clave, periodos=periodos)
+    comp = load_comparacion_anual(clave) if es_mensual else {}
 
     # Chart + stats
     col_chart, col_stats = st.columns([3, 2])
     with col_chart:
-        if not df_serie.empty:
+        if vista == "Comparación anual" and comp and comp.get("anio_actual"):
+            st.plotly_chart(
+                _make_yoy_chart(comp, label, g["color"]),
+                use_container_width=True,
+                key=f"pltyoy_{clave}_{tab_key}",
+            )
+        elif not df_serie.empty:
             st.plotly_chart(
                 _make_chart(df_serie, label, g["color"]),
                 use_container_width=True,
                 key=f"plt_{clave}_{tab_key}",
             )
         else:
-            st.info("Sin datos históricos para este indicador en BigQuery.")
+            st.info("Sin datos históricos para este indicador.")
     with col_stats:
-        st.html(_stats_card(row, df_serie, g["color"]))
+        st.html(_stats_card(row, df_serie, g["color"], comp))
 
     # AI analysis
     st.divider()
@@ -377,6 +585,31 @@ def _render_detail(clave: str, tab_key: str, g: dict,
 
     st.html(_render_ai_result(st.session_state.get(skey)))
 
+    # Noticias relacionadas
+    st.divider()
+    st.markdown(
+        "<p style='color:#94A3B8;font-size:12px;font-weight:600;text-transform:uppercase;"
+        "letter-spacing:0.06em;margin:0 0 8px;'>📰 Noticias relacionadas</p>",
+        unsafe_allow_html=True,
+    )
+    gkey_for_news = next((k for k, v in GRUPOS_INEGI.items() if v is g), "")
+    with st.spinner("Buscando noticias..."):
+        noticias = _noticias_indicador_cached(clave, gkey_for_news)
+    st.html(_noticias_html(noticias))
+
+    # Generación de reporte
+    st.divider()
+    st.markdown(
+        "<p style='color:#94A3B8;font-size:12px;font-weight:600;text-transform:uppercase;"
+        "letter-spacing:0.06em;margin:0 0 4px;'>🗂️ Generar reporte de este indicador</p>",
+        unsafe_allow_html=True,
+    )
+    _render_reporte_section(
+        clave, tab_key, g, periodos,
+        incluir_noticias=True,
+        api_key=gemini_key,
+    )
+
 
 # ── Página principal ─────────────────────────────────────────────────────────
 def main():
@@ -389,7 +622,7 @@ def render():
         st.markdown(
             "<h2 style='color:#E2E8F0;margin-bottom:2px;'>Indicadores INEGI</h2>"
             "<p style='color:#64748B;margin:0;'>52 series macroeconómicas · 12 grupos · "
-            "alertas Z-score · análisis IA por indicador</p>",
+            "alertas Z-score · comparación anual · noticias · reportes descargables</p>",
             unsafe_allow_html=True,
         )
     with col_btn:
@@ -423,8 +656,15 @@ def render():
     st.html(_alert_summary(df_alerts))
     st.markdown("<div style='margin-bottom:6px;'></div>", unsafe_allow_html=True)
 
+    # ── Segmentación Mensual / Anual (mensual prioritario) ──────────────────
+    freq_sel = st.segmented_control(
+        "Frecuencia", options=["📅 Mensual", "🗓️ Anual"], default="📅 Mensual",
+        key="inegi_freq_sel",
+    ) or "📅 Mensual"
+    st.markdown("<div style='margin-bottom:4px;'></div>", unsafe_allow_html=True)
+
     # ── Tabs ─────────────────────────────────────────────────────────────────
-    group_keys  = list(GRUPOS_INEGI.keys())
+    group_keys  = GRUPOS_MENSUALES if freq_sel == "📅 Mensual" else GRUPOS_ANUALES
     non_normal  = df_alerts[df_alerts["alerta"] != "Normal"]
     alert_count = len(non_normal)
     alert_label = f"🔔 Alertas ({alert_count})" if alert_count else "🔔 Alertas"
@@ -439,6 +679,41 @@ def render():
         with tabs[i]:
             # Overview compacto
             st.html(_group_grid(claves, alerts_idx, sparklines, g["color"], g["desc"]))
+
+            with st.expander("🗂️ Generar reporte de todo el grupo", expanded=False):
+                nota_grp = (
+                    f"Un análisis con proyección e implicaciones para TYASA por cada uno de los "
+                    f"{len(claves)} indicadores del grupo — puede tardar un poco más por las llamadas a IA."
+                    if _GEMINI_KEY else
+                    "Configura GEMINI_API_KEY para incluir el análisis con proyección por indicador."
+                )
+                st.caption(nota_grp)
+                col_w, col_p = st.columns(2)
+                with col_w:
+                    if st.button("📄 Generar Word (grupo)", key=f"genw_grp_{gkey}", use_container_width=True):
+                        with st.spinner("Generando documento Word del grupo..."):
+                            st.session_state[f"docx_grp_{gkey}"] = generar_word_grupo(
+                                gkey, periodos=24, api_key=_GEMINI_KEY
+                            )
+                    if st.session_state.get(f"docx_grp_{gkey}"):
+                        st.download_button(
+                            "⬇️ Descargar .docx", data=st.session_state[f"docx_grp_{gkey}"],
+                            file_name=f"INEGI_Grupo_{gkey}.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                            key=f"dlw_grp_{gkey}", use_container_width=True,
+                        )
+                with col_p:
+                    if st.button("📑 Generar PDF (grupo)", key=f"genp_grp_{gkey}", use_container_width=True):
+                        with st.spinner("Generando documento PDF del grupo..."):
+                            st.session_state[f"pdf_grp_{gkey}"] = generar_pdf_grupo(
+                                gkey, periodos=24, api_key=_GEMINI_KEY
+                            )
+                    if st.session_state.get(f"pdf_grp_{gkey}"):
+                        st.download_button(
+                            "⬇️ Descargar .pdf", data=st.session_state[f"pdf_grp_{gkey}"],
+                            file_name=f"INEGI_Grupo_{gkey}.pdf", mime="application/pdf",
+                            key=f"dlp_grp_{gkey}", use_container_width=True,
+                        )
 
             st.markdown(
                 "<p style='color:#64748B;font-size:11px;margin:16px 0 8px;'>"

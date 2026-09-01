@@ -146,6 +146,7 @@ GRUPOS_INEGI = {
         "claves": ["736407","736418","736414","736475","736476","736481","736491","736526","736533","736594"],
         "color": "#5B8DB8",
         "icon": "🏭",
+        "freq": "mensual",
     },
     "EMIM": {
         "label": "Manufactura",
@@ -153,20 +154,23 @@ GRUPOS_INEGI = {
         "claves": ["910468","910470"],
         "color": "#64B5F6",
         "icon": "⚙️",
+        "freq": "mensual",
     },
     "ENEC": {
-        "label": "Construcción",
+        "label": "Construcción · Índice",
         "desc": "Valor de producción mensual desglosada por tipo de obra (índice 2006=100) — Transporte y Urbanización (720340) útil para demanda de perfiles; desglose completo: Edificación, Agua/Riego/Saneamiento, Electricidad/Telecom, Transporte/Urbanización, Petróleo/Petroquímica, Otras construcciones",
         "claves": ["720332","720334","720336","720338","720340","720342","720344"],
         "color": "#81C784",
         "icon": "🏗️",
+        "freq": "mensual",
     },
     "ENEC_PESOS": {
-        "label": "Construcción — Mensual en pesos",
+        "label": "Construcción · Pesos",
         "desc": "Valor de producción mensual por tipo de obra en pesos corrientes (no índice) — contraparte de ENEC validada por correlación >0.94 contra los índices; permite sumar meses para obtener totales anuales reales",
         "claves": ["722078","722084","722088","722092","722099","722103"],
         "color": "#4E8B6F",
         "icon": "💵",
+        "freq": "mensual",
     },
     "EMEC": {
         "label": "Comercio",
@@ -174,6 +178,7 @@ GRUPOS_INEGI = {
         "claves": ["718504","718506"],
         "color": "#CE93D8",
         "icon": "🛒",
+        "freq": "mensual",
     },
     "IGAE": {
         "label": "Actividad Económica",
@@ -181,6 +186,7 @@ GRUPOS_INEGI = {
         "claves": ["737173","737149"],
         "color": "#4DD0E1",
         "icon": "📈",
+        "freq": "mensual",
     },
     "Balanza": {
         "label": "Balanza Siderúrgica",
@@ -188,6 +194,7 @@ GRUPOS_INEGI = {
         "claves": ["133094","133031"],
         "color": "#FFB74D",
         "icon": "⚖️",
+        "freq": "mensual",
     },
     "INPP": {
         "label": "Precios Productor",
@@ -195,6 +202,7 @@ GRUPOS_INEGI = {
         "claves": ["910503","910502","910501","910500","910499","910491"],
         "color": "#EF9A9A",
         "icon": "💰",
+        "freq": "mensual",
     },
     "INPC": {
         "label": "Precios Consumidor",
@@ -202,6 +210,7 @@ GRUPOS_INEGI = {
         "claves": ["910396","909294","910398","910393"],
         "color": "#F48FB1",
         "icon": "🏪",
+        "freq": "mensual",
     },
     "IFB": {
         "label": "Inversión Fija Bruta",
@@ -209,6 +218,7 @@ GRUPOS_INEGI = {
         "claves": ["741034","741030","741025"],
         "color": "#7986CB",
         "icon": "🏦",
+        "freq": "mensual",
     },
     "EMOE": {
         "label": "Confianza Empresarial",
@@ -216,6 +226,7 @@ GRUPOS_INEGI = {
         "claves": ["701407","701401","334497"],
         "color": "#E05C2D",
         "icon": "💡",
+        "freq": "mensual",
     },
     "ENEC_ANUAL": {
         "label": "Construcción — Sector 23 Anual",
@@ -223,8 +234,12 @@ GRUPOS_INEGI = {
         "claves": ["796426","796427","796428","796429","5300000027"],
         "color": "#A1887F",
         "icon": "🧱",
+        "freq": "anual",
     },
 }
+
+GRUPOS_MENSUALES = [k for k, v in GRUPOS_INEGI.items() if v.get("freq") == "mensual"]
+GRUPOS_ANUALES   = [k for k, v in GRUPOS_INEGI.items() if v.get("freq") == "anual"]
 
 
 # ── Funciones de carga ───────────────────────────────────────────────────────
@@ -281,6 +296,59 @@ def load_serie(clave: str, periodos: int = 24) -> pd.DataFrame:
         df["fecha"] = pd.to_datetime(df["fecha"], format="%Y-%m", errors="coerce")
         df = df.sort_values("fecha")
     return df
+
+
+@st.cache_data(ttl=3600)
+def load_comparacion_anual(clave: str, n_anios: int = 3) -> dict:
+    """
+    Serie mensual alineada por año (Ene-Dic) para overlay YoY y comparación YTD.
+
+    Devuelve:
+      - anios: años presentes, ascendente
+      - series: {anio: {mes: valor}}
+      - anio_actual / anio_anterior: los dos años más recientes con datos
+      - meses_ytd: cuántos meses tiene el año actual
+      - yoy_ytd: % variación del promedio YTD del año actual vs. el mismo rango de meses
+                 del año anterior (el ratio de promedios equivale al de sumas cuando el
+                 número de periodos coincide, válido tanto para índices como para pesos)
+    """
+    df = load_serie(clave, periodos=12 * n_anios + 1)
+    if df.empty:
+        return {}
+
+    df = df.copy()
+    df["anio"] = df["fecha"].dt.year
+    df["mes"] = df["fecha"].dt.month
+    anios = sorted(int(a) for a in df["anio"].unique())
+    series = {
+        int(anio): dict(zip(grp["mes"], grp["valor"]))
+        for anio, grp in df.groupby("anio")
+    }
+
+    resultado = {"anios": anios, "series": series}
+    if len(anios) < 2:
+        return resultado
+
+    anio_actual = anios[-1]
+    anio_anterior = anios[-2]
+    meses_actual = sorted(series[anio_actual].keys())
+    vals_actual = [series[anio_actual][m] for m in meses_actual]
+    vals_anterior = [series[anio_anterior][m] for m in meses_actual if m in series[anio_anterior]]
+
+    yoy_ytd = None
+    if vals_anterior and len(vals_anterior) == len(vals_actual):
+        prom_actual = sum(vals_actual) / len(vals_actual)
+        prom_anterior = sum(vals_anterior) / len(vals_anterior)
+        if prom_anterior:
+            yoy_ytd = round((prom_actual - prom_anterior) / abs(prom_anterior) * 100, 1)
+
+    resultado.update({
+        "anio_actual": int(anio_actual),
+        "anio_anterior": int(anio_anterior),
+        "meses_ytd": len(meses_actual),
+        "yoy_ytd": yoy_ytd,
+    })
+    return resultado
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
