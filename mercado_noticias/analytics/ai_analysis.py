@@ -806,6 +806,150 @@ def analizar_indicador_inegi(
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# ANÁLISIS DE INDICADORES INEGI — VERSIÓN LARGA PARA REPORTES (Word/PDF)
+# ════════════════════════════════════════════════════════════════════════════
+
+_INEGI_REPORTE_SYSTEM = (
+    "Eres el analista macroeconómico senior de TYASA, acería mexicana de acero plano vía horno "
+    "eléctrico de arco (EAF). Estás redactando la sección de análisis de un reporte formal que leerá "
+    "el equipo directivo. Escribe en español ejecutivo, claro y sin jerga estadística — nunca uses "
+    "las palabras \"z-score\", \"sigma\" o \"desviación estándar\"; explica todo en términos de negocio "
+    "que cualquier director entienda. Sé específico y basado en los datos entregados, nunca genérico."
+)
+
+_INEGI_REPORTE_TMPL = """## Indicador
+{label} — grupo: {group_label} ({freq})
+{group_desc}
+
+## Datos actuales
+- Valor más reciente ({ult_fecha}): {ult_valor}
+- Variación vs. mes anterior: {var_mom}
+- Variación vs. mismo mes del año anterior: {var_yoy}
+- Promedio de los últimos 24 meses: {media}
+- Comportamiento reciente: {alerta_desc}
+{ytd_block}
+
+## Últimos 12 meses (fecha: valor)
+{tabla}
+
+## Noticias recientes relacionadas
+{noticias_block}
+
+---
+Escribe el análisis del reporte en 5 apartados, cada uno con su encabezado EXACTO en una línea que
+empiece con "## " (se procesa automáticamente), en este orden:
+
+## Qué está pasando
+(2-3 frases: interpreta el movimiento reciente del indicador en el contexto económico mexicano actual;
+apóyate en las noticias si aportan algo relevante, sin inventar datos que no estén arriba)
+
+## Por qué se monitorea
+(1-2 frases: explica en términos simples qué mide este indicador y por qué es relevante seguirlo)
+
+## Proyección de corto plazo
+(2-3 frases: hacia dónde parece dirigirse en los próximos meses de {anio_actual}, con base en la
+tendencia reciente — sé claro sobre el nivel de incertidumbre, no inventes certezas)
+
+## Implicaciones para TYASA
+(2-3 frases: efecto concreto y específico sobre demanda de acero, costos de insumos o competitividad
+de TYASA — nunca genérico)
+
+## Qué vigilar
+(2-3 frases: señales, fechas o eventos concretos a monitorear en los próximos meses)
+
+Cada apartado va en prosa corrida, sin viñetas. Máximo 380 palabras en total."""
+
+
+def analizar_indicador_inegi_reporte(
+    clave: str,
+    label: str,
+    group_label: str,
+    group_desc: str,
+    freq: str,
+    alerta: str,
+    ult_fecha,
+    ult_valor,
+    var_mom,
+    var_yoy,
+    media,
+    comp: dict | None,
+    valores_recientes: list,
+    noticias: list,
+    api_key: str,
+    force_refresh: bool = False,
+) -> dict:
+    """
+    Análisis IA extendido (contexto + proyección + implicaciones TYASA + qué vigilar)
+    para incluir en los reportes descargables Word/PDF. Retorna dict: analisis (str),
+    _cached (bool), _error (str|None). El texto viene estructurado en secciones "## Título".
+    """
+    if not api_key:
+        return {"analisis": "", "_cached": False, "_error": "Sin API key de Gemini"}
+
+    hoy  = date.today().isoformat()
+    ckey = hashlib.md5(f"inegi_reporte|{clave}|{hoy}".encode()).hexdigest()[:16]
+
+    cached = _cache_load(ckey)
+    if cached and not force_refresh:
+        cached["_cached"] = True
+        return cached
+
+    tabla_lines = [
+        f"  {str(f)[:7]}: {_fmt_num_inegi(v)}"
+        for f, v in (valores_recientes or [])[-12:]
+    ]
+    tabla = "\n".join(tabla_lines) if tabla_lines else "  (sin datos)"
+
+    def _pct(v):
+        try:
+            return f"{float(v):+.1f}%"
+        except Exception:
+            return "—"
+
+    alerta_desc = {
+        "Critico":  "movimiento muy atípico respecto a su historial",
+        "Alto":     "movimiento notoriamente fuera de lo habitual",
+        "Moderado": "variación algo mayor a la usual",
+        "Normal":   "dentro de su comportamiento habitual",
+    }.get(alerta, "dentro de su comportamiento habitual")
+
+    anio_actual = date.today().year
+    ytd_block = ""
+    if comp and comp.get("yoy_ytd") is not None:
+        anio_actual = comp.get("anio_actual", anio_actual)
+        ytd_block = (
+            f"- Acumulado {comp['meses_ytd']} meses de {comp['anio_actual']} vs. mismo periodo "
+            f"{comp['anio_anterior']}: {_pct(comp['yoy_ytd'])}"
+        )
+
+    noticias_block = "\n".join(
+        f"  - {n.get('titulo', '')}" for n in (noticias or [])[:6]
+    ) or "  (sin noticias recientes relevantes)"
+
+    prompt = _INEGI_REPORTE_TMPL.format(
+        label       = label,
+        group_label = group_label,
+        group_desc  = group_desc,
+        freq        = "mensual" if freq == "mensual" else "anual",
+        ult_fecha   = ult_fecha,
+        ult_valor   = _fmt_num_inegi(ult_valor),
+        var_mom     = _pct(var_mom),
+        var_yoy     = _pct(var_yoy),
+        media       = _fmt_num_inegi(media),
+        alerta_desc = alerta_desc,
+        ytd_block   = ytd_block,
+        tabla       = tabla,
+        noticias_block = noticias_block,
+        anio_actual = anio_actual,
+    )
+
+    text = _call_gemini_text(prompt, api_key, system=_INEGI_REPORTE_SYSTEM, max_output_tokens=900)
+    resultado = {"analisis": text, "_cached": False, "_error": None}
+    _cache_save(ckey, resultado)
+    return resultado
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # BRIEFING DE VISITA — INTELIGENCIA DE CLIENTES
 # ════════════════════════════════════════════════════════════════════════════
 
