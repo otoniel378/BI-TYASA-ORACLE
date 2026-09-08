@@ -141,6 +141,22 @@ def load_serie_tiempo_tyasa(movimiento: str, fracciones: tuple[str, ...] | None 
     return _lc(run_query_params(sql, [movimiento.strip().upper()]))
 
 
+@st.cache_data(ttl=600, show_spinner="Cargando series por fracción...")
+def load_series_fracciones_tyasa(movimiento: str) -> pd.DataFrame:
+    """PERIODO_MES, FRACCION (8 dígitos), VOLUMEN_TOTAL — una fila por
+    fracción TYASA y mes, para pronóstico por dimensión
+    (generar_forecast_multiple(df, col_dim="FRACCION", ...))."""
+    sql = f"""
+        SELECT PERIODO_MES, SUBSTR(FRACCION_ARANCELARIA,1,8) AS FRACCION,
+               SUM(VOLUMEN_TON) AS VOLUMEN_TOTAL
+        FROM {T_BRONZE}
+        WHERE MOVIMIENTO = :1 AND {_where_fracciones_tyasa()}
+        GROUP BY PERIODO_MES, SUBSTR(FRACCION_ARANCELARIA,1,8)
+        ORDER BY PERIODO_MES
+    """
+    return _lc(run_query_params(sql, [movimiento.strip().upper()]))
+
+
 @st.cache_data(ttl=600, show_spinner="Cargando fracciones CANACERO...")
 def load_top_fracciones_tyasa(
     periodo_mes: str, movimiento: str, limite: int = 30, fracciones: tuple[str, ...] | None = None,

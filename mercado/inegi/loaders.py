@@ -4,7 +4,7 @@ loaders.py — Funciones de carga para indicadores INEGI desde Oracle ADW.
 
 import pandas as pd
 import streamlit as st
-from core.db_connector import run_query, table_ref
+from core.db_connector import run_query, run_query_params, table_ref
 
 T_INDICADORES = table_ref("gold_indicadores_inegi")
 
@@ -251,6 +251,25 @@ def load_todos_indicadores() -> pd.DataFrame:
         ORDER BY CLAVE, FECHA DESC
     """
     return _lc(run_query(sql))
+
+
+@st.cache_data(ttl=3600, show_spinner="Cargando indicador INEGI...")
+def load_serie_por_nombre(nombre: str) -> pd.DataFrame:
+    """FECHA, VALOR — historial completo de un indicador por su NOMBRE (ej.
+    'IMAI_HierroAcero_3311_Indice'), ascendente y sin el tope de 500 filas
+    de load_indicador() (que además pide CLAVE, no NOMBRE). Pensado para
+    alimentar variables exógenas de pronóstico, donde se necesita el rango
+    completo alineado con el histórico de CANACERO."""
+    sql = f"""
+        SELECT FECHA, VALOR
+        FROM {T_INDICADORES}
+        WHERE NOMBRE = :1
+        ORDER BY FECHA
+    """
+    df = _lc(run_query_params(sql, [nombre]))
+    if not df.empty and "fecha" in df.columns:
+        df["fecha"] = pd.to_datetime(df["fecha"], format="%Y-%m", errors="coerce")
+    return df
 
 
 @st.cache_data(ttl=3600, show_spinner="Cargando indicador...")

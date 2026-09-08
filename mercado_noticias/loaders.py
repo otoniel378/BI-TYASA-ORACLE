@@ -4,12 +4,13 @@ loaders.py — Carga de variables de mercado desde Oracle ADW.
 
 import pandas as pd
 import streamlit as st
-from core.db_connector import run_query, table_ref
+from core.db_connector import run_query, run_query_params, table_ref
 
 T_VARIABLES   = table_ref("gold_variables_mercado")
 T_QUIEBRES    = table_ref("gold_quiebres_detectados")
 T_NOTICIAS    = table_ref("gold_noticias_vinculadas")
 T_SENTIMIENTO = table_ref("gold_sentimiento_noticias")
+T_EVENTOS     = table_ref("gold_eventos_historicos")
 
 
 def _lc(df: pd.DataFrame) -> pd.DataFrame:
@@ -129,3 +130,39 @@ def pivot_variables_diario(df: pd.DataFrame) -> pd.DataFrame:
     return df.pivot_table(
         index="fecha", columns="nombre", values="valor", aggfunc="mean"
     ).reset_index()
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_eventos_cerca_de(fecha, dias_tolerancia: int = 15) -> pd.DataFrame:
+    """Eventos curados (GOLD_EVENTOS_HISTORICOS, ver scripts/seed_eventos_historicos.py)
+    cuyo rango [FECHA_INICIO, FECHA_FIN] cae dentro de <fecha> ± <dias_tolerancia>.
+    Eventos puntuales (FECHA_FIN NULL) tratan FECHA_INICIO como ambos extremos."""
+    sql = f"""
+        SELECT ID, FECHA_INICIO, FECHA_FIN, NOMBRE, DESCRIPCION, VARIABLES_RELACIONADAS, FUENTE
+        FROM {T_EVENTOS}
+        WHERE FECHA_INICIO - :dias <= :fecha
+          AND NVL(FECHA_FIN, FECHA_INICIO) + :dias >= :fecha
+        ORDER BY FECHA_INICIO
+    """
+    fecha_dt = pd.Timestamp(fecha).to_pydatetime()
+    df = _lc(run_query_params(sql, {"fecha": fecha_dt, "dias": dias_tolerancia}))
+    return df
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_eventos_en_rango(fecha_inicio, fecha_fin) -> pd.DataFrame:
+    """Eventos curados cuyo rango [FECHA_INICIO, FECHA_FIN] se traslapa con
+    [<fecha_inicio>, <fecha_fin>] — para vistas de resumen anual/por rango,
+    a diferencia de load_eventos_cerca_de() que busca alrededor de un punto."""
+    sql = f"""
+        SELECT ID, FECHA_INICIO, FECHA_FIN, NOMBRE, DESCRIPCION, VARIABLES_RELACIONADAS, FUENTE
+        FROM {T_EVENTOS}
+        WHERE FECHA_INICIO <= :fecha_fin
+          AND NVL(FECHA_FIN, FECHA_INICIO) >= :fecha_inicio
+        ORDER BY FECHA_INICIO
+    """
+    params = {
+        "fecha_inicio": pd.Timestamp(fecha_inicio).to_pydatetime(),
+        "fecha_fin": pd.Timestamp(fecha_fin).to_pydatetime(),
+    }
+    return _lc(run_query_params(sql, params))

@@ -9,6 +9,7 @@ Requiere las tablas creadas por setup_snice_tables_oracle.py.
 Uso:
     python scripts/load_snice_to_oracle.py
     python scripts/load_snice_to_oracle.py --file data/snice/siderurgico_2026-05.xlsx
+    python scripts/load_snice_to_oracle.py --dir data/snice_historico --all   # backfill masivo
 """
 
 import argparse
@@ -27,6 +28,7 @@ import oracledb
 from dotenv import load_dotenv
 
 from tigie_partidas import categoria_de, FRACCIONES_NO_KG
+from download_snice_siderurgico import extraer_periodo_reportado
 
 load_dotenv()
 
@@ -59,11 +61,22 @@ def _ultimo_archivo(out_dir: Path) -> Path:
     return archivos[0]
 
 
+def _todos_los_archivos(dir_path: Path) -> list[Path]:
+    archivos = sorted(dir_path.glob("*.xlsx"))
+    if not archivos:
+        raise FileNotFoundError(f"Sin archivos .xlsx en {dir_path}")
+    return archivos
+
+
 def _periodo_de(path: Path) -> str:
+    """Detecta el periodo: primero por nombre de archivo (rápido, cubre el
+    flujo automático siderurgico_YYYY-MM.xlsx); si no matchea, cae a leer la
+    celda 'PERIODO REPORTADO' del propio Excel (cubre archivos descargados a
+    mano del portal SNICE, con el nombre que trae de ahí)."""
     m = re.search(r"siderurgico_(\d{4}-\d{2})\.xlsx$", path.name)
-    if not m:
-        raise ValueError(f"No se pudo determinar el periodo del nombre de archivo: {path.name}")
-    return m.group(1)
+    if m:
+        return m.group(1)
+    return extraer_periodo_reportado(path)
 
 
 def _truncar_bytes(texto: str, max_bytes: int = 3900) -> str:
@@ -127,7 +140,11 @@ def _leer_avisos(xlsx_path: Path, periodo: str) -> list:
         wb.close()
 
 
-def cargar_bronze(rows: list, periodo: str):
+def cargar_bronze(rows: list, periodo: str, aplicar_retencion: bool = True):
+    """Reemplaza el detalle de <periodo> en BRONZE. Si <aplicar_retencion> es
+    False, no purga periodos viejos todavía (para no insertar-y-borrar en
+    cada iteración de un backfill masivo) — llamar aplicar_retencion_bronze()
+    una sola vez al final en ese caso."""
     conn = get_conn()
     cursor = conn.cursor()
     try:
@@ -147,8 +164,21 @@ def cargar_bronze(rows: list, periodo: str):
             cursor.executemany(insert_sql, rows[i * INSERT_BATCH:(i + 1) * INSERT_BATCH])
             conn.commit()
         print(f"  OK {len(rows):,} avisos en BRONZE_SNICE_SIDERURGICO (periodo {periodo})")
+    finally:
+        cursor.close()
+        conn.close()
 
-        # Retención: solo conservar los últimos N periodos de detalle
+    if aplicar_retencion:
+        aplicar_retencion_bronze()
+
+
+def aplicar_retencion_bronze():
+    """Conserva solo los PERIODOS_A_CONSERVAR periodos más recientes en
+    BRONZE (el histórico agregado vive en las tablas GOLD, que nunca se
+    purgan — ver recalcular_gold())."""
+    conn = get_conn()
+    cursor = conn.cursor()
+    try:
         cursor.execute("SELECT DISTINCT PERIODO FROM ADMIN.BRONZE_SNICE_SIDERURGICO ORDER BY PERIODO DESC")
         periodos = [r[0] for r in cursor.fetchall()]
         for p in periodos[PERIODOS_A_CONSERVAR:]:
@@ -230,30 +260,56 @@ def recalcular_gold(periodo: str):
         conn.close()
 
 
+def _cargar_un_archivo(xlsx_path: Path, aplicar_retencion: bool) -> str:
+    periodo = _periodo_de(xlsx_path)
+    print(f"Cargando {xlsx_path.name} (periodo {periodo}) a Oracle ADW...")
+    rows = _leer_avisos(xlsx_path, periodo)
+    if not rows:
+        print("  Sin filas para cargar, se omite.")
+        return periodo
+    print(f"  {len(rows):,} avisos leídos")
+    cargar_bronze(rows, periodo, aplicar_retencion=aplicar_retencion)
+    recalcular_gold(periodo)
+    return periodo
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--file", help="Ruta al xlsx a cargar (default: el más reciente en data/snice/)")
-    parser.add_argument("--dir", default="data/snice", help="Carpeta con los archivos siderurgico_*.xlsx")
+    parser.add_argument("--dir", default="data/snice", help="Carpeta con los archivos xlsx")
+    parser.add_argument(
+        "--all", action="store_true",
+        help="Backfill: procesa TODOS los .xlsx de --dir (no solo el más reciente), "
+             "detectando el periodo por el nombre o, si no matchea, por el contenido "
+             "del Excel — para archivos descargados a mano del portal SNICE. La "
+             "retención de BRONZE se aplica una sola vez al final, no por archivo.",
+    )
     args = parser.parse_args()
 
+    if args.all:
+        archivos = _todos_los_archivos(Path(args.dir))
+        print(f"Backfill: {len(archivos)} archivos encontrados en {args.dir}\n")
+        cargados, fallidos = [], []
+        for xlsx_path in archivos:
+            try:
+                periodo = _cargar_un_archivo(xlsx_path, aplicar_retencion=False)
+                cargados.append(periodo)
+            except Exception as e:
+                print(f"  ERROR con {xlsx_path.name}: {e}")
+                fallidos.append(xlsx_path.name)
+            print()
+
+        print("Aplicando retención de BRONZE (una sola vez, al final del backfill)...")
+        aplicar_retencion_bronze()
+
+        print(f"\nBackfill completado: {len(cargados)} periodos cargados, {len(fallidos)} fallidos.")
+        if fallidos:
+            print("Archivos con error:", ", ".join(fallidos))
+            sys.exit(1)
+        return
+
     xlsx_path = Path(args.file) if args.file else _ultimo_archivo(Path(args.dir))
-    periodo = _periodo_de(xlsx_path)
-
-    print(f"Cargando {xlsx_path.name} (periodo {periodo}) a Oracle ADW...")
-
-    print("1. Leyendo avisos del Excel...")
-    rows = _leer_avisos(xlsx_path, periodo)
-    if not rows:
-        print("Sin filas para cargar.")
-        sys.exit(1)
-    print(f"   {len(rows):,} avisos leídos")
-
-    print("2. Cargando BRONZE_SNICE_SIDERURGICO...")
-    cargar_bronze(rows, periodo)
-
-    print("3. Recalculando tablas GOLD...")
-    recalcular_gold(periodo)
-
+    _cargar_un_archivo(xlsx_path, aplicar_retencion=True)
     print("\nCarga SNICE completada.")
 
 

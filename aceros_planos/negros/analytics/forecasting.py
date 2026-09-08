@@ -18,6 +18,7 @@ class ForecastResult:
     metricas: dict
     backtest: pd.DataFrame
     error_msg: str | None = None
+    contribuciones: pd.DataFrame | None = None
 
 
 def _metricas(y_real: np.ndarray, y_pred: np.ndarray) -> dict:
@@ -177,7 +178,28 @@ def _forecast_sarima(serie: pd.DataFrame, horizonte: int) -> ForecastResult:
                               metricas={}, backtest=pd.DataFrame(), error_msg=str(e))
 
 
-def _forecast_xgboost(serie: pd.DataFrame, horizonte: int) -> ForecastResult:
+def _tabla_exog_rezagada(df_exog: pd.DataFrame | None, lags_exog: tuple) -> tuple[pd.DataFrame, list]:
+    """Convierte <df_exog> (columnas: fecha + una por variable, en ancho) en
+    una tabla indexada por fecha con columnas <var>_lag<N> por cada lag
+    pedido. Rezagado para no depender de valores futuros de la exógena al
+    pronosticar. <df_exog> debe traer la fecha en su primera columna."""
+    if df_exog is None or df_exog.empty:
+        return pd.DataFrame(), []
+    e = df_exog.copy()
+    col_fecha = e.columns[0]
+    e = e.rename(columns={col_fecha: "ds"})
+    e["ds"] = pd.to_datetime(e["ds"])
+    base_cols = [c for c in e.columns if c != "ds"]
+    e = e.sort_values("ds").reset_index(drop=True)
+    for c in base_cols:
+        for lag in lags_exog:
+            e[f"{c}_lag{lag}"] = e[c].shift(lag)
+    exog_lag_cols = [f"{c}_lag{lag}" for c in base_cols for lag in lags_exog]
+    return e.set_index("ds")[exog_lag_cols], exog_lag_cols
+
+
+def _forecast_xgboost(serie: pd.DataFrame, horizonte: int, df_exog: pd.DataFrame | None = None,
+                       lags_exog: tuple = (1, 2, 3)) -> ForecastResult:
     try:
         import xgboost as xgb
     except ImportError:
@@ -195,6 +217,18 @@ def _forecast_xgboost(serie: pd.DataFrame, horizonte: int) -> ForecastResult:
                               metricas={}, backtest=pd.DataFrame(),
                               error_msg=f"Serie demasiado corta para XGBoost (n={n}).")
 
+    exog_by_date, exog_lag_cols = _tabla_exog_rezagada(df_exog, lags_exog)
+
+    def _exog_row(fecha: pd.Timestamp) -> dict:
+        if exog_by_date.empty:
+            return {}
+        if fecha in exog_by_date.index:
+            return exog_by_date.loc[fecha].to_dict()
+        anteriores = exog_by_date.index[exog_by_date.index <= fecha]
+        if len(anteriores) == 0:
+            return {c: np.nan for c in exog_lag_cols}
+        return exog_by_date.loc[anteriores.max()].to_dict()
+
     def make_X(y_arr, ds_arr):
         rows = []
         for i in range(MAX_LAG, len(y_arr)):
@@ -209,6 +243,7 @@ def _forecast_xgboost(serie: pd.DataFrame, horizonte: int) -> ForecastResult:
             row["month"]   = dt.month
             row["quarter"] = dt.quarter
             row["trend_t"] = i
+            row.update(_exog_row(dt))
             rows.append(row)
         return pd.DataFrame(rows)
 
@@ -237,6 +272,7 @@ def _forecast_xgboost(serie: pd.DataFrame, horizonte: int) -> ForecastResult:
         y_ext  = list(y.copy())
         ds_ext = list(ds.copy())
         fc_vals, fc_lower, fc_upper = [], [], []
+        filas_horizonte = []
         last_trend = len(y_ext) - 1
 
         for h in range(horizonte):
@@ -255,8 +291,9 @@ def _forecast_xgboost(serie: pd.DataFrame, horizonte: int) -> ForecastResult:
             row["month"]   = next_ds.month
             row["quarter"] = next_ds.quarter
             row["trend_t"] = next_t
+            row.update(_exog_row(next_ds))
 
-            X_pred = pd.DataFrame([row])
+            X_pred = pd.DataFrame([row])[X_all.columns]
             yhat   = float(np.clip(model.predict(X_pred)[0], 0, None))
             sigma_model = float(np.std(model.predict(X_all) - y_all) + 1e-9)
             margin = 1.645 * sigma_model * np.sqrt(h + 1)
@@ -266,11 +303,23 @@ def _forecast_xgboost(serie: pd.DataFrame, horizonte: int) -> ForecastResult:
             fc_upper.append(yhat + margin)
             y_ext.append(yhat)
             ds_ext.append(next_ds)
+            filas_horizonte.append(X_pred.iloc[0])
+
+        contribuciones = None
+        if filas_horizonte:
+            X_horizonte = pd.DataFrame(filas_horizonte).reset_index(drop=True)
+            contribs = model.get_booster().predict(xgb.DMatrix(X_horizonte), pred_contribs=True)
+            promedio = np.abs(contribs[:, :-1]).mean(axis=0)  # última columna es el valor base
+            contribuciones = (
+                pd.DataFrame({"variable": X_horizonte.columns, "contribucion": promedio})
+                .sort_values("contribucion", ascending=False)
+                .reset_index(drop=True)
+            )
 
         return ForecastResult(
             modelo="XGBoost (Lag Features)",
             historico=serie, forecast=_build_hist_fc(serie, fc_vals, fc_lower, fc_upper),
-            metricas=metricas, backtest=backtest_df,
+            metricas=metricas, backtest=backtest_df, contribuciones=contribuciones,
         )
     except Exception as e:
         return ForecastResult(modelo="XGBoost", historico=serie, forecast=pd.DataFrame(),
@@ -323,7 +372,12 @@ def generar_forecast(
     col_periodo: str = "PERIODO",
     col_val: str = "PESO_TON",
     modelo: str = "auto",
+    df_exog: pd.DataFrame | None = None,
 ) -> ForecastResult:
+    """<df_exog>: opcional, solo lo usa el modelo XGBoost (columnas: fecha +
+    una por variable, en ancho, ver _tabla_exog_rezagada). ETS/SARIMA/Naive
+    lo ignoran — necesitarían valores FUTUROS de la exógena para pronosticar,
+    que no tenemos."""
     serie = _preparar_serie(df, col_periodo, col_val)
 
     if len(serie) < MIN_PERIODS_FORECAST:
@@ -335,14 +389,17 @@ def generar_forecast(
 
     _fns = {"ets": _forecast_ets, "sarima": _forecast_sarima, "xgb": _forecast_xgboost, "naive": _forecast_naive}
 
+    def _correr(key: str) -> ForecastResult:
+        return _forecast_xgboost(serie, horizonte, df_exog=df_exog) if key == "xgb" else _fns[key](serie, horizonte)
+
     if modelo in _fns:
-        return _fns[modelo](serie, horizonte)
+        return _correr(modelo)
 
     candidatos = ["ets", "xgb", "sarima", "naive"]
     resultados = []
 
     for key in candidatos:
-        r = _fns[key](serie, horizonte)
+        r = _correr(key)
         if r.error_msg or r.forecast.empty:
             continue
         mape = r.metricas.get("MAPE (%)", float("inf"))
@@ -403,3 +460,4 @@ def generar_forecast_multiple(
         if len(sub) >= MIN_PERIODS_FORECAST:
             resultados[dim] = generar_forecast(sub, horizonte, col_periodo, col_val, modelo)
     return resultados
+
