@@ -272,6 +272,7 @@ SUBSECCIONES = {
         "mkt_sentimiento": ("🌡️", "Sentimiento"),
         "mkt_competencia": ("🎯", "Competencia"),
         "mkt_comercio": ("🌍", "Comercio Exterior"),
+        "mkt_pronostico": ("🔮", "Pronóstico"),
     },
     "chat_ia": {
         "chat": ("💬", "Chat con los datos"),
@@ -316,6 +317,7 @@ PAGINAS = {
     "mkt_sentimiento": "pages.mercado.05_sentimiento",
     "mkt_competencia": "pages.mercado.06_competencia",
     "mkt_comercio": "pages.mercado.07_comercio_exterior",
+    "mkt_pronostico": "pages.mercado.08_pronostico_comercio",
 
     # CHAT IA
     "chat": "pages.chat_ia.chat",

@@ -131,10 +131,15 @@ def _last_excel_link(frame):
     return icono
 
 
-def _extraer_periodo(xlsx_path: Path) -> str:
+def extraer_periodo_reportado(xlsx_path: Path) -> str:
     """
     Lee la celda 'PERIODO REPORTADO: <MES> DE <AÑO>' de la hoja AVISOS_AUTORIZADOS
     (primeras filas del encabezado) y la convierte a 'YYYY-MM'.
+
+    Pública (sin guion bajo) porque scripts/load_snice_to_oracle.py la
+    reutiliza para detectar el periodo de archivos descargados a mano del
+    portal SNICE (que no siguen el patrón de nombre siderurgico_YYYY-MM.xlsx
+    que genera este script).
     """
     wb = openpyxl.load_workbook(str(xlsx_path), read_only=True)
     try:
@@ -184,7 +189,7 @@ def download_siderurgico(out_dir: Path, headed: bool = False) -> Path:
                 tmp_dest = out_dir / "_descarga_tmp.xlsx"
                 download.save_as(str(tmp_dest))
 
-                periodo = _extraer_periodo(tmp_dest)
+                periodo = extraer_periodo_reportado(tmp_dest)
                 dest = out_dir / f"siderurgico_{periodo}.xlsx"
                 tmp_dest.replace(dest)
 
