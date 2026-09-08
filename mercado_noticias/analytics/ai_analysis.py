@@ -31,8 +31,15 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 HTTP_TIMEOUT = 10  # segundos
 
 # ── Modelos Gemini disponibles (en orden de preferencia) ──────────────────────
+# gemini-2.5-flash-lite y gemini-1.5-flash quedaron deprecados (confirmado
+# contra la API real el 2026-09-08: el primero ya no acepta generateContent
+# para proyectos nuevos aunque siga listado, el segundo ya no existe). Se
+# verificó con client.models.list() cuáles sí responden generateContent hoy.
+# gemini-flash-latest es un alias que Google mantiene apuntando siempre al
+# modelo flash vigente — se deja al final como red de seguridad para que esta
+# lista no vuelva a quedar obsoleta cuando Google renombre el resto.
 _DEFAULT_MODEL   = "gemini-3.5-flash"
-_FALLBACK_MODELS = ("gemini-3.5-flash", "gemini-2.5-flash-lite", "gemini-1.5-flash")
+_FALLBACK_MODELS = ("gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-2.5-flash", "gemini-flash-latest")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SCRAPING DE ARTÍCULOS
@@ -179,6 +186,25 @@ def _build_prompt(
 # LLAMADA A GEMINI API
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _generate_content_sdk(client, genai_types, model: str, prompt: str, system: str,
+                           temperature: float, max_output_tokens: int):
+    """generate_content con thinking_config desactivado (más rápido/barato);
+    si el modelo no lo soporta (ej. gemini-3.5-flash-lite responde 400
+    INVALID_ARGUMENT — confirmado 2026-09-08), reintenta el MISMO modelo sin
+    ese parámetro antes de darlo por perdido y pasar al siguiente modelo de
+    la cadena de respaldo."""
+    base_kwargs = dict(system_instruction=system, temperature=temperature, max_output_tokens=max_output_tokens)
+    try:
+        cfg_kwargs = dict(base_kwargs, thinking_config=genai_types.ThinkingConfig(thinking_budget=0))
+        return client.models.generate_content(
+            model=model, contents=prompt, config=genai_types.GenerateContentConfig(**cfg_kwargs),
+        )
+    except Exception:
+        return client.models.generate_content(
+            model=model, contents=prompt, config=genai_types.GenerateContentConfig(**base_kwargs),
+        )
+
+
 def _models_to_try(model: str) -> tuple:
     """Devuelve lista única de modelos a intentar, poniendo el solicitado primero."""
     seen: dict = {}
@@ -203,19 +229,9 @@ def _call_gemini(prompt: str, api_key: str, model: str = _DEFAULT_MODEL) -> dict
 
         for m in models:
             try:
-                cfg_kwargs: dict = dict(
-                    system_instruction=_SYSTEM_PROMPT,
-                    temperature=0.3,
-                    max_output_tokens=2048,
-                )
-                try:
-                    cfg_kwargs["thinking_config"] = genai_types.ThinkingConfig(thinking_budget=0)
-                except Exception:
-                    pass
-                resp = client.models.generate_content(
-                    model=m,
-                    contents=prompt,
-                    config=genai_types.GenerateContentConfig(**cfg_kwargs),
+                resp = _generate_content_sdk(
+                    client, genai_types, m, prompt,
+                    system=_SYSTEM_PROMPT, temperature=0.3, max_output_tokens=2048,
                 )
                 raw = resp.text.strip() if resp.text else ""
                 if raw:
@@ -386,19 +402,9 @@ def _call_gemini_text(
 
         for m in models:
             try:
-                cfg_kwargs: dict = dict(
-                    system_instruction=system,
-                    temperature=temperature,
-                    max_output_tokens=max_output_tokens,
-                )
-                try:
-                    cfg_kwargs["thinking_config"] = genai_types.ThinkingConfig(thinking_budget=0)
-                except Exception:
-                    pass
-                resp = client.models.generate_content(
-                    model=m,
-                    contents=prompt,
-                    config=genai_types.GenerateContentConfig(**cfg_kwargs),
+                resp = _generate_content_sdk(
+                    client, genai_types, m, prompt,
+                    system=system, temperature=temperature, max_output_tokens=max_output_tokens,
                 )
                 return (resp.text or "").strip() or "Sin respuesta."
             except Exception as e:

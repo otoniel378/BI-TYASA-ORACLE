@@ -50,6 +50,16 @@ jobs:
           ORACLE_WALLET_PASSWORD: ${{ secrets.ORACLE_WALLET_PASSWORD }}
         run: python scripts/link_noticias_quiebres.py
 
+      - name: Capturar eventos significativos automáticamente
+        env:
+          ORACLE_USER:            ${{ secrets.ORACLE_USER }}
+          ORACLE_PASSWORD:        ${{ secrets.ORACLE_PASSWORD }}
+          ORACLE_DSN:             ${{ secrets.ORACLE_DSN }}
+          ORACLE_WALLET_DIR:      /tmp/oracle_wallet
+          ORACLE_WALLET_PASSWORD: ${{ secrets.ORACLE_WALLET_PASSWORD }}
+          GEMINI_API_KEY:         ${{ secrets.GEMINI_API_KEY }}
+        run: python scripts/capturar_eventos_automaticos.py
+
       - name: Resultado
         if: always()
         run: echo "Actualización completada - $(date)"

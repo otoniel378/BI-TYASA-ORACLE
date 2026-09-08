@@ -35,6 +35,9 @@ from mercado.inegi.loaders import load_serie_por_nombre
 from mercado_noticias.loaders import load_variables_mercado, load_eventos_cerca_de, load_eventos_en_rango
 from mercado_noticias.analytics.detector import detectar_quiebres
 from mercado_noticias.analytics.ai_analysis import _call_gemini_text
+from mercado_noticias.analytics.noticias import buscar_noticias_actuales
+
+DIAS_NOTICIAS_RECIENTES = 60  # más allá de esto, la búsqueda en vivo ya no sirve (busca desde "hoy", no desde <fecha>)
 from aceros_planos.negros.analytics.forecasting import (
     generar_forecast,
     filtrar_por_dimension,
@@ -42,8 +45,8 @@ from aceros_planos.negros.analytics.forecasting import (
 )
 from core.components.kpi_cards import seccion_titulo
 from core.components.filters import sidebar_header
-from core.components.tables import tabla_ejecutiva, tabla_metricas
-from core.components.charts import barras_horizontales, barras_verticales
+from core.components.tables import tabla_ejecutiva
+from core.components.charts import barras_horizontales
 
 INEGI_EXOG = ["IMAI_HierroAcero_3311_Indice", "IMAI_Construccion_Indice", "BC_Siderurgia_Importaciones"]
 MERCADO_VISUAL = ["USD_MXN", "HRC_CME_USD", "Mineral_Hierro"]
@@ -240,6 +243,36 @@ def _tabla_futuro(resultado) -> pd.DataFrame:
     return fut.reset_index(drop=True)
 
 
+def _grafico_barras_anio(df_anio: pd.DataFrame, variables: list, anio: int) -> go.Figure:
+    """Una sola gráfica de barras agrupadas, todas las variables juntas —
+    indexadas a 100 en su primer valor del año (mismo truco que la línea de
+    contexto macro) para poder comparar aunque tengan escalas muy distintas
+    (un índice INEGI de ~100 junto a millones de BC_Siderurgia no se vería
+    nada si se graficaran en unidades reales)."""
+    fig = go.Figure()
+    for i, var in enumerate(variables):
+        serie_var = df_anio[["fecha", var]].dropna().sort_values("fecha")
+        if serie_var.empty or not serie_var[var].iloc[0]:
+            continue
+        meses = serie_var["fecha"].apply(lambda f: _MESES_ES[f.month - 1][:3])
+        indexado = serie_var[var] / serie_var[var].iloc[0] * 100
+        fig.add_trace(go.Bar(
+            x=meses, y=indexado, name=var.replace("_", " "),
+            marker_color=COLOR_SEQUENCE[i % len(COLOR_SEQUENCE)],
+            hovertemplate=f"%{{x}} {anio}<br>{var}: %{{y:.1f}} (base 100)<extra></extra>",
+        ))
+    fig.update_layout(
+        barmode="group",
+        paper_bgcolor=COLORS["surface"], plot_bgcolor=COLORS["background"],
+        font=dict(family="Inter, Arial, sans-serif", color=COLORS["text"]),
+        margin=dict(l=40, r=20, t=30, b=30), height=380,
+        xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#E5E7EB", title="Índice (base 100 = Ene)"),
+        legend=dict(orientation="h", y=-0.2, x=0.5, xanchor="center", font=dict(size=9)),
+        transition=dict(duration=400, easing="cubic-in-out"),
+    )
+    return fig
+
+
 def _render_resumen_anio(anio: int, key_prefix: str):
     """Panorama del año completo: valor mensual por variable (barras),
     todas las rupturas estadísticas detectadas en cualquier mes del año, y
@@ -254,15 +287,10 @@ def _render_resumen_anio(anio: int, key_prefix: str):
     variables_con_dato = [v for v in variables if v in df_anio.columns and df_anio[v].notna().any()]
 
     if variables_con_dato:
-        cols = st.columns(3)
-        for i, var in enumerate(variables_con_dato):
-            serie_var = df_anio[["fecha", var]].dropna().copy()
-            serie_var["mes"] = serie_var["fecha"].apply(lambda f: _MESES_ES[f.month - 1][:3])
-            with cols[i % 3]:
-                st.plotly_chart(
-                    barras_verticales(serie_var, x="mes", y=var, titulo=var.replace("_", " "), y_label=""),
-                    use_container_width=True, key=f"{key_prefix}_bar_{anio}_{var}",
-                )
+        st.plotly_chart(
+            _grafico_barras_anio(df_anio, variables_con_dato, anio),
+            use_container_width=True, key=f"{key_prefix}_bar_{anio}",
+        )
     else:
         st.caption(f"Sin datos de contexto macro para {anio}.")
 
@@ -333,6 +361,30 @@ def _render_detalle_punto(fecha: pd.Timestamp, key_prefix: str):
                     st.markdown(f"**{ev['nombre']}**")
                     st.caption(ev["descripcion"])
 
+        noticias_por_variable = {}
+        es_reciente = (pd.Timestamp.now() - fecha).days <= DIAS_NOTICIAS_RECIENTES
+        if resultados_quiebre:
+            st.markdown("**Noticias relacionadas**")
+            if es_reciente:
+                with st.spinner("Buscando noticias..."):
+                    for r in resultados_quiebre[:3]:
+                        noticias = buscar_noticias_actuales(r.variable, dias=DIAS_NOTICIAS_RECIENTES, max_resultados=3)
+                        if noticias:
+                            noticias_por_variable[r.variable] = noticias
+                if noticias_por_variable:
+                    for var, noticias in noticias_por_variable.items():
+                        st.caption(var.replace("_", " "))
+                        for n in noticias:
+                            st.markdown(f"- [{n.get('titulo', '(sin título)')}]({n.get('url', '')}) — {n.get('fuente', '')}")
+                else:
+                    st.caption("No se encontraron noticias recientes relacionadas.")
+            else:
+                st.caption(
+                    f"🔍 Búsqueda en vivo solo disponible para periodos de los últimos {DIAS_NOTICIAS_RECIENTES} "
+                    "días — no existe un archivo confiable de noticias pasadas para fechas históricas. Por eso "
+                    "las fechas viejas dependen de que el evento esté catalogado arriba."
+                )
+
         if not resultados_quiebre and eventos.empty:
             return
 
@@ -352,6 +404,9 @@ def _render_detalle_punto(fecha: pd.Timestamp, key_prefix: str):
                 partes_prompt.append("Eventos conocidos en esa fecha: " + "; ".join(
                     f"{ev['nombre']}: {ev['descripcion']}" for _, ev in eventos.iterrows()
                 ))
+            if noticias_por_variable:
+                titulos = [n.get("titulo", "") for lista in noticias_por_variable.values() for n in lista]
+                partes_prompt.append("Noticias recientes encontradas: " + "; ".join(titulos[:6]))
             prompt = (
                 "Eres analista de mercado para una acerera mexicana (TYASA). "
                 + " ".join(partes_prompt)
@@ -392,8 +447,6 @@ def _render_resultado(res, key_prefix: str):
                 f"MAPE {nivel}: {mape_txt}</div>",
                 unsafe_allow_html=True,
             )
-        if res.metricas:
-            tabla_metricas(res.metricas, titulo="Métricas de backtesting")
 
     fig = _grafico_forecast(res, titulo=f"Histórico + Pronóstico {horizonte} meses")
     st.plotly_chart(fig, use_container_width=True, key=f"{key_prefix}_chart_forecast")
@@ -405,10 +458,11 @@ def _render_resultado(res, key_prefix: str):
             use_container_width=True, key=f"{key_prefix}_chart_macro",
         )
 
-        fechas_disp = sorted(
-            df_contexto_visual.loc[df_contexto_visual["fecha"] >= res.historico["ds"].min(), "fecha"]
-            .dropna().unique(), reverse=True,
-        )
+        # La exploración por año/mes usa TODO el historial de contexto macro
+        # disponible (INEGI llega mucho más atrás que CANACERO) — no se limita
+        # al arranque de la serie pronosticada, para poder ver años como 2020
+        # (COVID) aunque el pronóstico en sí solo tenga datos desde 2021.
+        fechas_disp = sorted(df_contexto_visual["fecha"].dropna().unique(), reverse=True)
         anios_disp = sorted({pd.Timestamp(f).year for f in fechas_disp}, reverse=True)
 
         if anios_disp:
