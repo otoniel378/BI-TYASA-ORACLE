@@ -22,6 +22,10 @@ NEWSAPI_URL = "https://newsapi.org/v2/everything"
 # ── Queries optimizadas por variable ─────────────────────────────────────────
 # Lista: [query_corta_google, keyword_newsapi_1, keyword_newsapi_2, ...]
 QUERIES = {
+    "HRC_CME_USD":                    ["HRC steel price hot rolled coil", "precio acero laminado caliente", "CME steel futures"],
+    "IMAI_HierroAcero_3311_Indice":   ["producción hierro y acero México INEGI", "industria siderúrgica México actividad"],
+    "IMAI_Construccion_Indice":       ["industria de la construcción México INEGI", "actividad construcción México indicador"],
+    "BC_Siderurgia_Importaciones":    ["importaciones de acero México", "comercio exterior acero México balanza"],
     "Brent_USD":         ["Brent crude oil price",      "Brent oil", "crude oil OPEC", "petróleo Brent precio"],
     "WTI_USD":           ["WTI crude oil price",        "West Texas oil", "crude oil Trump Iran", "petróleo precio"],
     "Gas_HenryHub_USD":  ["Henry Hub natural gas",      "natural gas price USA", "gas natural EE.UU."],
