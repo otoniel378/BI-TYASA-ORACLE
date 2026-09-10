@@ -32,6 +32,7 @@ from mercado.canacero.loaders import (
     load_descripciones_tyasa,
 )
 from mercado.inegi.loaders import load_serie_por_nombre
+from mercado_fastmarkets.loaders import load_precios_familia, load_resumen_benchmark, NOMBRES_FASTMARKETS
 from mercado_noticias.loaders import load_variables_mercado, load_eventos_cerca_de, load_eventos_en_rango
 from mercado_noticias.analytics.detector import detectar_quiebres
 from mercado_noticias.analytics.ai_analysis import _call_gemini_text
@@ -75,30 +76,53 @@ def _construir_df_exog_inegi() -> pd.DataFrame:
     return pd.concat(partes, axis=1).reset_index()
 
 
+def _construir_df_exog(familia: str | None) -> pd.DataFrame:
+    """INEGI + precios Fastmarkets relevantes a <familia> (insumos globales
+    siempre, más el benchmark de precio de esa familia si se reconoce) —
+    esto es lo que entra al modelo (rezagado dentro de forecasting.py)."""
+    df_fm = load_precios_familia(familia)
+    if df_fm.empty:
+        return df_exog_inegi
+    return df_exog_inegi.merge(df_fm, on="fecha", how="outer").sort_values("fecha")
+
+
 @st.cache_data(ttl=1800, show_spinner="Cargando contexto macro...")
-def _construir_contexto_visual() -> pd.DataFrame:
-    """INEGI + variables de mercado (USD/MXN, HRC, mineral de hierro),
-    mensualizadas — solo para el panel visual, estas últimas no entran al
-    modelo (su historial solo llega a 2024)."""
+def _construir_contexto_visual(familia: str | None) -> pd.DataFrame:
+    """INEGI + variables de mercado (USD/MXN, HRC, mineral de hierro) +
+    precios Fastmarkets de <familia>, mensualizadas — panel visual. Los
+    símbolos de Fastmarkets con pronóstico propio ya traen fechas reales a
+    futuro (hasta 2028), así que el gráfico de contexto los dibuja
+    extendiéndose más allá de "Hoy" sin necesitar lógica extra."""
     df_inegi = _construir_df_exog_inegi()
     df_mkt = load_variables_mercado(dias=1200)
-    if df_mkt.empty:
-        return df_inegi
-    df_mkt = df_mkt[df_mkt["nombre"].isin(MERCADO_VISUAL)].copy()
-    df_mkt["fecha"] = df_mkt["fecha"].dt.to_period("M").dt.to_timestamp()
-    df_mkt_mensual = (
-        df_mkt.sort_values("fecha").groupby(["fecha", "nombre"])["valor"].last()
-        .unstack("nombre").reset_index()
-    )
-    return df_inegi.merge(df_mkt_mensual, on="fecha", how="outer").sort_values("fecha")
+    if not df_mkt.empty:
+        df_mkt = df_mkt[df_mkt["nombre"].isin(MERCADO_VISUAL)].copy()
+        df_mkt["fecha"] = df_mkt["fecha"].dt.to_period("M").dt.to_timestamp()
+        df_mkt_mensual = (
+            df_mkt.sort_values("fecha").groupby(["fecha", "nombre"])["valor"].last()
+            .unstack("nombre").reset_index()
+        )
+        df_inegi = df_inegi.merge(df_mkt_mensual, on="fecha", how="outer")
+
+    df_fm = load_precios_familia(familia)
+    if not df_fm.empty:
+        df_inegi = df_inegi.merge(df_fm, on="fecha", how="outer")
+    return df_inegi.sort_values("fecha")
 
 
 def _contexto_a_formato_largo(df_ctx: pd.DataFrame) -> pd.DataFrame:
     """(fecha, nombre, categoria, valor) — formato que espera
     mercado_noticias.analytics.detector.detectar_quiebres()."""
+    def _categoria(n):
+        if n in INEGI_EXOG:
+            return "INEGI"
+        if n in NOMBRES_FASTMARKETS:
+            return "Fastmarkets"
+        return "Mercado"
+
     variables = [c for c in df_ctx.columns if c != "fecha"]
     largo = df_ctx.melt(id_vars="fecha", value_vars=variables, var_name="nombre", value_name="valor")
-    largo["categoria"] = largo["nombre"].apply(lambda n: "INEGI" if n in INEGI_EXOG else "Mercado")
+    largo["categoria"] = largo["nombre"].apply(_categoria)
     return largo.dropna(subset=["valor"])
 
 # ---------------------------------------------------------------------------
@@ -140,8 +164,6 @@ with st.spinner("Cargando series históricas..."):
     df_fracciones = load_series_fracciones_tyasa(movimiento)
     descripciones_fraccion = load_descripciones_tyasa()
     df_exog_inegi = _construir_df_exog_inegi()
-    df_contexto_visual = _construir_contexto_visual()
-    df_contexto_largo = _contexto_a_formato_largo(df_contexto_visual)
 
 
 def _colores_modelo(nombre: str) -> str:
@@ -243,61 +265,86 @@ def _tabla_futuro(resultado) -> pd.DataFrame:
     return fut.reset_index(drop=True)
 
 
-def _grafico_barras_anio(df_anio: pd.DataFrame, variables: list, anio: int) -> go.Figure:
-    """Una sola gráfica de barras agrupadas, todas las variables juntas —
-    indexadas a 100 en su primer valor del año (mismo truco que la línea de
-    contexto macro) para poder comparar aunque tengan escalas muy distintas
-    (un índice INEGI de ~100 junto a millones de BC_Siderurgia no se vería
-    nada si se graficaran en unidades reales)."""
+def _agrupar_por_escala(df_anio: pd.DataFrame, variables: list) -> list:
+    """Agrupa variables por orden de magnitud (log10 de la mediana absoluta
+    del año) — así BC_Siderurgia_Importaciones (millones) no se queda muda
+    junto a un índice INEGI (~100) ni al tipo de cambio (~18), y las que sí
+    se miden parecido (ej. los dos índices INEGI) se pueden ver juntas en
+    unidades reales, sin necesidad de indexar a 100. Automático para que
+    siga funcionando si se agregan más variables después."""
+    ordenes: dict = {}
+    for var in variables:
+        valores = df_anio[var].dropna()
+        if valores.empty:
+            continue
+        mediana = valores.abs().median()
+        if mediana <= 0:
+            continue
+        ordenes[var] = round(np.log10(mediana))
+    grupos: dict = {}
+    for var, orden in ordenes.items():
+        grupos.setdefault(orden, []).append(var)
+    # grupos ordenados de mayor a menor escala, cada uno con sus variables
+    return [grupos[k] for k in sorted(grupos, reverse=True)]
+
+
+def _grafico_barras_grupo(df_anio: pd.DataFrame, variables: list, anio: int, titulo: str) -> go.Figure:
+    """Barras agrupadas en UNIDADES REALES (sin indexar) — solo se llama con
+    variables ya agrupadas por escala comparable en _agrupar_por_escala."""
     fig = go.Figure()
     for i, var in enumerate(variables):
         serie_var = df_anio[["fecha", var]].dropna().sort_values("fecha")
-        if serie_var.empty or not serie_var[var].iloc[0]:
+        if serie_var.empty:
             continue
         meses = serie_var["fecha"].apply(lambda f: _MESES_ES[f.month - 1][:3])
-        indexado = serie_var[var] / serie_var[var].iloc[0] * 100
         fig.add_trace(go.Bar(
-            x=meses, y=indexado, name=var.replace("_", " "),
+            x=meses, y=serie_var[var], name=var.replace("_", " "),
             marker_color=COLOR_SEQUENCE[i % len(COLOR_SEQUENCE)],
-            hovertemplate=f"%{{x}} {anio}<br>{var}: %{{y:.1f}} (base 100)<extra></extra>",
+            hovertemplate=f"%{{x}} {anio}<br>{var}: %{{y:,.1f}}<extra></extra>",
         ))
     fig.update_layout(
         barmode="group",
         paper_bgcolor=COLORS["surface"], plot_bgcolor=COLORS["background"],
         font=dict(family="Inter, Arial, sans-serif", color=COLORS["text"]),
-        margin=dict(l=40, r=20, t=30, b=30), height=380,
-        xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#E5E7EB", title="Índice (base 100 = Ene)"),
-        legend=dict(orientation="h", y=-0.2, x=0.5, xanchor="center", font=dict(size=9)),
+        margin=dict(l=40, r=20, t=36, b=30), height=320,
+        xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#E5E7EB"),
+        legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center", font=dict(size=9)),
+        title=dict(text=titulo, font=dict(size=13, color=COLORS["primary"]), x=0),
         transition=dict(duration=400, easing="cubic-in-out"),
     )
     return fig
 
 
-def _render_resumen_anio(anio: int, key_prefix: str):
+def _render_resumen_anio(df_ctx: pd.DataFrame, df_ctx_largo: pd.DataFrame, anio: int, key_prefix: str):
     """Panorama del año completo: valor mensual por variable (barras),
     todas las rupturas estadísticas detectadas en cualquier mes del año, y
     los eventos históricos catalogados que se traslapan con el año."""
     fecha_ini = pd.Timestamp(year=anio, month=1, day=1)
     fecha_fin = pd.Timestamp(year=anio, month=12, day=31)
-    df_anio = df_contexto_visual[
-        (df_contexto_visual["fecha"] >= fecha_ini) & (df_contexto_visual["fecha"] <= fecha_fin)
+    df_anio = df_ctx[
+        (df_ctx["fecha"] >= fecha_ini) & (df_ctx["fecha"] <= fecha_fin)
     ].copy()
 
-    variables = [c for c in df_contexto_visual.columns if c != "fecha"]
+    variables = [c for c in df_ctx.columns if c != "fecha"]
     variables_con_dato = [v for v in variables if v in df_anio.columns and df_anio[v].notna().any()]
 
     if variables_con_dato:
-        st.plotly_chart(
-            _grafico_barras_anio(df_anio, variables_con_dato, anio),
-            use_container_width=True, key=f"{key_prefix}_bar_{anio}",
-        )
+        grupos = _agrupar_por_escala(df_anio, variables_con_dato)
+        cols = st.columns(2) if len(grupos) > 1 else [st.container()]
+        for i, grupo in enumerate(grupos):
+            titulo = grupo[0].replace("_", " ") if len(grupo) == 1 else f"{len(grupo)} variables en escala similar"
+            with cols[i % len(cols)]:
+                st.plotly_chart(
+                    _grafico_barras_grupo(df_anio, grupo, anio, titulo),
+                    use_container_width=True, key=f"{key_prefix}_bar_{anio}_{i}",
+                )
     else:
         st.caption(f"Sin datos de contexto macro para {anio}.")
 
     meses_anio = pd.date_range(fecha_ini, fecha_fin, freq="MS")
     quiebres_anio = []
     for m in meses_anio:
-        for r in detectar_quiebres(df_contexto_largo, fecha_corte=m, umbral_sigma=1.5):
+        for r in detectar_quiebres(df_ctx_largo, fecha_corte=m, umbral_sigma=1.5):
             if r.quiebre:
                 quiebres_anio.append({
                     "Mes": _mes_anio_es(m), "Variable": r.variable, "Sigma": r.sigma,
@@ -327,7 +374,7 @@ def _render_resumen_anio(anio: int, key_prefix: str):
                 st.caption(ev["descripcion"])
 
 
-def _render_detalle_punto(fecha: pd.Timestamp, key_prefix: str):
+def _render_detalle_punto(df_ctx_largo: pd.DataFrame, fecha: pd.Timestamp, key_prefix: str):
     """Panel de detalle para el punto del timeline que el usuario clickeó:
     confirmación estadística de quiebre (detector.py), evento histórico
     curado si cae cerca, y análisis con IA a petición (no automático)."""
@@ -335,7 +382,7 @@ def _render_detalle_punto(fecha: pd.Timestamp, key_prefix: str):
         st.markdown(f"**📍 {_mes_anio_es(fecha)}**")
 
         resultados_quiebre = [
-            r for r in detectar_quiebres(df_contexto_largo, fecha_corte=fecha, umbral_sigma=1.5)
+            r for r in detectar_quiebres(df_ctx_largo, fecha_corte=fecha, umbral_sigma=1.5)
             if r.quiebre
         ]
         eventos = load_eventos_cerca_de(fecha)
@@ -419,7 +466,7 @@ def _render_detalle_punto(fecha: pd.Timestamp, key_prefix: str):
             st.rerun()
 
 
-def _render_resultado(res, key_prefix: str):
+def _render_resultado(res, key_prefix: str, familia: str | None, df_ctx: pd.DataFrame, df_ctx_largo: pd.DataFrame):
     if res.error_msg:
         st.error(f"No se pudo generar el pronóstico: {res.error_msg}")
         return
@@ -451,24 +498,29 @@ def _render_resultado(res, key_prefix: str):
     fig = _grafico_forecast(res, titulo=f"Histórico + Pronóstico {horizonte} meses")
     st.plotly_chart(fig, use_container_width=True, key=f"{key_prefix}_chart_forecast")
 
-    if not df_contexto_visual.empty and not res.historico.empty:
+    if not df_ctx.empty and not res.historico.empty:
         seccion_titulo("Contexto macro", "Mismo periodo, indexado a 100")
         st.plotly_chart(
-            _grafico_contexto_macro(df_contexto_visual, res.historico["ds"].min()),
+            _grafico_contexto_macro(df_ctx, res.historico["ds"].min()),
             use_container_width=True, key=f"{key_prefix}_chart_macro",
         )
+        if any(c in NOMBRES_FASTMARKETS for c in df_ctx.columns):
+            st.caption(
+                "Las líneas de Fastmarkets que sobresalen más allá de \"Hoy\" son su propio "
+                "pronóstico profesional de precio — no dato real todavía."
+            )
 
         # La exploración por año/mes usa TODO el historial de contexto macro
         # disponible (INEGI llega mucho más atrás que CANACERO) — no se limita
         # al arranque de la serie pronosticada, para poder ver años como 2020
         # (COVID) aunque el pronóstico en sí solo tenga datos desde 2021.
-        fechas_disp = sorted(df_contexto_visual["fecha"].dropna().unique(), reverse=True)
+        fechas_disp = sorted(df_ctx["fecha"].dropna().unique(), reverse=True)
         anios_disp = sorted({pd.Timestamp(f).year for f in fechas_disp}, reverse=True)
 
         if anios_disp:
             st.markdown("###### Explorar por año")
             anio_sel = st.selectbox("Año", anios_disp, key=f"{key_prefix}_selector_anio")
-            _render_resumen_anio(anio_sel, key_prefix)
+            _render_resumen_anio(df_ctx, df_ctx_largo, anio_sel, key_prefix)
 
             meses_del_anio = [f for f in fechas_disp if pd.Timestamp(f).year == anio_sel]
             if meses_del_anio:
@@ -477,7 +529,19 @@ def _render_resultado(res, key_prefix: str):
                     "Mes", meses_del_anio, format_func=_mes_anio_es,
                     key=f"{key_prefix}_selector_mes",
                 )
-                _render_detalle_punto(pd.Timestamp(mes_sel), key_prefix)
+                _render_detalle_punto(df_ctx_largo, pd.Timestamp(mes_sel), key_prefix)
+
+    df_bench = load_resumen_benchmark(familia, horizonte)
+    if not df_bench.empty:
+        st.divider()
+        seccion_titulo(
+            "Benchmark Fastmarkets", "Precio de referencia — no comparable en magnitud al volumen pronosticado"
+        )
+        st.dataframe(df_bench, hide_index=True, use_container_width=True)
+        st.caption(
+            "Precio ($/ton) y volumen (toneladas) miden cosas distintas — esto es una referencia de "
+            "tendencia (¿hacia dónde apunta el precio?), no una validación del pronóstico de volumen."
+        )
 
     if res.contribuciones is not None and not res.contribuciones.empty:
         st.divider()
@@ -546,14 +610,17 @@ with tab_total:
     if df_total.empty:
         st.warning("Sin datos de CANACERO para este movimiento.")
     else:
+        df_ctx_total = _construir_contexto_visual(None)
+        df_ctx_largo_total = _contexto_a_formato_largo(df_ctx_total)
         ck = _cache_key("total", modelo_key, horizonte)
         res_total = _get_or_compute(
             ck, lambda: generar_forecast(
                 df_total, horizonte, col_periodo="periodo_mes", col_val="volumen_total",
-                modelo=modelo_key, df_exog=df_exog_inegi,
+                modelo=modelo_key, df_exog=_construir_df_exog(None),
             )
         )
-        _render_resultado(res_total, key_prefix="total")
+        _render_resultado(res_total, key_prefix="total", familia=None,
+                           df_ctx=df_ctx_total, df_ctx_largo=df_ctx_largo_total)
 
 with tab_fraccion:
     seccion_titulo("Pronóstico por fracción", f"Modelo: {MODELOS_DISPONIBLES[modelo_key]}")
@@ -568,20 +635,24 @@ with tab_fraccion:
             "Fracción TYASA", opciones_fraccion, format_func=lambda f: etiquetas_fraccion[f],
             key="fc_com_fraccion",
         )
+        familia_sel = descripciones_fraccion.get(fraccion_sel)
         df_f = filtrar_por_dimension(df_fracciones, "fraccion", fraccion_sel, col_periodo="periodo_mes", col_val="volumen_total")
         n_f = len(df_f)
         st.caption(f"Serie disponible: **{n_f} meses**")
         if n_f < 12:
             st.warning(f"Solo {n_f} meses disponibles para esta fracción — se requieren mínimo 12.")
         else:
+            df_ctx_frac = _construir_contexto_visual(familia_sel)
+            df_ctx_largo_frac = _contexto_a_formato_largo(df_ctx_frac)
             ck_f = _cache_key("frac", modelo_key, horizonte, fraccion_sel)
             res_f = _get_or_compute(
                 ck_f, lambda: generar_forecast(
                     df_f, horizonte, col_periodo="periodo_mes", col_val="volumen_total",
-                    modelo=modelo_key, df_exog=df_exog_inegi,
+                    modelo=modelo_key, df_exog=_construir_df_exog(familia_sel),
                 )
             )
-            _render_resultado(res_f, key_prefix="frac")
+            _render_resultado(res_f, key_prefix="frac", familia=familia_sel,
+                               df_ctx=df_ctx_frac, df_ctx_largo=df_ctx_largo_frac)
 
 with tab_comparar:
     seccion_titulo("Comparación de Modelos", "Ejecuta los 4 modelos y compara MAPE, MAE y RMSE sobre el total")
