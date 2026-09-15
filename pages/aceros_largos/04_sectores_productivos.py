@@ -24,7 +24,7 @@ try:
     DATOS_REALES = True
 except ImportError as e:
     DATOS_REALES = False
-    st.error(f"⚠️ No se pudieron cargar los loaders reales. Error: {e}")
+    st.error(f"No se pudieron cargar los loaders reales. Error: {e}")
 
 # ---------------------------------------------------------------------------
 # HELPERS
@@ -33,22 +33,22 @@ except ImportError as e:
 SECTOR_DESCRIPTIONS = {
     "23 Construcción total": {
         "producto": "Varilla, alambrón, perfiles",
-        "relevancia": "⭐⭐⭐ Alta — refleja toda la actividad constructora",
+        "relevancia": "Alta — refleja toda la actividad constructora",
         "lee_mas": "Si este número baja, TODA la demanda de largos se ve afectada. Es el KPI más crítico."
     },
     "236 Edificación": {
         "producto": "Principalmente varilla corrugada y alambrón",
-        "relevancia": "⭐⭐⭐ Alta — vivienda y edificios comerciales",
-        "lee_mas": "Edificación sube → desarrolladoras activando obra → demanda directa de varilla."
+        "relevancia": "Alta — vivienda y edificios comerciales",
+        "lee_mas": "Edificación sube, lo que activa a las desarrolladoras y genera demanda directa de varilla."
     },
     "237 Obras de ingeniería civil": {
         "producto": "Perfiles estructurales, varilla para infraestructura",
-        "relevancia": "⭐⭐⭐ Alta — carreteras, puentes, presas, energía",
+        "relevancia": "Alta — carreteras, puentes, presas, energía",
         "lee_mas": "Depende de gasto público federal. Si el gobierno gasta, este sector aguanta aunque el privado caiga."
     },
     "238 Trabajos especializados": {
         "producto": "Varilla y herrería especializada",
-        "relevancia": "⭐⭐ Media — ejecución y terminación de obra",
+        "relevancia": "Media — ejecución y terminación de obra",
         "lee_mas": "Señal de que la obra iniciada avanza. Sube cuando el 236 y 237 ya están activos."
     },
 }
@@ -56,14 +56,14 @@ SECTOR_DESCRIPTIONS = {
 
 def _color_semaforo(valor):
     if valor is None:
-        return "#999", "⬜"
+        return "#999", "Sin datos"
     if valor < -10:
-        return "#C62828", "🔴"
+        return "#C62828", "Crítico"
     if valor < -3:
-        return "#E65100", "🟡"
+        return "#E65100", "Alerta"
     if valor < 0:
-        return "#F9A825", "🟠"
-    return "#2E7D32", "🟢"
+        return "#F9A825", "Precaución"
+    return "#2E7D32", "Favorable"
 
 
 def _interpretacion_sector(nombre, valor, tendencia):
@@ -111,16 +111,16 @@ def _interpretacion_sector(nombre, valor, tendencia):
 # CONFIG
 # ---------------------------------------------------------------------------
 
-st.title("🏭 Sectores Productivos — Aceros Largos")
+st.title("Sectores Productivos — Aceros Largos")
 st.markdown(
     "¿Qué subsector de la construcción está jalando o frenando la demanda? "
     "**Cada sector traducido a impacto en producto, volumen y acción comercial.**"
 )
 
 with st.sidebar:
-    st.header("🎛️ Configuración")
+    st.header("Configuración")
     periodo_meses = st.selectbox(
-        "📅 Período de análisis",
+        "Período de análisis",
         options=[6, 12, 24],
         index=1,
         format_func=lambda x: f"Últimos {x} meses"
@@ -191,7 +191,7 @@ if DATOS_REALES:
             except Exception:
                 sectoral_data = {}
     if sectoral_data:
-        st.success(f"✅ Datos reales cargados: {len(sectoral_data)} subsectores")
+        st.success(f"Datos reales cargados: {len(sectoral_data)} subsectores")
     else:
         st.warning("Sin datos reales. Verificar conexión BigQuery.")
 else:
@@ -207,7 +207,7 @@ st.divider()
 # SECCIÓN 1: SEMÁFORO DE SECTORES
 # ---------------------------------------------------------------------------
 
-st.subheader("🚦 ¿Cómo está cada subsector?")
+st.subheader("¿Cómo está cada subsector?")
 st.caption("De mayor a menor impacto en la demanda de Aceros Largos.")
 
 cols = st.columns(len(sectoral_data))
@@ -215,7 +215,7 @@ for i, (seg_key, seg_info) in enumerate(sectoral_data.items()):
     with cols[i]:
         v = seg_info.get("valor_actual")
         t = seg_info.get("tendencia_pct", 0)
-        color, emoji = _color_semaforo(v)
+        color, etiqueta = _color_semaforo(v)
 
         val_str   = f"{v:.1f}%" if v is not None else "N/D"
         delta_str = f"{t:+.1f} pp" if t else None
@@ -226,7 +226,7 @@ for i, (seg_key, seg_info) in enumerate(sectoral_data.items()):
             delta=delta_str,
         )
         st.html(
-            f"<div style='text-align:center; font-size:26px; margin-top:-8px;'>{emoji}</div>"
+            f"<div style='text-align:center; font-size:13px; font-weight:700; color:{color}; margin-top:-4px;'>{etiqueta}</div>"
         )
         desc = SECTOR_DESCRIPTIONS.get(seg_key, {})
         st.caption(desc.get("relevancia", ""))
@@ -237,7 +237,7 @@ st.divider()
 # SECCIÓN 2: ANÁLISIS DETALLADO POR SECTOR
 # ---------------------------------------------------------------------------
 
-st.subheader("🔍 Detalle gerencial por subsector")
+st.subheader("Detalle gerencial por subsector")
 
 for seg_key, seg_info in sectoral_data.items():
     v = seg_info.get("valor_actual")
@@ -246,7 +246,7 @@ for seg_key, seg_info in sectoral_data.items():
 
     desc = SECTOR_DESCRIPTIONS.get(seg_key, {})
     with st.expander(
-        f"{seg_key}  •  {'🔴' if v and v < umbral_critico else '🟡' if v and v < umbral_alerta else '🟢' if v and v >= 0 else '⬜'}  {v:.1f}% YoY" if v else f"{seg_key}  •  Sin datos",
+        f"{seg_key}  •  {'Crítico' if v and v < umbral_critico else 'Alerta' if v and v < umbral_alerta else 'Favorable' if v and v >= 0 else 'Sin datos'}  {v:.1f}% YoY" if v else f"{seg_key}  •  Sin datos",
         expanded=(seg_key == "23 Construcción total")
     ):
         col_info, col_graf = st.columns([1, 2])
@@ -284,7 +284,7 @@ for seg_key, seg_info in sectoral_data.items():
                 x_vals = df_s["mes"].tolist() if "mes" in df_s.columns else list(range(len(df_s)))
                 y_vals = df_s["valor"].tolist()
 
-                tab_bar, tab_wf = st.tabs(["📊 Por mes", "📉 Cascada"])
+                tab_bar, tab_wf = st.tabs(["Por mes", "Cascada"])
 
                 with tab_bar:
                     fig_sec = chart_barras_variacion(
@@ -294,7 +294,7 @@ for seg_key, seg_info in sectoral_data.items():
                         umbral_alerta=umbral_alerta,
                         height=300,
                     )
-                    st.plotly_chart(fig_sec, use_container_width=True)
+                    st.plotly_chart(fig_sec, width="stretch")
 
                 with tab_wf:
                     fig_wf = chart_waterfall(
@@ -303,7 +303,7 @@ for seg_key, seg_info in sectoral_data.items():
                         titulo="Cascada de tendencia — cómo se acumula",
                         height=300,
                     )
-                    st.plotly_chart(fig_wf, use_container_width=True)
+                    st.plotly_chart(fig_wf, width="stretch")
             else:
                 st.info("Sin serie histórica para este sector.")
 
@@ -313,7 +313,7 @@ st.divider()
 # SECCIÓN 3: COMPARATIVO ENTRE SECTORES
 # ---------------------------------------------------------------------------
 
-st.subheader("📊 ¿Qué subsector está mejor y cuál peor?")
+st.subheader("¿Qué subsector está mejor y cuál peor?")
 st.caption("Comparación directa para priorizar atención comercial.")
 
 nombres, valores, colores_bar = [], [], []
@@ -343,7 +343,7 @@ if nombres:
         text=[f"{v:+.1f}%" for v in sorted(valores)],
         textfont=dict(size=12),
     )
-    st.plotly_chart(fig_comp, use_container_width=True)
+    st.plotly_chart(fig_comp, width="stretch")
 
     # Lectura automática
     mejor = max(zip(nombres, valores), key=lambda x: x[1])
@@ -354,7 +354,7 @@ if nombres:
         c_m, _ = _color_semaforo(mejor[1])
         st.html(f"""
         <div style="background:#E8F5E9; border:1px solid #2E7D32; border-radius:8px; padding:12px;">
-            <strong>🟢 Mejor señal: {mejor[0]}</strong><br>
+            <strong>Mejor señal: {mejor[0]}</strong><br>
             <span style="font-size:22px; color:#2E7D32;">{mejor[1]:+.1f}%</span><br>
             <span style="font-size:12px; color:#555;">Priorizar atención en este subsector si quieres capturar volumen.</span>
         </div>
@@ -364,7 +364,7 @@ if nombres:
         c_p, _ = _color_semaforo(peor[1])
         st.html(f"""
         <div style="background:#FFEBEE; border:1px solid #C62828; border-radius:8px; padding:12px;">
-            <strong>🔴 Señal más débil: {peor[0]}</strong><br>
+            <strong>Señal más débil: {peor[0]}</strong><br>
             <span style="font-size:22px; color:#C62828;">{peor[1]:+.1f}%</span><br>
             <span style="font-size:12px; color:#555;">Clientes de este subsector están bajo mayor presión. Revisar cartera.</span>
         </div>
@@ -376,7 +376,7 @@ st.divider()
 # SECCIÓN 4: PROYECCIÓN Y RECOMENDACIÓN ESTRATÉGICA
 # ---------------------------------------------------------------------------
 
-st.subheader("🔮 ¿Qué esperar los próximos 3 meses?")
+st.subheader("¿Qué esperar los próximos 3 meses?")
 
 construccion_total = sectoral_data.get("23 Construcción total", {})
 v_total = construccion_total.get("valor_actual")
@@ -388,28 +388,28 @@ with col_proj:
     st.markdown("**Visión de corto plazo basada en datos reales**")
     if v_total is not None:
         if v_total < -10:
-            vision = "🔴 Visión negativa"
+            vision = "Visión negativa"
             resumen = "La construcción está en contracción severa."
             porque = "El dato actual está por debajo de -10%, nivel que históricamente implica menor inicio y avance de obra."
             impacto = "Demanda probable de varilla y alambrón bajo presión. Riesgo de sobreinventario si se compra de más."
             bg = "#FFEBEE"
             border = "#C62828"
         elif v_total < -3:
-            vision = "🟡 Visión cautelosa"
+            vision = "Visión cautelosa"
             resumen = "La construcción sigue débil, aunque no está en caída extrema."
             porque = "El indicador permanece en terreno negativo; el sector todavía no confirma recuperación."
             impacto = "Demanda lateral o ligeramente a la baja. Conviene cuidar margen y cartera antes que perseguir volumen."
             bg = "#FFF3E0"
             border = "#E65100"
         elif v_total < 0:
-            vision = "🟠 Visión neutral con riesgo"
+            vision = "Visión neutral con riesgo"
             resumen = "La construcción está cerca de estabilizarse, pero aún no crece."
             porque = "El dato está apenas debajo de cero; falta confirmación de varios meses positivos."
             impacto = "No hay señal suficiente para aumentar inventario agresivamente. Mantener flexibilidad."
             bg = "#FFFDE7"
             border = "#F9A825"
         else:
-            vision = "🟢 Visión positiva"
+            vision = "Visión positiva"
             resumen = "La construcción está en terreno positivo."
             porque = "El indicador muestra crecimiento anual; eso suele anticipar más pedidos de productos largos."
             impacto = "Mayor probabilidad de recuperación de demanda, especialmente en varilla, alambrón y perfiles."
@@ -442,7 +442,7 @@ with col_rec:
         if v_total < -10:
             st.html("""
             <div style="background:#FFEBEE; border:1px solid #C62828; border-radius:8px; padding:14px;">
-                🔴 <strong>Estrategia Defensiva</strong>
+                <strong>Estrategia Defensiva</strong>
                 <ul style="margin:8px 0 0 0; padding-left:18px; font-size:13px;">
                     <li>Priorizar proyectos con crédito confirmado</li>
                     <li>No sobrecomprar inventario de varilla/alambrón</li>
@@ -454,7 +454,7 @@ with col_rec:
         elif v_total < -3:
             st.html("""
             <div style="background:#FFF3E0; border:1px solid #E65100; border-radius:8px; padding:14px;">
-                🟡 <strong>Estrategia Conservadora</strong>
+                <strong>Estrategia Conservadora</strong>
                 <ul style="margin:8px 0 0 0; padding-left:18px; font-size:13px;">
                     <li>Monitoreo semanal de permisos de edificación</li>
                     <li>Mantener inventario operativo sin adelantar compras</li>
@@ -466,7 +466,7 @@ with col_rec:
         else:
             st.html("""
             <div style="background:#E8F5E9; border:1px solid #2E7D32; border-radius:8px; padding:14px;">
-                🟢 <strong>Estrategia de Crecimiento</strong>
+                <strong>Estrategia de Crecimiento</strong>
                 <ul style="margin:8px 0 0 0; padding-left:18px; font-size:13px;">
                     <li>Asegurar disponibilidad antes del repunte</li>
                     <li>Activar clientes dormidos con propuesta proactiva</li>

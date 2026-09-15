@@ -3,7 +3,7 @@ ai_analysis.py — Análisis inteligente de sentimiento de mercado.
 
 Flujo:
   1. Recibe lista de noticias (dicts con titulo/descripcion/url)
-  2. Opcionalmente scrapea el contenido completo del artículo (trafilatura → BS4)
+  2. Opcionalmente scrapea el contenido completo del artículo (trafilatura -> BS4)
   3. Construye prompt de analista senior de commodities
   4. Llama a Gemini API (gemini-2.0-flash o gemini-1.5-flash)
   5. Cachea el resultado en cache/ai_summaries/<hash>.json para no repetir llamadas
@@ -239,7 +239,7 @@ def _call_gemini(prompt: str, api_key: str, model: str = _DEFAULT_MODEL) -> dict
             except Exception as e:
                 print(f"[ai_analysis] SDK {m} error: {e}")
     except ImportError:
-        pass  # SDK no instalado → usar requests
+        pass  # SDK no instalado, usar requests
 
     # Fallback: REST directo (no requiere SDK)
     for m in models:
@@ -989,7 +989,7 @@ _BRIEF_TMPL = """# Briefing de visita — {cliente}
 
 ---
 Genera exactamente 4-5 bullets de acción para el vendedor antes de la visita.
-Cada bullet: emoji relevante (💼 📦 📈 ⚠️ 💡 🎯 🔄) + máximo 25 palabras.
+Cada bullet: una etiqueta corta en mayúsculas entre corchetes (ej. [ACCIÓN], [RIESGO], [OPORTUNIDAD]) + máximo 25 palabras.
 Foco: recuperar si inactivo, expandir mix si activo, anticipar estacionalidad, cross-sell, riesgo.
 Sin introducción ni cierre — solo los bullets, uno por línea."""
 

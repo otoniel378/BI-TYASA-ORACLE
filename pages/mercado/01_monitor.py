@@ -49,22 +49,20 @@ def _ai_html(result: dict | None, color_txt: str) -> str:
     """Convierte resultado de IA a HTML. Retorna '' si no hay resultado."""
     if not result:
         return ""
-    D_ICO = {"Oferta":"🏭","Demanda":"📊","Geopolitica":"🌍","Macro":"🏦","Sectorial":"⚙️"}
-    S_ICO = {"Alcista":"📈","Bajista":"📉","Neutral":"➡️"}
     C_COL = {"Alta":"#2E7D32","Media":"#D68910","Baja":"#C62828"}
     d  = result.get("driver_principal","—")
     s  = result.get("sentimiento","—")
     c  = result.get("confianza","—")
     ca = result.get("_cached", False)
-    di = D_ICO.get(d,"🔍"); si = S_ICO.get(s,"➡️"); cc = C_COL.get(c,"#6B7280")
-    cb = '<span style="background:#F3F4F6;color:#888;padding:2px 7px;border-radius:8px;font-size:10px;margin-left:4px;">💾</span>' if ca else ""
+    cc = C_COL.get(c,"#6B7280")
+    cb = '<span style="background:#F3F4F6;color:#888;padding:2px 7px;border-radius:8px;font-size:10px;margin-left:4px;">Caché</span>' if ca else ""
     err = result.get("_error","")
-    eh  = f"<div style='color:#C62828;font-size:11px;margin-bottom:4px;'>⚠️ {err}</div>" if err else ""
+    eh  = f"<div style='color:#C62828;font-size:11px;margin-bottom:4px;'>{err}</div>" if err else ""
     badges = (
         f"<div style='display:flex;gap:6px;flex-wrap:wrap;margin:8px 0;'>"
-        f"<span style='background:#EEF2FF;color:#3730A3;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600;'>{di} {d}</span>"
-        f"<span style='background:#F0FDF4;color:#166534;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600;'>{si} {s}</span>"
-        f"<span style='background:#FFF7ED;color:{cc};padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600;'>✓ {c}</span>"
+        f"<span style='background:#EEF2FF;color:#3730A3;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600;'>{d}</span>"
+        f"<span style='background:#F0FDF4;color:#166534;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600;'>{s}</span>"
+        f"<span style='background:#FFF7ED;color:{cc};padding:3px 8px;border-radius:20px;font-size:11px;font-weight:600;'>{c}</span>"
         f"{cb}</div>"
     )
     puntos = result.get("puntos_clave",[])
@@ -78,7 +76,7 @@ def _ai_html(result: dict | None, color_txt: str) -> str:
     imph = (
         f"<div style='background:#EFF6FF;border:1px solid #BFDBFE;border-radius:5px;"
         f"padding:8px 12px;margin-top:6px;font-size:12px;color:#1E40AF;'>"
-        f"🏭 <b>Impacto TYASA:</b> {imp}</div>"
+        f"<b>Impacto TYASA:</b> {imp}</div>"
     ) if imp and imp != "—" else ""
     return (
         f"<div style='margin:8px 0;padding:10px;background:#F9FAFB;"
@@ -95,7 +93,7 @@ def _news_card_html(n: dict, c_txt: str, c_bg: str) -> str:
     badge  = n.get("fuente_api","")
     bc     = "#1B3A5C" if badge == "Google News" else "#6B7280"
     link   = (f'<a href="{url}" target="_blank" style="color:{c_txt};font-weight:600;'
-              f'font-size:11px;text-decoration:none;">Ver →</a>') if url else ""
+              f'font-size:11px;text-decoration:none;">Ver</a>') if url else ""
     return (
         f"<div style='border-left:3px solid {c_txt};background:{c_bg};"
         f"padding:8px 12px;border-radius:0 5px 5px 0;margin-bottom:6px;'>"
@@ -103,7 +101,7 @@ def _news_card_html(n: dict, c_txt: str, c_bg: str) -> str:
         f"<div style='font-size:11px;color:#444;margin-top:3px;line-height:1.4;'>{desc}</div>"
         f"<div style='font-size:10px;color:#888;margin-top:4px;display:flex;gap:8px;"
         f"flex-wrap:wrap;align-items:center;'>"
-        f"📅 {fecha} · 📰 {fuente} "
+        f"{fecha} · {fuente} "
         f"<span style='background:{bc};color:white;padding:1px 5px;border-radius:3px;"
         f"font-size:9px;'>{badge}</span> {link}</div></div>"
     )
@@ -130,7 +128,7 @@ def _render_ai_inline(var: str, sigma_a: float, cambio7: float,
     if not _GEMINI_KEY:
         return
     skey = f"ai_{var}_{round(sigma_a, 1)}"
-    if st.button("🤖 Análisis IA", key=f"aibtn_{var}"):
+    if st.button("Análisis IA", key=f"aibtn_{var}"):
         nots = _noticias_var_cached(variable=var)
         st.session_state[skey] = analizar_alerta(
             variable=var, sigma=sigma_a, cambio7=cambio7,
@@ -156,7 +154,7 @@ def _render_noticias_tabs(variable: str, color_txt: str, color_bg: str):
             f"<a href='{get_google_news_url(variable)}' target='_blank' style='"
             f"display:inline-block;padding:5px 10px;background:{color_txt};color:white;"
             f"border-radius:5px;font-size:11px;text-decoration:none;font-weight:600;'>"
-            f"🔍 Google News</a>",
+            f"Google News</a>",
             unsafe_allow_html=True
         )
     nots = _noticias_var_cached(variable)
@@ -195,13 +193,13 @@ def _render_chart(df_vars: pd.DataFrame, var: str,
         height=220, showlegend=False,
         xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#E5E7EB"),
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # SIDEBAR
 # ════════════════════════════════════════════════════════════════════════════
-sidebar_header("Monitor de Mercado", "📡")
+sidebar_header("Monitor de Mercado")
 categorias    = get_categorias_disponibles()
 cat_sel       = st.sidebar.selectbox("Categoría", ["Todas"] + categorias, key="mkt_cat")
 sev_sel       = st.sidebar.selectbox("Severidad mínima", ["Todas","Crítico","Alto","Moderado"], key="mkt_sev")
@@ -216,7 +214,7 @@ st.sidebar.caption(
 # HEADER
 # ════════════════════════════════════════════════════════════════════════════
 st.markdown(
-    f"<h2 style='color:{COLORS['primary']};margin-bottom:0;'>📡 Monitor de Quiebres de Mercado</h2>"
+    f"<h2 style='color:{COLORS['primary']};margin-bottom:0;'>Monitor de Quiebres de Mercado</h2>"
     f"<p style='color:#6B7280;'>Variables siderúrgicas globales · Detección automática · "
     f"Noticias vinculadas · Análisis IA</p>",
     unsafe_allow_html=True,
@@ -251,11 +249,11 @@ n_crit = sum(1 for a in alertas_live if a["severidad"] == "Crítico")
 n_alto = sum(1 for a in alertas_live if a["severidad"] == "Alto")
 n_mod  = sum(1 for a in alertas_live if a["severidad"] == "Moderado")
 render_kpi_row([
-    {"label": "Alertas activas",    "value": len(alertas_live), "icon": "⚡",
+    {"label": "Alertas activas",    "value": len(alertas_live),
      "help_text": f"Variables superando {umbral_sigma}σ en los últimos 5 días hábiles"},
-    {"label": "Críticas",           "value": n_crit,            "icon": "🔴"},
-    {"label": "Altas",              "value": n_alto,            "icon": "🟠"},
-    {"label": "Moderadas",          "value": n_mod,             "icon": "🟡"},
+    {"label": "Críticas",           "value": n_crit},
+    {"label": "Altas",              "value": n_alto},
+    {"label": "Moderadas",          "value": n_mod},
 ])
 st.divider()
 
@@ -264,7 +262,7 @@ st.divider()
 # ════════════════════════════════════════════════════════════════════════════
 if alertas_filt:
     seccion_titulo(
-        f"⚡ Alertas detectadas ({len(alertas_filt)})",
+        f"Alertas detectadas ({len(alertas_filt)})",
         "Variables con comportamiento anómalo en los últimos 5 días hábiles"
     )
     for alerta in alertas_filt[:10]:
@@ -279,7 +277,7 @@ if alertas_filt:
         fecha_d = alerta["fecha_deteccion"]
 
         color_txt, color_bg = SEV_COLORS.get(sev, ("#6B7280", "#F3F4F6"))
-        flecha = "↑" if tend == "sube" else "↓"
+        flecha = "Sube" if tend == "sube" else "Baja"
         sev_badge = f"<span style='background:{color_txt};color:white;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;'>{sev}</span>"
 
         with st.expander(
@@ -314,14 +312,14 @@ if alertas_filt:
                 with col_ai:
                     _render_ai_inline(var, sigma_a, cambio7, val_act, mu_base, tend, color_txt)
                 with col_chat:
-                    if st.button("💬 Preguntar al analista", key=f"chat_open_{var}"):
+                    if st.button("Preguntar al analista", key=f"chat_open_{var}"):
                         st.session_state["chat_var"] = var
                         st.session_state["chat_alerta"] = alerta
                         if f"chat_msgs_{var}" not in st.session_state:
                             st.session_state[f"chat_msgs_{var}"] = []
 
             # Noticias
-            st.markdown("**📰 Noticias relacionadas:**")
+            st.markdown("**Noticias relacionadas:**")
             _render_noticias_tabs(var, color_txt, color_bg)
 
     # ── Noticias consolidadas de las alertas más críticas ─────────────────────
@@ -336,7 +334,7 @@ if alertas_filt:
         _ct, _cb = SEV_COLORS.get(_sev, ("#6B7280", "#F3F4F6"))
         _sigma  = _alerta["sigma_actual"]
         _cam7   = _alerta["cambio_7d_pct"]
-        _flecha = "↑" if _alerta["tendencia"] == "sube" else "↓"
+        _flecha = "Sube" if _alerta["tendencia"] == "sube" else "Baja"
         _nots   = _noticias_var_cached(_var, max_r=5)[:3]
         if not _nots:
             continue
@@ -360,7 +358,7 @@ if alertas_filt:
             f"border-radius:8px;padding:10px 12px;'>"
             f"<div style='font-size:11px;font-weight:700;color:{_ct};"
             f"letter-spacing:.03em;margin-bottom:6px;'>"
-            f"📡 {_var.replace('_', ' ')}&nbsp;"
+            f"{_var.replace('_', ' ')}&nbsp;"
             f"<span style='background:{_ct};color:#fff;padding:1px 7px;"
             f"border-radius:10px;font-size:10px;'>{_sev}</span> "
             f"<span style='font-size:10px;font-weight:400;'>"
@@ -370,7 +368,7 @@ if alertas_filt:
         )
 
     if _cards_nots:
-        seccion_titulo("📰 Noticias relacionadas con las alertas",
+        seccion_titulo("Noticias relacionadas con las alertas",
                        "Artículos recientes de las variables con mayor anomalía")
         st.html(
             "<div style='display:grid;grid-template-columns:1fr 1fr;gap:8px;"
@@ -395,7 +393,7 @@ else:
 # sin necesidad de que esté en alerta
 # ════════════════════════════════════════════════════════════════════════════
 seccion_titulo(
-    "🔍 Explorar Variable de Mercado",
+    "Explorar Variable de Mercado",
     "Selecciona cualquier variable para ver su tendencia, noticias y análisis IA"
 )
 
@@ -428,12 +426,12 @@ else:
     cambio_expl   = 0.0
     st.info("Sin datos para esta variable.")
 
-# AI para variable explorada — fuera de expander/loop → DOM estable
+# AI para variable explorada, fuera de expander/loop, DOM estable
 if _GEMINI_KEY:
     skey_expl = f"ai_{var_expl}_{round(sigma_expl_val, 1)}"
     col_btn_e, col_frz_e = st.columns([1, 2])
     with col_btn_e:
-        run_expl = st.button("🤖 Análisis IA", key="expl_ai_btn")
+        run_expl = st.button("Análisis IA", key="expl_ai_btn")
     with col_frz_e:
         frz_expl = st.checkbox("Regenerar (ignorar caché)", key="expl_ai_chk")
     if run_expl:
@@ -448,14 +446,14 @@ if _GEMINI_KEY:
     res_expl = st.session_state.get(skey_expl) or _cache_load(_cache_key(var_expl, sigma_expl_val))
     st.markdown(_ai_html(res_expl, color_expl), unsafe_allow_html=True)
 
-st.markdown("**📰 Noticias:**")
+st.markdown("**Noticias:**")
 _render_noticias_tabs(var_expl, color_expl, "#EBF5FB")
 
 # ── Comparación multi-variable ────────────────────────────────────────────────
 st.markdown(
     "<div style='border-top:1px solid #E5E7EB;margin:18px 0 12px;'></div>"
     "<div style='font-size:14px;font-weight:700;color:#1B3A5C;margin-bottom:4px;'>"
-    "🔗 Cruzar variables y consultar al analista</div>"
+    "Cruzar variables y consultar al analista</div>"
     "<div style='font-size:12px;color:#6B7280;margin-bottom:10px;'>"
     "Selecciona 2 a 5 variables — el analista cruzará su información y responderá en contexto</div>",
     unsafe_allow_html=True
@@ -489,7 +487,7 @@ if vars_compare and not df_vars.empty:
 
 col_cmp_btn, col_cmp_info = st.columns([1, 3])
 with col_cmp_btn:
-    if st.button("💬 Preguntar al analista", key="expl_chat_open", use_container_width=True):
+    if st.button("Preguntar al analista", key="expl_chat_open", width="stretch"):
         st.session_state["chat_compare_vars"] = vars_compare
         if "chat_compare_msgs" not in st.session_state:
             st.session_state["chat_compare_msgs"] = []
@@ -503,7 +501,7 @@ st.divider()
 # SECCIÓN C — CHAT CON EL ANALISTA
 # C1: alerta específica (botón dentro de alertas)
 # C2: cruce de variables (botón en Explorador)
-# Ambos fuera de loops/expanders → DOM estable
+# Ambos fuera de loops/expanders, DOM estable
 # ════════════════════════════════════════════════════════════════════════════
 chat_var    = st.session_state.get("chat_var")
 chat_alerta = st.session_state.get("chat_alerta", {})
@@ -513,7 +511,7 @@ if chat_var and _GEMINI_KEY:
         chat_alerta.get("severidad","Moderado"), ("#185FA5","#E6F1FB")
     )
     seccion_titulo(
-        f"💬 Chat · {chat_var.replace('_',' ')}",
+        f"Chat · {chat_var.replace('_',' ')}",
         f"Conversa con el analista de IA sobre esta alerta · {chat_alerta.get('severidad','')} "
         f"({chat_alerta.get('sigma_actual', 0):+.2f}σ)"
     )
@@ -567,7 +565,7 @@ if chat_var and _GEMINI_KEY:
         st.session_state[chat_key] = messages
         st.rerun()
 
-    if st.button("🗑 Limpiar conversación", key="chat_clear"):
+    if st.button("Limpiar conversación", key="chat_clear"):
         st.session_state[chat_key] = []
         st.session_state["chat_var"] = None
         st.rerun()
@@ -578,7 +576,7 @@ chat_compare_vars = st.session_state.get("chat_compare_vars", [])
 
 if chat_compare_vars and _GEMINI_KEY:
     seccion_titulo(
-        f"💬 Analista · Cruce de variables ({len(chat_compare_vars)})",
+        f"Analista · Cruce de variables ({len(chat_compare_vars)})",
         "El analista cruza los datos de todas las variables seleccionadas para responder tu pregunta"
     )
 
@@ -661,11 +659,11 @@ if chat_compare_vars and _GEMINI_KEY:
 
     col_cmp_clr, col_cmp_close = st.columns([1, 1])
     with col_cmp_clr:
-        if st.button("🗑 Limpiar conversación", key="chat_compare_clear"):
+        if st.button("Limpiar conversación", key="chat_compare_clear"):
             st.session_state[cmp_key] = []
             st.rerun()
     with col_cmp_close:
-        if st.button("✕ Cerrar panel", key="chat_compare_close"):
+        if st.button("Cerrar panel", key="chat_compare_close"):
             st.session_state["chat_compare_vars"] = []
             st.session_state[cmp_key] = []
             st.rerun()

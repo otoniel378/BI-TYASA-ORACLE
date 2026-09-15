@@ -98,7 +98,7 @@ def _fetch_batch(ids: list, token: str) -> list:
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        print(f"  ✗ Error batch {ids[:2]}: {e}")
+        print(f"  [ERROR] Error batch {ids[:2]}: {e}")
         return []
 
     rows = []

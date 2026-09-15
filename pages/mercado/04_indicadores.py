@@ -42,10 +42,10 @@ _RANGOS = {"12M": 12, "24M": 24, "36M": 36, "5A": 60, "Todo": 999}
 
 # ── Paleta de alertas ────────────────────────────────────────────────────────
 _ALERT = {
-    "Critico":  {"color": "#EF5350", "bg": "rgba(239,83,80,0.15)",   "icon": "⚠️"},
-    "Alto":     {"color": "#FF9800", "bg": "rgba(255,152,0,0.15)",   "icon": "🔶"},
-    "Moderado": {"color": "#FFC107", "bg": "rgba(255,193,7,0.12)",   "icon": "🔸"},
-    "Normal":   {"color": "#66BB6A", "bg": "rgba(102,187,106,0.10)", "icon": "✅"},
+    "Critico":  {"color": "#EF5350", "bg": "rgba(239,83,80,0.15)"},
+    "Alto":     {"color": "#FF9800", "bg": "rgba(255,152,0,0.15)"},
+    "Moderado": {"color": "#FFC107", "bg": "rgba(255,193,7,0.12)"},
+    "Normal":   {"color": "#66BB6A", "bg": "rgba(102,187,106,0.10)"},
 }
 _SURFACE = "#1A2535"
 _ORDER   = {"Critico": 0, "Alto": 1, "Moderado": 2, "Normal": 3}
@@ -132,7 +132,7 @@ def _card(clave: str, label: str, valor, var_mom, alerta: str,
     badge = (
         f'<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:20px;'
         f'background:{am["bg"]};color:{am["color"]};white-space:nowrap;">'
-        f'{am["icon"]} {alerta.upper()}</span>'
+        f'{alerta.upper()}</span>'
     )
     try:
         v = float(var_mom)
@@ -192,7 +192,7 @@ def _alert_summary(df: pd.DataFrame) -> str:
             f'border:1px solid {am["color"]}33;">'
             f'<span style="font-size:28px;font-weight:800;color:{am["color"]};line-height:1;">{c}</span>'
             f'<span style="font-size:10px;color:#94A3B8;margin-top:3px;white-space:nowrap;">'
-            f'{am["icon"]} {nivel}</span></div>'
+            f'{nivel}</span></div>'
         )
     note = (
         f'<div style="flex:1;display:flex;align-items:center;padding-left:16px;">'
@@ -276,10 +276,10 @@ def _tendencia_reciente(comp: dict) -> str:
     vals = [serie[m] for m in meses[-4:]]
     deltas = [vals[i] - vals[i - 1] for i in range(1, len(vals))]
     if all(d > 0 for d in deltas):
-        return f"📈 {len(deltas)} meses consecutivos al alza"
+        return f"{len(deltas)} meses consecutivos al alza"
     if all(d < 0 for d in deltas):
-        return f"📉 {len(deltas)} meses consecutivos a la baja"
-    return "➡️ sin racha definida en meses recientes"
+        return f"{len(deltas)} meses consecutivos a la baja"
+    return "Sin racha definida en meses recientes"
 
 
 # ── Lenguaje ejecutivo (sin jerga estadística) ───────────────────────────────
@@ -349,7 +349,7 @@ def _stats_card(row, df_serie: pd.DataFrame, color: str, comp: dict | None = Non
     badge = (
         f'<div style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;'
         f'background:{am["bg"]};border-radius:20px;font-size:11.5px;font-weight:700;'
-        f'color:{am["color"]};">{am["icon"]} {_ALERTA_FRASE.get(alerta, _ALERTA_FRASE["Normal"])}</div>'
+        f'color:{am["color"]};">{_ALERTA_FRASE.get(alerta, _ALERTA_FRASE["Normal"])}</div>'
     )
     resumen_html = (
         f'<div style="margin:10px 0 14px;font-size:12.5px;color:#CBD5E1;line-height:1.55;">'
@@ -392,7 +392,7 @@ def _render_ai_result(result: dict | None) -> str:
         return (
             f'<div style="color:#475569;font-size:12px;padding:12px;text-align:center;'
             f'background:{_SURFACE};border-radius:10px;">'
-            f'Haz clic en "🤖 Analizar" para generar el análisis de impacto en TYASA.</div>'
+            f'Haz clic en "Analizar" para generar el análisis de impacto en TYASA.</div>'
         )
     error   = result.get("_error")
     analisis = result.get("analisis", "")
@@ -402,7 +402,7 @@ def _render_ai_result(result: dict | None) -> str:
             f'background:rgba(239,83,80,0.08);">{error}</div>'
         )
     cached_badge = (
-        ' <span style="font-size:9px;color:#475569;">📦 caché</span>'
+        ' <span style="font-size:9px;color:#475569;">caché</span>'
         if result.get("_cached") else ""
     )
     p_html = "".join(
@@ -466,29 +466,29 @@ def _render_reporte_section(clave: str, tab_key: str, g: dict, periodos: int,
     col_w, col_p = st.columns(2)
     fname_base = f"INEGI_{clave}_{label}".replace(" ", "_").replace("/", "-")
     with col_w:
-        if st.button("📄 Generar Word", key=f"genw_{clave}_{tab_key}", use_container_width=True):
+        if st.button("Generar Word", key=f"genw_{clave}_{tab_key}", width="stretch"):
             with st.spinner("Generando documento Word (con análisis IA)..." if api_key else "Generando documento Word..."):
                 data = generar_word_indicador(clave, periodos=periodos, incluir_noticias=incluir_noticias,
                                                api_key=api_key)
             st.session_state[f"docx_{clave}_{tab_key}"] = data
         if st.session_state.get(f"docx_{clave}_{tab_key}"):
             st.download_button(
-                "⬇️ Descargar .docx", data=st.session_state[f"docx_{clave}_{tab_key}"],
+                "Descargar .docx", data=st.session_state[f"docx_{clave}_{tab_key}"],
                 file_name=f"{fname_base}.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                key=f"dlw_{clave}_{tab_key}", use_container_width=True,
+                key=f"dlw_{clave}_{tab_key}", width="stretch",
             )
     with col_p:
-        if st.button("📑 Generar PDF", key=f"genp_{clave}_{tab_key}", use_container_width=True):
+        if st.button("Generar PDF", key=f"genp_{clave}_{tab_key}", width="stretch"):
             with st.spinner("Generando documento PDF (con análisis IA)..." if api_key else "Generando documento PDF..."):
                 data = generar_pdf_indicador(clave, periodos=periodos, incluir_noticias=incluir_noticias,
                                               api_key=api_key)
             st.session_state[f"pdf_{clave}_{tab_key}"] = data
         if st.session_state.get(f"pdf_{clave}_{tab_key}"):
             st.download_button(
-                "⬇️ Descargar .pdf", data=st.session_state[f"pdf_{clave}_{tab_key}"],
+                "Descargar .pdf", data=st.session_state[f"pdf_{clave}_{tab_key}"],
                 file_name=f"{fname_base}.pdf", mime="application/pdf",
-                key=f"dlp_{clave}_{tab_key}", use_container_width=True,
+                key=f"dlp_{clave}_{tab_key}", width="stretch",
             )
 
 
@@ -527,13 +527,13 @@ def _render_detail(clave: str, tab_key: str, g: dict,
         if vista == "Comparación anual" and comp and comp.get("anio_actual"):
             st.plotly_chart(
                 _make_yoy_chart(comp, label, g["color"]),
-                use_container_width=True,
+                width="stretch",
                 key=f"pltyoy_{clave}_{tab_key}",
             )
         elif not df_serie.empty:
             st.plotly_chart(
                 _make_chart(df_serie, label, g["color"]),
-                use_container_width=True,
+                width="stretch",
                 key=f"plt_{clave}_{tab_key}",
             )
         else:
@@ -554,7 +554,7 @@ def _render_detail(clave: str, tab_key: str, g: dict,
     with col_btn:
         st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
         run_ai = st.button(
-            "🤖 Analizar", key=f"runai_{clave}_{tab_key}", use_container_width=True
+            "Analizar", key=f"runai_{clave}_{tab_key}", width="stretch"
         )
     with col_frz:
         st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
@@ -589,7 +589,7 @@ def _render_detail(clave: str, tab_key: str, g: dict,
     st.divider()
     st.markdown(
         "<p style='color:#94A3B8;font-size:12px;font-weight:600;text-transform:uppercase;"
-        "letter-spacing:0.06em;margin:0 0 8px;'>📰 Noticias relacionadas</p>",
+        "letter-spacing:0.06em;margin:0 0 8px;'>Noticias relacionadas</p>",
         unsafe_allow_html=True,
     )
     gkey_for_news = next((k for k, v in GRUPOS_INEGI.items() if v is g), "")
@@ -601,7 +601,7 @@ def _render_detail(clave: str, tab_key: str, g: dict,
     st.divider()
     st.markdown(
         "<p style='color:#94A3B8;font-size:12px;font-weight:600;text-transform:uppercase;"
-        "letter-spacing:0.06em;margin:0 0 4px;'>🗂️ Generar reporte de este indicador</p>",
+        "letter-spacing:0.06em;margin:0 0 4px;'>Generar reporte de este indicador</p>",
         unsafe_allow_html=True,
     )
     _render_reporte_section(
@@ -627,7 +627,7 @@ def render():
         )
     with col_btn:
         st.markdown("<div style='padding-top:14px;'></div>", unsafe_allow_html=True)
-        if st.button("⟳ Refrescar", use_container_width=True, key="inegi_refresh"):
+        if st.button("Refrescar", width="stretch", key="inegi_refresh"):
             calcular_alertas.clear()
             load_sparklines.clear()
             load_serie.clear()
@@ -658,18 +658,18 @@ def render():
 
     # ── Segmentación Mensual / Anual (mensual prioritario) ──────────────────
     freq_sel = st.segmented_control(
-        "Frecuencia", options=["📅 Mensual", "🗓️ Anual"], default="📅 Mensual",
+        "Frecuencia", options=["Mensual", "Anual"], default="Mensual",
         key="inegi_freq_sel",
-    ) or "📅 Mensual"
+    ) or "Mensual"
     st.markdown("<div style='margin-bottom:4px;'></div>", unsafe_allow_html=True)
 
     # ── Tabs ─────────────────────────────────────────────────────────────────
-    group_keys  = GRUPOS_MENSUALES if freq_sel == "📅 Mensual" else GRUPOS_ANUALES
+    group_keys  = GRUPOS_MENSUALES if freq_sel == "Mensual" else GRUPOS_ANUALES
     non_normal  = df_alerts[df_alerts["alerta"] != "Normal"]
     alert_count = len(non_normal)
-    alert_label = f"🔔 Alertas ({alert_count})" if alert_count else "🔔 Alertas"
+    alert_label = f"Alertas ({alert_count})" if alert_count else "Alertas"
     tabs = st.tabs(
-        [f"{GRUPOS_INEGI[g]['icon']} {g}" for g in group_keys] + [alert_label]
+        list(group_keys) + [alert_label]
     )
 
     # ── Group tabs ───────────────────────────────────────────────────────────
@@ -680,7 +680,7 @@ def render():
             # Overview compacto
             st.html(_group_grid(claves, alerts_idx, sparklines, g["color"], g["desc"]))
 
-            with st.expander("🗂️ Generar reporte de todo el grupo", expanded=False):
+            with st.expander("Generar reporte de todo el grupo", expanded=False):
                 nota_grp = (
                     f"Un análisis con proyección e implicaciones para TYASA por cada uno de los "
                     f"{len(claves)} indicadores del grupo — puede tardar un poco más por las llamadas a IA."
@@ -690,29 +690,29 @@ def render():
                 st.caption(nota_grp)
                 col_w, col_p = st.columns(2)
                 with col_w:
-                    if st.button("📄 Generar Word (grupo)", key=f"genw_grp_{gkey}", use_container_width=True):
+                    if st.button("Generar Word (grupo)", key=f"genw_grp_{gkey}", width="stretch"):
                         with st.spinner("Generando documento Word del grupo..."):
                             st.session_state[f"docx_grp_{gkey}"] = generar_word_grupo(
                                 gkey, periodos=24, api_key=_GEMINI_KEY
                             )
                     if st.session_state.get(f"docx_grp_{gkey}"):
                         st.download_button(
-                            "⬇️ Descargar .docx", data=st.session_state[f"docx_grp_{gkey}"],
+                            "Descargar .docx", data=st.session_state[f"docx_grp_{gkey}"],
                             file_name=f"INEGI_Grupo_{gkey}.docx",
                             mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            key=f"dlw_grp_{gkey}", use_container_width=True,
+                            key=f"dlw_grp_{gkey}", width="stretch",
                         )
                 with col_p:
-                    if st.button("📑 Generar PDF (grupo)", key=f"genp_grp_{gkey}", use_container_width=True):
+                    if st.button("Generar PDF (grupo)", key=f"genp_grp_{gkey}", width="stretch"):
                         with st.spinner("Generando documento PDF del grupo..."):
                             st.session_state[f"pdf_grp_{gkey}"] = generar_pdf_grupo(
                                 gkey, periodos=24, api_key=_GEMINI_KEY
                             )
                     if st.session_state.get(f"pdf_grp_{gkey}"):
                         st.download_button(
-                            "⬇️ Descargar .pdf", data=st.session_state[f"pdf_grp_{gkey}"],
+                            "Descargar .pdf", data=st.session_state[f"pdf_grp_{gkey}"],
                             file_name=f"INEGI_Grupo_{gkey}.pdf", mime="application/pdf",
-                            key=f"dlp_grp_{gkey}", use_container_width=True,
+                            key=f"dlp_grp_{gkey}", width="stretch",
                         )
 
             st.markdown(
@@ -731,7 +731,7 @@ def render():
                     z_str  = f"  z={z_val:+.2f}" if alerta != "Normal" else ""
                 except Exception:
                     z_str = ""
-                exp_label = f"{am['icon']} {label}  ·  {alerta.upper()}{z_str}"
+                exp_label = f"{label}  ·  {alerta.upper()}{z_str}"
                 with st.expander(exp_label, expanded=False):
                     _render_detail(clave, gkey, g, alerts_idx, _GEMINI_KEY)
 
@@ -767,8 +767,8 @@ def render():
                 except Exception:
                     z_str = ""
                 exp_label = (
-                    f"{am_a['icon']} {label_a}  ·  {alerta_a.upper()}{z_str}  "
-                    f"[{g_a['icon']} {gkey_a}]"
+                    f"{label_a}  ·  {alerta_a.upper()}{z_str}  "
+                    f"[{gkey_a}]"
                 )
                 with st.expander(exp_label, expanded=(alerta_a == "Critico")):
                     _render_detail(clave_a, f"alerta_{clave_a}", g_a, alerts_idx, _GEMINI_KEY)

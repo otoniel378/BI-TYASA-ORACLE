@@ -7,6 +7,7 @@ import streamlit as st
 from core.db_connector import run_query, run_query_params, table_ref
 
 T_INDICADORES = table_ref("gold_indicadores_inegi")
+T_INDICADORES_ESTADO = table_ref("gold_indicadores_inegi_estado")
 
 
 def _lc(df: pd.DataFrame) -> pd.DataFrame:
@@ -145,7 +146,6 @@ GRUPOS_INEGI = {
         "desc": "Señal principal de los sectores que compran acero — Hierro & Acero (736476) y Met. Básicas 331 (736475) son los indicadores más directos para TYASA",
         "claves": ["736407","736418","736414","736475","736476","736481","736491","736526","736533","736594"],
         "color": "#5B8DB8",
-        "icon": "🏭",
         "freq": "mensual",
     },
     "EMIM": {
@@ -153,7 +153,6 @@ GRUPOS_INEGI = {
         "desc": "Termómetro mensual de manufactura desestacionalizado — refleja capacidad productiva instalada",
         "claves": ["910468","910470"],
         "color": "#64B5F6",
-        "icon": "⚙️",
         "freq": "mensual",
     },
     "ENEC": {
@@ -161,7 +160,6 @@ GRUPOS_INEGI = {
         "desc": "Valor de producción mensual desglosada por tipo de obra (índice 2006=100) — Transporte y Urbanización (720340) útil para demanda de perfiles; desglose completo: Edificación, Agua/Riego/Saneamiento, Electricidad/Telecom, Transporte/Urbanización, Petróleo/Petroquímica, Otras construcciones",
         "claves": ["720332","720334","720336","720338","720340","720342","720344"],
         "color": "#81C784",
-        "icon": "🏗️",
         "freq": "mensual",
     },
     "ENEC_PESOS": {
@@ -169,7 +167,6 @@ GRUPOS_INEGI = {
         "desc": "Valor de producción mensual por tipo de obra en pesos corrientes (no índice) — contraparte de ENEC validada por correlación >0.94 contra los índices; permite sumar meses para obtener totales anuales reales",
         "claves": ["722078","722084","722088","722092","722099","722103"],
         "color": "#4E8B6F",
-        "icon": "💵",
         "freq": "mensual",
     },
     "EMEC": {
@@ -177,7 +174,6 @@ GRUPOS_INEGI = {
         "desc": "Canal distribuidor TYASA — si el comercio mayoreo cae, los distribuidores de acero venden menos",
         "claves": ["718504","718506"],
         "color": "#CE93D8",
-        "icon": "🛒",
         "freq": "mensual",
     },
     "IGAE": {
@@ -185,7 +181,6 @@ GRUPOS_INEGI = {
         "desc": "Macro-termómetro del sector industrial — anticipa tendencias de demanda con 1-2 meses",
         "claves": ["737173","737149"],
         "color": "#4DD0E1",
-        "icon": "📈",
         "freq": "mensual",
     },
     "Balanza": {
@@ -193,7 +188,6 @@ GRUPOS_INEGI = {
         "desc": "Críticos para competitividad TYASA — importaciones altas presionan precios a la baja",
         "claves": ["133094","133031"],
         "color": "#FFB74D",
-        "icon": "⚖️",
         "freq": "mensual",
     },
     "INPP": {
@@ -201,7 +195,6 @@ GRUPOS_INEGI = {
         "desc": "Corazón del modelo de margen — INPP Manufactura (910503) vs Minería (910500/910501) define spread",
         "claves": ["910503","910502","910501","910500","910499","910491"],
         "color": "#EF9A9A",
-        "icon": "💰",
         "freq": "mensual",
     },
     "INPC": {
@@ -209,7 +202,6 @@ GRUPOS_INEGI = {
         "desc": "Contexto macro — INPC Total, Subyacente, Energía NS y Gobierno",
         "claves": ["910396","909294","910398","910393"],
         "color": "#F48FB1",
-        "icon": "🏪",
         "freq": "mensual",
     },
     "IFB": {
@@ -217,7 +209,6 @@ GRUPOS_INEGI = {
         "desc": "Predictor de demanda futura con 3-6 meses de anticipación — Maquinaria Importada (741030) señala capex industrial",
         "claves": ["741034","741030","741025"],
         "color": "#7986CB",
-        "icon": "🏦",
         "freq": "mensual",
     },
     "EMOE": {
@@ -225,7 +216,6 @@ GRUPOS_INEGI = {
         "desc": "Expectativas forward-looking del sector industrial y consumidor — lidera el ciclo real 1-3 meses",
         "claves": ["701407","701401","334497"],
         "color": "#E05C2D",
-        "icon": "💡",
         "freq": "mensual",
     },
     "ENEC_ANUAL": {
@@ -233,13 +223,64 @@ GRUPOS_INEGI = {
         "desc": "Valor de producción anual desglosado por subsector (236 Edificación, 237 Obras de ingeniería civil, 238 Trabajos especializados) — vista estructural del sector construcción, complementa el ENEC mensual",
         "claves": ["796426","796427","796428","796429","5300000027"],
         "color": "#A1887F",
-        "icon": "🧱",
         "freq": "anual",
     },
 }
 
 GRUPOS_MENSUALES = [k for k, v in GRUPOS_INEGI.items() if v.get("freq") == "mensual"]
 GRUPOS_ANUALES   = [k for k, v in GRUPOS_INEGI.items() if v.get("freq") == "anual"]
+
+
+# ── Indicadores con desagregación por entidad federativa (mapa de calor) ────
+# A diferencia de INDICADORES_CONFIG (nacional), aquí la CLAVE no cambia por
+# estado — lo que cambia es el área geográfica de la consulta a la API de
+# INEGI. Confirmado que IMAI/EMIM/IGAE/INPP/etc. NO tienen esta desagregación;
+# el catálogo se va ampliando conforme se detectan más claves que sí la
+# tienen (ver scripts/update_inegi_estado_data.py).
+INDICADORES_ESTADO_CONFIG = {
+    "723135": "ENEC_ValorProdPesos_Sector23_Total",
+}
+
+INDICADORES_ESTADO_LABEL = {
+    "723135": "ENEC · Valor de Producción Sector 23 Construcción ($)",
+}
+
+# cve INEGI (01-32, + "00" nacional) -> (ISO 3166-2 usado en assets/mx_estados.geojson, nombre)
+ESTADOS_INEGI = {
+    "00": ("MX",     "Nacional"),
+    "01": ("MX-AGU", "Aguascalientes"),
+    "02": ("MX-BCN", "Baja California"),
+    "03": ("MX-BCS", "Baja California Sur"),
+    "04": ("MX-CAM", "Campeche"),
+    "05": ("MX-COA", "Coahuila de Zaragoza"),
+    "06": ("MX-COL", "Colima"),
+    "07": ("MX-CHP", "Chiapas"),
+    "08": ("MX-CHH", "Chihuahua"),
+    "09": ("MX-CMX", "Ciudad de México"),
+    "10": ("MX-DUR", "Durango"),
+    "11": ("MX-GUA", "Guanajuato"),
+    "12": ("MX-GRO", "Guerrero"),
+    "13": ("MX-HID", "Hidalgo"),
+    "14": ("MX-JAL", "Jalisco"),
+    "15": ("MX-MEX", "México"),
+    "16": ("MX-MIC", "Michoacán de Ocampo"),
+    "17": ("MX-MOR", "Morelos"),
+    "18": ("MX-NAY", "Nayarit"),
+    "19": ("MX-NLE", "Nuevo León"),
+    "20": ("MX-OAX", "Oaxaca"),
+    "21": ("MX-PUE", "Puebla"),
+    "22": ("MX-QUE", "Querétaro"),
+    "23": ("MX-ROO", "Quintana Roo"),
+    "24": ("MX-SLP", "San Luis Potosí"),
+    "25": ("MX-SIN", "Sinaloa"),
+    "26": ("MX-SON", "Sonora"),
+    "27": ("MX-TAB", "Tabasco"),
+    "28": ("MX-TAM", "Tamaulipas"),
+    "29": ("MX-TLA", "Tlaxcala"),
+    "30": ("MX-VER", "Veracruz de Ignacio de la Llave"),
+    "31": ("MX-YUC", "Yucatán"),
+    "32": ("MX-ZAC", "Zacatecas"),
+}
 
 
 # ── Funciones de carga ───────────────────────────────────────────────────────
@@ -448,3 +489,81 @@ def load_sparklines(n_periodos: int = 12) -> dict:
             if vals:
                 result[clave] = vals
     return result
+
+
+# ── Funciones de carga — indicadores por estado (mapa de calor) ─────────────
+@st.cache_data(ttl=3600, show_spinner="Cargando meses disponibles...")
+def load_meses_disponibles_estado(clave: str) -> list:
+    """Lista de FECHA ('YYYY-MM') disponibles para un indicador por estado,
+    descendente (más reciente primero), para el selector de mes del mapa."""
+    sql = f"""
+        SELECT DISTINCT FECHA
+        FROM {T_INDICADORES_ESTADO}
+        WHERE CLAVE = '{clave}'
+        ORDER BY FECHA DESC
+    """
+    df = _lc(run_query(sql))
+    return df["fecha"].tolist() if not df.empty else []
+
+
+@st.cache_data(ttl=3600, show_spinner="Cargando mapa por estado...")
+def load_mapa_estado(clave: str, fecha: str) -> pd.DataFrame:
+    """Valor de <clave> en <fecha> ('YYYY-MM') para los 32 estados (excluye
+    nacional). Columnas: estado_cve, estado_iso, estado_nombre, valor."""
+    sql = f"""
+        SELECT ESTADO_CVE, ESTADO_ISO, ESTADO_NOMBRE, VALOR
+        FROM {T_INDICADORES_ESTADO}
+        WHERE CLAVE = '{clave}' AND FECHA = '{fecha}' AND ESTADO_CVE != '00'
+        ORDER BY VALOR DESC
+    """
+    return _lc(run_query(sql))
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_serie_estado(clave: str, estado_cve: str, periodos: int = 24) -> pd.DataFrame:
+    """Historial FECHA/VALOR de <clave> para un estado específico ('00'=nacional)."""
+    sql = f"""
+        SELECT FECHA, VALOR
+        FROM {T_INDICADORES_ESTADO}
+        WHERE CLAVE = '{clave}' AND ESTADO_CVE = '{estado_cve}'
+        ORDER BY FECHA DESC
+        FETCH FIRST {periodos} ROWS ONLY
+    """
+    df = _lc(run_query(sql))
+    if not df.empty and "fecha" in df.columns:
+        df["fecha"] = pd.to_datetime(df["fecha"], format="%Y-%m", errors="coerce")
+        df = df.sort_values("fecha")
+    return df
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_ranking_yoy_estado(clave: str) -> pd.DataFrame:
+    """Variación anual (últ. mes vs. mismo mes del año pasado) por estado,
+    para ordenar/resaltar el ranking debajo del mapa."""
+    sql = f"""
+        WITH ultimo AS (
+            SELECT MAX(FECHA) AS FECHA_MAX FROM {T_INDICADORES_ESTADO}
+            WHERE CLAVE = '{clave}' AND ESTADO_CVE != '00'
+        ),
+        base AS (
+            SELECT e.ESTADO_CVE, e.ESTADO_ISO, e.ESTADO_NOMBRE, e.FECHA, e.VALOR,
+                   ROW_NUMBER() OVER (PARTITION BY e.ESTADO_CVE ORDER BY e.FECHA DESC) AS rn
+            FROM {T_INDICADORES_ESTADO} e, ultimo u
+            WHERE e.CLAVE = '{clave}' AND e.ESTADO_CVE != '00'
+              AND e.FECHA <= u.FECHA_MAX
+        )
+        SELECT b1.ESTADO_CVE, b1.ESTADO_ISO, b1.ESTADO_NOMBRE,
+               b1.FECHA AS ULT_FECHA, b1.VALOR AS ULT_VALOR,
+               b2.VALOR AS ANT_VALOR
+        FROM base b1
+        LEFT JOIN base b2 ON b2.ESTADO_CVE = b1.ESTADO_CVE AND b2.rn = 13
+        WHERE b1.rn = 1
+        ORDER BY b1.VALOR DESC
+    """
+    df = _lc(run_query(sql))
+    if df.empty:
+        return df
+    ult = pd.to_numeric(df["ult_valor"], errors="coerce")
+    ant = pd.to_numeric(df["ant_valor"], errors="coerce")
+    df["var_yoy"] = (ult - ant).div(ant.abs()).mul(100).round(1)
+    return df

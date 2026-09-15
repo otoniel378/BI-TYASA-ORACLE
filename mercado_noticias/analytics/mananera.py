@@ -3,7 +3,7 @@ mananera.py — Analiza la conferencia mañanera presidencial para impacto sider
 
 Flujo:
   1. Busca en YouTube múltiples candidatos (yt-dlp) — en vivo o grabado
-  2. Obtiene la transcripción con 3 métodos: youtube-transcript-api → yt-dlp list() → yt-dlp subtítulos directos
+  2. Obtiene la transcripción con 3 métodos: youtube-transcript-api -> yt-dlp list() -> yt-dlp subtítulos directos
   3. Prueba cada candidato hasta obtener transcripción válida
   4. Filtra y analiza con Gemini: solo información relevante para acero
   5. Caché por fecha en cache/mananera/ (máx 3 días, limpieza automática)
@@ -88,7 +88,7 @@ def _date_matches(e: dict, fecha: str) -> bool:
         if pat in title:
             return True
 
-    # 4) Sin información de fecha confirmable → no asumir que es el video correcto
+    # 4) Sin información de fecha confirmable -> no asumir que es el video correcto
     return False
 
 # ── System prompt ─────────────────────────────────────────────────────────────
@@ -121,27 +121,27 @@ económico, temas sin conexión con industria, manufactura, energía o comercio.
 EXTRAE y CONECTA cada tema con TYASA usando este mapa:
 
 ENERGÍA:
-- CFE/electricidad → costo directo del EAF (horno electro-intensivo, ~40% del costo)
-- Gas natural/CENAGAS → preheating, hornos de tratamiento térmico
-- PEMEX proyectos/presupuesto → demanda de Tubería OCTG (API 5CT)
-- Tarifas CFE → margen de contribución en todos los productos
+- CFE/electricidad -> costo directo del EAF (horno electro-intensivo, ~40% del costo)
+- Gas natural/CENAGAS -> preheating, hornos de tratamiento térmico
+- PEMEX proyectos/presupuesto -> demanda de Tubería OCTG (API 5CT)
+- Tarifas CFE -> margen de contribución en todos los productos
 
 REGULACIÓN Y COMERCIO:
-- Aranceles a importaciones → protección vs. acero chino/global en lámina, perfiles, tubería
-- T-MEC / reglas de origen → nuevas plantas automotrices = demanda SBQ y Lámina CRC
-- Antidumping / cuotas compensatorias → protección tubería OCTG, lámina galvanizada, perfiles
-- Tipo de cambio peso/dólar → costo insumos importados vs. precios de venta en pesos
+- Aranceles a importaciones -> protección vs. acero chino/global en lámina, perfiles, tubería
+- T-MEC / reglas de origen -> nuevas plantas automotrices = demanda SBQ y Lámina CRC
+- Antidumping / cuotas compensatorias -> protección tubería OCTG, lámina galvanizada, perfiles
+- Tipo de cambio peso/dólar -> costo insumos importados vs. precios de venta en pesos
 
 DEMANDA E INFRAESTRUCTURA:
-- Construcción / vivienda → Perfiles estructurales, ángulos, canales, tubería estructural
-- Obra pública (trenes, puertos, carreteras, presas) → Placa, perfiles, tubería estructural
-- Inversión industrial / nearshoring / parques → Tubería mecánica, estructural, perfiles
-- Automotriz / maquinaria / herramientas → SBQ, Lámina CRC, Tubería mecánica
+- Construcción / vivienda -> Perfiles estructurales, ángulos, canales, tubería estructural
+- Obra pública (trenes, puertos, carreteras, presas) -> Placa, perfiles, tubería estructural
+- Inversión industrial / nearshoring / parques -> Tubería mecánica, estructural, perfiles
+- Automotriz / maquinaria / herramientas -> SBQ, Lámina CRC, Tubería mecánica
 
 MACROECONOMÍA:
-- PIB / actividad industrial → demanda general; correlación directa con volumen TYASA
-- Inflación / tasas Banxico → costos financieros y poder de compra de clientes distribuidores
-- Devaluación peso → encarece chatarra/DRI importada pero protege precio local en pesos
+- PIB / actividad industrial -> demanda general; correlación directa con volumen TYASA
+- Inflación / tasas Banxico -> costos financieros y poder de compra de clientes distribuidores
+- Devaluación peso -> encarece chatarra/DRI importada pero protege precio local en pesos
 
 Responde con este JSON exacto (sin markdown):
 
@@ -223,11 +223,11 @@ def _find_video_candidates(fecha: str) -> tuple[list[dict], str]:
     Cada candidato: {"id": str, "is_live": bool, "duration": float, "priority": int}
 
     Prioridades (menor = mejor):
-      1. Canal oficial + duración >= 45 min  → priority 1
-      2. Canal oficial en vivo (live)         → priority 2
-      3. Cualquier video >= 45 min            → priority 3
-      4. Cualquier live                       → priority 4
-      5. Primer resultado                     → priority 5
+      1. Canal oficial + duración >= 45 min  -> priority 1
+      2. Canal oficial en vivo (live)         -> priority 2
+      3. Cualquier video >= 45 min            -> priority 3
+      4. Cualquier live                       -> priority 4
+      5. Primer resultado                     -> priority 5
     """
     try:
         import yt_dlp  # type: ignore
@@ -519,10 +519,10 @@ def analizar_mananera(
     # Paso 2 — intentar transcripción en cada candidato hasta que funcione.
     # REGLAS:
     # a) Los candidatos ya vienen ordenados: date_ok=True primero.
-    # b) Si un candidato date_ok=True está en vivo sin transcripción → parar
+    # b) Si un candidato date_ok=True está en vivo sin transcripción -> parar
     #    y NO caer a videos de otra fecha.
     # c) Si un candidato date_ok=False está en vivo y fue el primero intentado
-    #    (sin candidatos date_ok=True) → también parar (conferencia en curso).
+    #    (sin candidatos date_ok=True) -> también parar (conferencia en curso).
     transcript = None
     video_id   = None
     is_live    = False

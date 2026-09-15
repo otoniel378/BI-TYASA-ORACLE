@@ -31,7 +31,7 @@ from core.components.filters import sidebar_header, filtro_clientes, aplicar_fil
 from core.components.charts import heatmap
 from core.components.tables import tabla_ejecutiva
 
-sidebar_header("Filtros", "🎯")
+sidebar_header("Filtros")
 clientes_sel = filtro_clientes(key_prefix="mix")
 min_clientes_combo = st.sidebar.slider("Min. clientes para combos", min_value=1, max_value=20, value=2, key="mix_min_clientes")
 
@@ -51,7 +51,7 @@ meses_nombres = ["Todos", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
 
 st.markdown(
     f"""
-    <h2 style='color:{COLORS["primary"]};margin-bottom:0;'>🎯 Mix de Productos</h2>
+    <h2 style='color:{COLORS["primary"]};margin-bottom:0;'>Mix de Productos</h2>
     <p style='color:{COLORS["text_light"]};'>Portafolio, especificaciones tecnicas y oportunidades de cross-sell</p>
     """,
     unsafe_allow_html=True,
@@ -70,10 +70,10 @@ prom_fam = round(df_nfam["N_PRODUCTOS"].mean(), 1) if not df_nfam.empty else 0
 mono     = int((df_nfam["N_PRODUCTOS"] == 1).sum()) if not df_nfam.empty else 0
 
 render_kpi_row([
-    {"label": "Productos activos",       "value": total_productos, "icon": "🔩"},
-    {"label": "Clientes activos",        "value": total_clientes,  "icon": "👥"},
-    {"label": "Prom. productos/cliente", "value": prom_fam,        "icon": "📦"},
-    {"label": "Clientes monoproducto",   "value": mono,            "icon": "⚠️",
+    {"label": "Productos activos",       "value": total_productos},
+    {"label": "Clientes activos",        "value": total_clientes},
+    {"label": "Prom. productos/cliente", "value": prom_fam},
+    {"label": "Clientes monoproducto",   "value": mono,
      "help_text": "Maxima oportunidad de cross-sell."},
 ])
 st.divider()
@@ -130,7 +130,7 @@ if not df_mg.empty and "PRODUCTO_LIMPIO" in df_mg.columns:
         yaxis=dict(title="Toneladas", gridcolor="#E5E7EB"),
         title=dict(font=dict(size=14, color=COLORS["primary"]), x=0),
     )
-    st.plotly_chart(fig_stk, use_container_width=True)
+    st.plotly_chart(fig_stk, width="stretch")
 
     df_part_res = df_mg.groupby("PRODUCTO_LIMPIO", as_index=False)["PESO_TON"].sum().sort_values("PESO_TON", ascending=False)
     total_t = df_part_res["PESO_TON"].sum()
@@ -210,7 +210,7 @@ if not df_vl.empty and "CALIBRE" in df_vl.columns and "PROCESO" in df_vl.columns
                     xaxis=dict(showgrid=False, tickangle=-25),
                     yaxis=dict(gridcolor="#E5E7EB", title="Calibre (mm)"), height=360,
                 )
-                st.plotly_chart(fig_box, use_container_width=True)
+                st.plotly_chart(fig_box, width="stretch")
 
             with col_g2:
                 seccion_titulo("Toneladas por Rango de Calibre", "")
@@ -230,7 +230,7 @@ if not df_vl.empty and "CALIBRE" in df_vl.columns and "PROCESO" in df_vl.columns
                     legend=dict(orientation="h", y=-0.28, x=0.5, xanchor="center", font=dict(size=9)),
                     xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#E5E7EB"), height=360,
                 )
-                st.plotly_chart(fig_cal, use_container_width=True)
+                st.plotly_chart(fig_cal, width="stretch")
 
             st.divider()
             seccion_titulo("Top Combinaciones Proceso + Calibre", "Por toneladas demandadas")
@@ -260,7 +260,7 @@ if not df_vl.empty and "CALIBRE" in df_vl.columns and "PROCESO" in df_vl.columns
                     title=dict(text="Top 15: Proceso + Calibre",
                                font=dict(size=13, color=COLORS["primary"]), x=0),
                 )
-                st.plotly_chart(fig_tc, use_container_width=True)
+                st.plotly_chart(fig_tc, width="stretch")
             with col_c2:
                 tabla_ejecutiva(df_combo_c[["PROCESO", "CALIBRE", "PESO_TON"]],
                                 col_formatos={"CALIBRE": "{:.2f}", "PESO_TON": "{:,.1f}"},
@@ -296,7 +296,7 @@ if not df_vl.empty and "CALIBRE" in df_vl.columns and "PROCESO" in df_vl.columns
                         height=max(420, len(df_c3) * 26 + 80),
                         title=dict(font=dict(size=13, color=COLORS["primary"]), x=0),
                     )
-                    st.plotly_chart(fig_c3, use_container_width=True)
+                    st.plotly_chart(fig_c3, width="stretch")
                 with col_d2:
                     tabla_ejecutiva(df_c3[["RANK", "PROCESO", "CALIBRE", "ANCHO", "PESO_TON"]],
                                     col_formatos={"CALIBRE": "{:.2f}", "ANCHO": "{:.0f}", "PESO_TON": "{:,.1f}"},
@@ -318,7 +318,7 @@ df_cooc = tabla_coocurrencia(df_cp_cooc)
 if not df_cooc.empty:
     fig_cooc = heatmap(df_cooc, titulo="Co-ocurrencia de productos (n clientes)",
                         x_label="Producto", y_label="Producto", fmt=".0f")
-    st.plotly_chart(fig_cooc, use_container_width=True)
+    st.plotly_chart(fig_cooc, width="stretch")
 
 seccion_titulo("Pares Frecuentes", f"Productos comprados juntos por >= {min_clientes_combo} clientes")
 df_combos = combinaciones_frecuentes(df_cp_cooc, min_clientes=min_clientes_combo)

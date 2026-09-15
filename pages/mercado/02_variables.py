@@ -19,7 +19,7 @@ from core.components.filters import sidebar_header
 from core.components.kpi_cards import seccion_titulo
 from core.components.tables import tabla_ejecutiva
 
-sidebar_header("Variables Globales", "🌐")
+sidebar_header("Variables Globales")
 
 dias_hist = st.sidebar.slider("Días de historia", 90, 500, 400, step=30, key="vg_dias")
 cat_vg = st.sidebar.selectbox(
@@ -31,7 +31,7 @@ cat_vg = st.sidebar.selectbox(
 
 st.markdown(
     f"""
-    <h2 style='color:{COLORS["primary"]};margin-bottom:0;'>🌐 Variables Globales de Mercado</h2>
+    <h2 style='color:{COLORS["primary"]};margin-bottom:0;'>Variables Globales de Mercado</h2>
     <p style='color:{COLORS["text_light"]};'>Series históricas · 31 variables · Actualización diaria</p>
     """,
     unsafe_allow_html=True,
@@ -90,7 +90,7 @@ if cambios_resumen:
         yaxis=dict(tickfont=dict(size=9)),
         title=dict(font=dict(size=13, color=COLORS["primary"]), x=0),
     )
-    st.plotly_chart(fig_bar, use_container_width=True)
+    st.plotly_chart(fig_bar, width="stretch")
 
 st.divider()
 
@@ -176,7 +176,7 @@ if vars_sel:
                 xaxis=dict(showgrid=False, tickfont=dict(size=7)),
                 yaxis=dict(gridcolor="#F0F0F0", tickfont=dict(size=7)),
             )
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, width="stretch")
 
 st.divider()
 

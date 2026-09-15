@@ -53,12 +53,12 @@ st.html("""<style>
 </style>""")
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
-sidebar_header("Contexto de Mercado", "🌐")
+sidebar_header("Contexto de Mercado")
 
 # ── Título ────────────────────────────────────────────────────────────────────
 st.html(f"""
 <div style="margin-bottom:6px;">
-  <h2 style="color:{_P};margin:0;font-size:1.5rem;">🌐 Contexto de Mercado</h2>
+  <h2 style="color:{_P};margin:0;font-size:1.5rem;">Contexto de Mercado</h2>
   <p style="color:{_T2};margin:0;font-size:0.85rem;">
     Aceros Planos Negros — Entorno macroeconómico y de mercado aplicado
   </p>
@@ -112,13 +112,13 @@ def _color_alerta(nivel: str) -> str:
 
 def _badge_alerta(nivel: str) -> str:
     cfg = {
-        "Critico":  ("🔴", "#FEE2E2", "#991B1B"),
-        "Alto":     ("🟠", "#FEF3C7", "#92400E"),
-        "Moderado": ("🟡", "#FFFBEB", "#78350F"),
-        "Normal":   ("🟢", "#DCFCE7", "#166534"),
-    }.get(nivel, ("⚪", "#F1F5F9", "#64748B"))
-    dot, bg, tx = cfg
-    return f'<span class="mc-badge" style="background:{bg};color:{tx};">{dot} {nivel}</span>'
+        "Critico":  ("#FEE2E2", "#991B1B"),
+        "Alto":     ("#FEF3C7", "#92400E"),
+        "Moderado": ("#FFFBEB", "#78350F"),
+        "Normal":   ("#DCFCE7", "#166534"),
+    }.get(nivel, ("#F1F5F9", "#64748B"))
+    bg, tx = cfg
+    return f'<span class="mc-badge" style="background:{bg};color:{tx};">{nivel}</span>'
 
 def _sparkline_svg(vals: list, color="#1B3A5C", h=28, w=70) -> str:
     if not vals or len(vals) < 2:
@@ -175,12 +175,12 @@ else:
             font=dict(family="Segoe UI, sans-serif"),
             paper_bgcolor="white",
         )
-        st.plotly_chart(fig_g, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig_g, width="stretch", config={"displayModeBar": False})
 
         st.html(f"""<div style="display:flex;justify-content:center;gap:16px;
              font-size:11px;color:{_T2};margin-top:-8px;">
-          <span>🔵 Mercado: <b>{icc['score_mercado']}/10</b></span>
-          <span>📈 INEGI: <b>{icc['score_inegi']}/10</b></span>
+          <span>Mercado: <b>{icc['score_mercado']}/10</b></span>
+          <span>INEGI: <b>{icc['score_inegi']}/10</b></span>
           <span style="color:{_T3};">Act: {icc['ultima_actualizacion']}</span>
         </div>""")
 
@@ -203,14 +203,14 @@ else:
           <div style="background:#DCFCE7;border-radius:10px;padding:12px 14px;">
             <div style="font-size:10px;font-weight:700;color:#166534;
                  text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">
-              ✅ Factores Positivos
+              Factores Positivos
             </div>
             <ul style="margin:0;padding-left:14px;">{pos_items}</ul>
           </div>
           <div style="background:#FEE2E2;border-radius:10px;padding:12px 14px;">
             <div style="font-size:10px;font-weight:700;color:#991B1B;
                  text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">
-              ⚠️ Factores de Riesgo
+              Factores de Riesgo
             </div>
             <ul style="margin:0;padding-left:14px;">{neg_items}</ul>
           </div>
@@ -228,10 +228,10 @@ if not _ctx_ok or df_inegi.empty:
 else:
     # Sub-grupos para Aceros Planos
     SUBTABS_INEGI = {
-        "🏭 Manufactura":    ["736418", "736476", "736481", "736491", "910503"],
-        "🔩 Hierro y Acero": ["736475", "736476", "736526", "736594", "910468", "910470"],
-        "💰 Inversión":      ["741034", "741030", "741025", "737173", "737149"],
-        "📊 Precios":        ["910396", "909294", "910398", "910393"],
+        "Manufactura":    ["736418", "736476", "736481", "736491", "910503"],
+        "Hierro y Acero": ["736475", "736476", "736526", "736594", "910468", "910470"],
+        "Inversión":      ["741034", "741030", "741025", "737173", "737149"],
+        "Precios":        ["910396", "909294", "910398", "910393"],
     }
 
     tabs_inegi = st.tabs(list(SUBTABS_INEGI.keys()))
@@ -354,7 +354,7 @@ else:
             font=dict(family="Segoe UI, sans-serif", size=11),
             barmode="overlay",
         )
-        st.plotly_chart(fig_ov, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig_ov, width="stretch", config={"displayModeBar": False})
     else:
         st.info("Variables de mercado no disponibles en BigQuery.")
 
@@ -390,7 +390,7 @@ else:
                         f"Top correlaciones detectadas</div>", unsafe_allow_html=True)
             for r in corrs[:8]:
                 sig_badge = (f'<span class="mc-badge" style="background:#EFF6FF;color:#1E40AF;">'
-                             f'★ Significativa</span>') if r["significativa"] else ""
+                             f'Significativa</span>') if r["significativa"] else ""
                 corr_color = _OK if r["correlacion"] > 0 else _ER
                 corr_bar_w = abs(r["correlacion"]) * 100
                 lag_txt = f"{r['mejor_lag_dias']}d lag" if r["mejor_lag_dias"] > 0 else "simultáneo"
@@ -454,7 +454,7 @@ else:
                     xaxis=dict(showgrid=False),
                     yaxis=dict(gridcolor="#EEF2FF"),
                 )
-                st.plotly_chart(fig_sc, use_container_width=True,
+                st.plotly_chart(fig_sc, width="stretch",
                                 config={"displayModeBar": False})
 
 st.divider()
@@ -471,7 +471,7 @@ else:
     ventanas = detectar_ventanas_oportunidad(df_vars, df_inegi)
 
     if not ventanas:
-        st.success("✅ Sin ventanas de oportunidad activas detectadas en este momento.")
+        st.success("Sin ventanas de oportunidad activas detectadas en este momento.")
     else:
         n_alta  = sum(1 for v in ventanas if v["nivel"] == "Alta")
         n_media = sum(1 for v in ventanas if v["nivel"] == "Media")
@@ -479,13 +479,13 @@ else:
 
         st.html(f"""<div style="display:flex;gap:10px;margin-bottom:12px;">
           <span class="mc-badge" style="background:#DCFCE7;color:#166534;">
-            ⚡ {n_alta} Alta prioridad
+            {n_alta} Alta prioridad
           </span>
           <span class="mc-badge" style="background:#FEF3C7;color:#92400E;">
-            📌 {n_media} Prioridad media
+            {n_media} Prioridad media
           </span>
           <span class="mc-badge" style="background:#F1F5F9;color:#64748B;">
-            🔵 {n_baja} Señal informativa
+            {n_baja} Señal informativa
           </span>
         </div>""")
 
@@ -554,7 +554,7 @@ with col_ia:
     st.html(f"""<div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;
          padding:14px;margin-bottom:10px;">
       <div style="font-size:10px;font-weight:700;color:#0369A1;text-transform:uppercase;
-           letter-spacing:.06em;margin-bottom:8px;">🤖 Análisis IA</div>
+           letter-spacing:.06em;margin-bottom:8px;">Análisis IA</div>
       <div style="font-size:11.5px;color:{_T2};">
         Genera un resumen ejecutivo de las noticias y las ventanas de oportunidad actuales.
       </div>
@@ -562,7 +562,7 @@ with col_ia:
 
     run_ia = st.button("Analizar con IA", key="btn_mc_ia",
                        disabled=not bool(_GEMINI_KEY),
-                       use_container_width=True)
+                       width="stretch")
 
     if run_ia and _GEMINI_KEY:
         vent_txt = "\n".join(
@@ -586,7 +586,7 @@ Ventanas de oportunidad:
 Titulares recientes:
 {noticias_txt}
 
-Sin introducción. Sin cierre. Solo los 4 bullets con emoji relevante."""
+Sin introducción. Sin cierre. Solo los 4 bullets, sin emojis."""
 
         from mercado_noticias.analytics.ai_analysis import _call_gemini_text
         st.session_state[_IA_KEY] = _call_gemini_text(prompt, _GEMINI_KEY)
@@ -602,7 +602,7 @@ def _render_ia_noticias(txt: str | None) -> str:
     return f"""<div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;
          padding:14px;margin-top:8px;">
       <div style="font-size:10px;font-weight:700;color:#0369A1;text-transform:uppercase;
-           letter-spacing:.06em;margin-bottom:8px;">📋 Resumen — {date.today().strftime('%d %b %Y')}</div>
+           letter-spacing:.06em;margin-bottom:8px;">Resumen — {date.today().strftime('%d %b %Y')}</div>
       <ul style="margin:0;padding-left:16px;">{items}</ul>
     </div>"""
 

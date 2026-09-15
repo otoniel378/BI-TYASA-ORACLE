@@ -30,12 +30,12 @@ from core.components.filters import sidebar_header, filtro_clientes, aplicar_fil
 from core.components.charts import pareto, barras_horizontales, donut
 from core.components.tables import tabla_ejecutiva, tabla_clasificacion_abc
 
-sidebar_header("Filtros", "👥")
+sidebar_header("Filtros")
 clientes_sel = filtro_clientes(key_prefix="seg")
 
 st.markdown(
     f"""
-    <h2 style='color:{COLORS["primary"]};margin-bottom:0;'>👥 Segmentacion de Clientes</h2>
+    <h2 style='color:{COLORS["primary"]};margin-bottom:0;'>Segmentacion de Clientes</h2>
     <p style='color:{COLORS["text_light"]};'>Analisis Pareto, clasificacion ABC y diversificacion de portafolio</p>
     """,
     unsafe_allow_html=True,
@@ -87,10 +87,10 @@ n_c = len(df_abc[df_abc["CLASE"] == "C"]) if not df_abc.empty else 0
 pct_a = round(n_a / total_clientes * 100, 1) if total_clientes > 0 else 0
 
 render_kpi_row([
-    {"label": "Total Clientes",      "value": total_clientes, "icon": "👥"},
-    {"label": "Clase A (80% vol.)",  "value": n_a, "suffix": f" ({pct_a}%)", "icon": "🥇"},
-    {"label": "Clase B",             "value": n_b, "icon": "🥈"},
-    {"label": "Clase C",             "value": n_c, "icon": "🥉"},
+    {"label": "Total Clientes",      "value": total_clientes},
+    {"label": "Clase A (80% vol.)",  "value": n_a, "suffix": f" ({pct_a}%)"},
+    {"label": "Clase B",             "value": n_b},
+    {"label": "Clase C",             "value": n_c},
 ])
 st.divider()
 
@@ -107,7 +107,7 @@ if not df_abc.empty:
                         titulo=f"Pareto — Top {top_n_pareto} Clientes por Toneladas", max_items=top_n_pareto)
     fig_pareto.update_layout(height=440, margin=dict(b=140, l=40, r=80, t=50),
                               xaxis=dict(tickfont=dict(size=8), tickangle=-50))
-    st.plotly_chart(fig_pareto, use_container_width=True)
+    st.plotly_chart(fig_pareto, width="stretch")
 
 st.divider()
 
@@ -118,7 +118,7 @@ col_a, col_b = st.columns([1, 2])
 with col_a:
     if not df_resumen_abc.empty:
         fig_donut = donut(df_resumen_abc, names="CLASE", values="PESO_TON", titulo="Volumen por clase")
-        st.plotly_chart(fig_donut, use_container_width=True)
+        st.plotly_chart(fig_donut, width="stretch")
         tabla_ejecutiva(df_resumen_abc, col_formatos={"PESO_TON": "{:,.1f}", "PCT_VOLUMEN": "{:.1f}%"},
                         key="resumen_abc", height=140)
 
@@ -144,7 +144,7 @@ if not df_div.empty:
         top_div = st.selectbox("Top clientes", [10, 15, 20], index=2, key="div_top")
         fig_div = barras_horizontales(df_div.head(top_div), x="N_PRODUCTOS", y="CLIENTE",
                                        titulo=f"Top {top_div} clientes mas diversificados", x_label="N de productos")
-        st.plotly_chart(fig_div, use_container_width=True)
+        st.plotly_chart(fig_div, width="stretch")
 
     with col_d:
         seccion_titulo("Clientes Monoproducto", "Solo compran un tipo")
@@ -182,13 +182,13 @@ if not df_cp.empty and "PRODUCTO_LIMPIO" in df_cp.columns:
         yaxis=dict(title="", tickfont=dict(size=9)),
         title=dict(font=dict(size=14, color=COLORS["primary"]), x=0),
     )
-    st.plotly_chart(fig_stack, use_container_width=True)
+    st.plotly_chart(fig_stack, width="stretch")
 
 # ---------------------------------------------------------------------------
 # B1 — CLIENTES EN RIESGO
 # ---------------------------------------------------------------------------
 st.divider()
-seccion_titulo("⚠️ Clientes en Riesgo", "Detección automática de señales de alerta por cliente")
+seccion_titulo("Clientes en Riesgo", "Detección automática de señales de alerta por cliente")
 
 _ER  = "#DC2626"; _WA = "#D97706"; _OK = "#16A34A"
 _T1  = "#0F172A"; _T2 = "#64748B"; _T3 = "#94A3B8"
@@ -196,7 +196,7 @@ _T1  = "#0F172A"; _T2 = "#64748B"; _T3 = "#94A3B8"
 from datetime import date as _date
 _hoy = pd.Timestamp.today()
 
-tab_fuga, tab_enfr, tab_mix = st.tabs(["🔴 En Fuga (>60d)", "🟠 Enfriándose (vol -30%)", "🔀 Cambiando Mix"])
+tab_fuga, tab_enfr, tab_mix = st.tabs(["En Fuga (>60d)", "Enfriándose (vol -30%)", "Cambiando Mix"])
 
 # ── En Fuga ──────────────────────────────────────────────────────────────────
 with tab_fuga:
@@ -209,29 +209,27 @@ with tab_fuga:
         en_fuga = dc[dc["dias"] > 60].sort_values("PESO_TON", ascending=False)
         for _, row in en_fuga.iterrows():
             dias   = int(row["dias"])
-            sev    = "🔴" if dias > 120 else "🟠"
             nivel  = "Crítico (>120d)" if dias > 120 else "En seguimiento (61-120d)"
             fuga_rows.append({
                 "Cliente":       row.get("CLIENTE", "?"),
                 "Días sin comprar": dias,
                 "Vol. histórico (ton)": row.get("PESO_TON", 0),
                 "Severidad":     nivel,
-                "Emoji":         sev,
             })
 
     if not fuga_rows:
-        st.success("✅ Todos los clientes compraron en los últimos 60 días.")
+        st.success("Todos los clientes compraron en los últimos 60 días.")
     else:
         df_fuga = pd.DataFrame(fuga_rows)
         n_crit = sum(1 for r in fuga_rows if r["Días sin comprar"] > 120)
         st.html(f"""<div style="display:flex;gap:10px;margin-bottom:10px;">
           <span style="display:inline-block;padding:3px 10px;border-radius:20px;
                background:#FEE2E2;color:#991B1B;font-size:10.5px;font-weight:700;">
-            🔴 {n_crit} crítico(s)
+            {n_crit} crítico(s)
           </span>
           <span style="display:inline-block;padding:3px 10px;border-radius:20px;
                background:#FEF3C7;color:#92400E;font-size:10.5px;font-weight:700;">
-            🟠 {len(fuga_rows) - n_crit} en seguimiento
+            {len(fuga_rows) - n_crit} en seguimiento
           </span>
         </div>""")
         for r in fuga_rows[:15]:
@@ -241,7 +239,7 @@ with tab_fuga:
                  margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;">
               <div>
                 <div style="font-size:12.5px;font-weight:700;color:{_T1};">
-                  {r['Emoji']} {r['Cliente']}
+                  {r['Cliente']}
                 </div>
                 <div style="font-size:11px;color:{_T2};margin-top:2px;">
                   {r['Severidad']} — Vol. histórico: {r['Vol. histórico (ton)']:,.1f} ton
@@ -273,21 +271,20 @@ with tab_enfr:
             vol_ant = row["anterior"]
             vol_rec = row["reciente"]
             col_bord = _ER if pct <= -50 else _WA
-            dot = "🔴" if pct <= -50 else "🟠"
-            enfr_rows.append((cli, pct, vol_ant, vol_rec, col_bord, dot))
+            enfr_rows.append((cli, pct, vol_ant, vol_rec, col_bord))
 
     if not enfr_rows:
-        st.success("✅ Sin clientes con caída >30% en los últimos 3 meses.")
+        st.success("Sin clientes con caída >30% en los últimos 3 meses.")
     else:
         st.caption(f"{len(enfr_rows)} cliente(s) con volumen ≥ 30% abajo respecto a los 3 meses previos.")
-        for cli, pct, vol_ant, vol_rec, col_bord, dot in enfr_rows[:15]:
+        for cli, pct, vol_ant, vol_rec, col_bord in enfr_rows[:15]:
             st.html(f"""<div style="background:#fff;border-radius:10px;padding:10px 14px;
                  border-left:4px solid {col_bord};border:1px solid #E2E8F0;
                  margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;">
               <div>
-                <div style="font-size:12.5px;font-weight:700;color:{_T1};">{dot} {cli}</div>
+                <div style="font-size:12.5px;font-weight:700;color:{_T1};">{cli}</div>
                 <div style="font-size:11px;color:{_T2};margin-top:2px;">
-                  Ant. 3m: {vol_ant:,.1f} ton → Rec. 3m: {vol_rec:,.1f} ton
+                  Ant. 3m: {vol_ant:,.1f} ton -> Rec. 3m: {vol_rec:,.1f} ton
                 </div>
               </div>
               <div style="font-size:22px;font-weight:800;color:{col_bord};text-align:right;">
@@ -328,19 +325,19 @@ with tab_mix:
             })
 
     if not mix_rows:
-        st.success("✅ Sin cambios significativos en el producto principal de los clientes.")
+        st.success("Sin cambios significativos en el producto principal de los clientes.")
     else:
         st.caption(f"{len(mix_rows)} cliente(s) cambiaron su producto #1 vs año anterior.")
         for r in mix_rows:
             st.html(f"""<div style="background:#fff;border-radius:10px;padding:10px 14px;
                  border-left:4px solid #8B5CF6;border:1px solid #E2E8F0;margin-bottom:5px;">
               <div style="font-size:12.5px;font-weight:700;color:{_T1};margin-bottom:4px;">
-                🔀 {r['Cliente']}
+                {r['Cliente']}
               </div>
               <div style="display:flex;align-items:center;gap:8px;font-size:11.5px;">
                 <span style="background:#F1F5F9;padding:3px 8px;border-radius:6px;
                      color:{_T2};">{r['Producto anterior']}</span>
-                <span style="color:#8B5CF6;font-weight:700;">→</span>
+                <span style="color:#8B5CF6;font-weight:700;">-></span>
                 <span style="background:#F0FDF4;padding:3px 8px;border-radius:6px;
                      color:#166534;">{r['Producto actual']}</span>
               </div>

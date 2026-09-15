@@ -9,42 +9,42 @@ from core.auth import cerrar_sesion, Usuario
 _AREA_CONFIG = {
     "aceros_planos": {
         "nombre": "Aceros Planos",
-        "icono": "🔩",
+        "siglas": "AP",
         "color": "#1D4ED8",
         "color_light": "#DBEAFE",
         "modulos": [
-            ("📊", "Resumen Ejecutivo", "Ventas, clientes activos y variación MoM"),
-            ("👥", "Segmentación ABC", "Clasificación y análisis de clientes por volumen"),
-            ("📈", "Series de Tiempo", "Evolución histórica y estacionalidad"),
-            ("🔮", "Pronóstico de Demanda", "Modelos ETS, SARIMA y XGBoost"),
-            ("🎯", "Mix de Productos", "Co-ocurrencia y oportunidades cross-sell"),
+            ("Resumen Ejecutivo", "Ventas, clientes activos y variación MoM"),
+            ("Segmentación ABC", "Clasificación y análisis de clientes por volumen"),
+            ("Series de Tiempo", "Evolución histórica y estacionalidad"),
+            ("Pronóstico de Demanda", "Modelos ETS, SARIMA y XGBoost"),
+            ("Mix de Productos", "Co-ocurrencia y oportunidades cross-sell"),
         ],
         "disponible": ["negros"],
         "desc_disponible": "Aceros Planos Negros — en desarrollo activo",
     },
     "aceros_largos": {
         "nombre": "Aceros Largos",
-        "icono": "📏",
+        "siglas": "AL",
         "color": "#D97706",
         "color_light": "#FEF3C7",
         "modulos": [
-            ("📊", "Dashboard Ejecutivo", "KPIs, tendencias y alertas del área"),
-            ("🏦", "Macroeconomía", "Indicadores INEGI y variables de mercado"),
-            ("🏭", "Sectores Productivos", "Análisis por sector: construcción, manufactura"),
-            ("🌍", "Comercio Exterior", "Importaciones y exportaciones de aceros largos"),
+            ("Dashboard Ejecutivo", "KPIs, tendencias y alertas del área"),
+            ("Macroeconomía", "Indicadores INEGI y variables de mercado"),
+            ("Sectores Productivos", "Análisis por sector: construcción, manufactura"),
+            ("Comercio Exterior", "Importaciones y exportaciones de aceros largos"),
         ],
         "disponible": [],
         "desc_disponible": "Módulo en preparación — próximamente disponible",
     },
     "aceros_sbq": {
         "nombre": "Aceros SBQ",
-        "icono": "🔑",
+        "siglas": "SBQ",
         "color": "#DC2626",
         "color_light": "#FEE2E2",
         "modulos": [
-            ("📊", "Dashboard Ejecutivo", "KPIs y métricas del área SBQ"),
-            ("🎯", "Clientes Especiales", "Análisis de clientes de acero de calidad especial"),
-            ("📈", "Series de Tiempo", "Evolución histórica de volúmenes SBQ"),
+            ("Dashboard Ejecutivo", "KPIs y métricas del área SBQ"),
+            ("Clientes Especiales", "Análisis de clientes de acero de calidad especial"),
+            ("Series de Tiempo", "Evolución histórica de volúmenes SBQ"),
         ],
         "disponible": [],
         "desc_disponible": "Módulo en preparación — próximamente disponible",
@@ -58,7 +58,7 @@ def render_dashboard(usuario: Usuario):
 
     color     = cfg["color"]
     color_lt  = cfg["color_light"]
-    icono     = cfg["icono"]
+    siglas    = cfg["siglas"]
     nombre_area = cfg["nombre"]
 
     # ── Sidebar ───────────────────────────────────────────────────────────────
@@ -87,8 +87,7 @@ def render_dashboard(usuario: Usuario):
           background:{color_lt};border:2px solid {color}33;
           border-radius:12px;padding:12px 14px;margin-bottom:12px;
         ">
-          <div style="font-size:1.4rem;">{icono}</div>
-          <div style="font-weight:700;color:{color};font-size:.88rem;margin-top:4px;">
+          <div style="font-weight:700;color:{color};font-size:.88rem;">
             {nombre_area}
           </div>
           <div style="font-size:.72rem;color:#6B7280;margin-top:2px;">
@@ -98,7 +97,7 @@ def render_dashboard(usuario: Usuario):
         """)
 
         st.markdown("---")
-        if st.button("🚪 Cerrar sesión", use_container_width=True, type="secondary"):
+        if st.button("Cerrar sesión", width="stretch", type="secondary"):
             cerrar_sesion()
             st.rerun()
 
@@ -119,7 +118,7 @@ def render_dashboard(usuario: Usuario):
           display:flex;align-items:center;justify-content:center;
           font-size:1.8rem;
           border:2px solid rgba(255,255,255,.25);
-        ">{icono}</div>
+        ">{siglas}</div>
         <div>
           <div style="color:#fff;font-size:1.4rem;font-weight:800;
                       font-family:'Segoe UI',sans-serif;letter-spacing:-.01em;">
@@ -154,7 +153,6 @@ def render_dashboard(usuario: Usuario):
       padding:20px 24px;margin-bottom:24px;
       display:flex;align-items:center;gap:16px;
     ">
-      <div style="font-size:2.2rem;">🚧</div>
       <div>
         <div style="font-weight:700;color:#0C4A6E;font-size:1rem;">
           Módulo en desarrollo activo
@@ -168,11 +166,11 @@ def render_dashboard(usuario: Usuario):
     """)
 
     # ── Módulos próximos (cards) ──────────────────────────────────────────────
-    st.markdown(f"#### {icono} Módulos de {nombre_area}")
+    st.markdown(f"#### Módulos de {nombre_area}")
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
     cols = st.columns(min(len(cfg["modulos"]), 3))
-    for i, (mod_icon, mod_nombre, mod_desc) in enumerate(cfg["modulos"]):
+    for i, (mod_nombre, mod_desc) in enumerate(cfg["modulos"]):
         disponible = i == 0 and len(cfg["disponible"]) > 0
         with cols[i % len(cols)]:
             estado_badge = (
@@ -192,7 +190,6 @@ def render_dashboard(usuario: Usuario):
               {bg}{borde}border-radius:16px;padding:18px;margin-bottom:12px;
               transition:all .2s ease;
             ">
-              <div style="font-size:1.8rem;margin-bottom:8px;">{mod_icon}</div>
               <div style="font-weight:700;color:#1B3A5C;font-size:.88rem;
                           margin-bottom:4px;">{mod_nombre}</div>
               <div style="color:#6B7280;font-size:.75rem;line-height:1.45;
@@ -203,7 +200,7 @@ def render_dashboard(usuario: Usuario):
 
     # ── Sección de acceso a Mercado Global (todos pueden verla) ──────────────
     st.markdown("---")
-    st.markdown("#### 🌐 Mercado Global")
+    st.markdown("#### Mercado Global")
     st.markdown(
         "<p style='color:#6B7280;font-size:.82rem;'>"
         "Tienes acceso al monitor de mercado siderúrgico global."
@@ -213,16 +210,15 @@ def render_dashboard(usuario: Usuario):
 
     col_a, col_b, col_c = st.columns(3)
     _mkt_items = [
-        ("📡", "Monitor de Quiebres", "Alertas de quiebres estructurales en mercados clave"),
-        ("🏭", "Monitor Siderúrgico", "Análisis de noticias + mañanera presidencial"),
-        ("🌡️", "Sentimiento de Mercado", "Score IA del sentimiento en prensa especializada"),
+        ("Monitor de Quiebres", "Alertas de quiebres estructurales en mercados clave"),
+        ("Monitor Siderúrgico", "Análisis de noticias + mañanera presidencial"),
+        ("Sentimiento de Mercado", "Score IA del sentimiento en prensa especializada"),
     ]
-    for col, (ic, tit, desc) in zip([col_a, col_b, col_c], _mkt_items):
+    for col, (tit, desc) in zip([col_a, col_b, col_c], _mkt_items):
         with col:
             st.html(f"""
             <div style="background:#F8FAFC;border:2px solid #E2E8F0;
                         border-radius:14px;padding:16px;text-align:center;">
-              <div style="font-size:1.6rem;margin-bottom:6px;">{ic}</div>
               <div style="font-weight:700;color:#1B3A5C;font-size:.82rem;
                           margin-bottom:4px;">{tit}</div>
               <div style="color:#6B7280;font-size:.72rem;line-height:1.4;">{desc}</div>
@@ -230,6 +226,6 @@ def render_dashboard(usuario: Usuario):
             """)
 
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-    if st.button("🌐 Ir al Monitor de Mercado Global", type="primary"):
+    if st.button("Ir al Monitor de Mercado Global", type="primary"):
         # Navegar al mercado (solo info, no tienen acceso completo aún)
         st.info("El acceso completo al mercado global estará disponible con tu módulo.")

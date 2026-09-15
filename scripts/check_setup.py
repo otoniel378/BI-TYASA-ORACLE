@@ -10,8 +10,8 @@ _root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
-OK   = "\033[92m✓\033[0m"
-FAIL = "\033[91m✗\033[0m"
+OK   = "\033[92mOK\033[0m"
+FAIL = "\033[91mFAIL\033[0m"
 WARN = "\033[93m!\033[0m"
 
 errors = 0
@@ -24,7 +24,7 @@ def check(label: str, ok: bool, hint: str = ""):
     else:
         print(f"  {FAIL} {label}")
         if hint:
-            print(f"      → {hint}")
+            print(f"      -> {hint}")
         errors += 1
 
 

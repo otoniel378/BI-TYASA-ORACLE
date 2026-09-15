@@ -85,16 +85,16 @@ def _prep_serie(info, periodo_meses):
 # CARGA DE DATOS
 # ---------------------------------------------------------------------------
 
-st.title("🏦 Análisis Macroeconómico — Aceros Largos")
+st.title("Análisis Macroeconómico — Aceros Largos")
 st.markdown(
     "Cada indicador explicado en términos de **qué está pasando**, **cómo afecta a Aceros Largos** y **qué acción conviene tomar**. "
     "Sin fórmulas. Sin tecnicismos."
 )
 
 with st.sidebar:
-    st.header("🎛️ Controles")
+    st.header("Controles")
     periodo_options = {"Últimos 6 meses": 6, "Último año": 12, "Últimos 2 años": 24}
-    periodo_label = st.selectbox("📅 Período de análisis", list(periodo_options.keys()), index=1)
+    periodo_label = st.selectbox("Período de análisis", list(periodo_options.keys()), index=1)
     periodo_meses = periodo_options[periodo_label]
     st.caption(f"Fuentes: {', '.join(get_data_sources()[:2])}")
     st.caption(f"Actualizado: {get_last_update()}")
@@ -119,7 +119,7 @@ st.divider()
 # SECCIÓN 1: CONSTRUCCIÓN — el indicador que más importa
 # ---------------------------------------------------------------------------
 
-st.subheader("🏗️ 1. Construcción — el driver principal")
+st.subheader("1. Construcción — el driver principal")
 st.caption("La construcción explica ~70% de la demanda de varilla y alambrón. Es el indicador que más rápido impacta tus ventas.")
 
 v_con = construccion.get("valor_actual") or 0
@@ -143,12 +143,12 @@ if v_con:
         color = "#FDD835"
     else:
         sit = f"Crece {v_con:.1f}% anual. Señal positiva."
-        imp = "Mayor actividad en obra → mayor demanda potencial de varilla y alambrón."
+        imp = "Mayor actividad en obra implica mayor demanda potencial de varilla y alambrón."
         acc = "Asegurar disponibilidad de producto. Activar propuestas comerciales con desarrolladores."
         color = "#2E7D32"
 
     _tarjeta_indicador(
-        titulo=f"🏗️ Actividad de la Construcción: {v_con:.1f}% YoY",
+        titulo=f"Actividad de la Construcción: {v_con:.1f}% YoY",
         valor_str=f"{v_con:.1f}%",
         tendencia_str=f"{t_con:+.1f} pp vs mes anterior",
         situacion=sit,
@@ -169,16 +169,16 @@ if v_con:
                     titulo="Variación mensual % YoY",
                     height=270,
                     umbral_critico=-10, umbral_alerta=-3,
-                    anotacion_leyenda="🔴<-10% 🟠-10 a-3% 🟡-3 a 0% 🟢>0%",
+                    anotacion_leyenda="Crítico <-10% | Alerta -10 a -3% | Precaución -3 a 0% | Favorable >0%",
                 )
-                st.plotly_chart(fig_bar_c, use_container_width=True)
+                st.plotly_chart(fig_bar_c, width="stretch")
             with col_wf_c:
                 fig_wf_c = chart_waterfall(
                     etiquetas=x_con[-12:], valores=y_con[-12:],
                     titulo="Cascada de tendencia (12M)",
                     height=270,
                 )
-                st.plotly_chart(fig_wf_c, use_container_width=True)
+                st.plotly_chart(fig_wf_c, width="stretch")
         else:
             st.info("Sin serie histórica disponible.")
 
@@ -187,15 +187,15 @@ if v_con:
         st.markdown("""
         | Rango | Señal |
         |-------|-------|
-        | > 0% | 🟢 Demanda crece |
-        | -3% a 0% | 🟡 Mercado lateral |
-        | -10% a -3% | 🟠 Debilitamiento |
-        | < -10% | 🔴 Contracción severa |
+        | > 0% | Demanda crece |
+        | -3% a 0% | Mercado lateral |
+        | -10% a -3% | Debilitamiento |
+        | < -10% | Contracción severa |
         """)
         if t_con < -2:
-            st.warning(f"⚠️ La tendencia sigue cayendo ({t_con:+.1f} pp). Riesgo de profundizar.")
+            st.warning(f"La tendencia sigue cayendo ({t_con:+.1f} pp). Riesgo de profundizar.")
         elif t_con > 2:
-            st.success(f"✅ Tendencia mejorando ({t_con:+.1f} pp). Señal de recuperación.")
+            st.success(f"Tendencia mejorando ({t_con:+.1f} pp). Señal de recuperación.")
         else:
             st.info("Tendencia estable. Sin cambio de dirección claro.")
 else:
@@ -207,7 +207,7 @@ st.divider()
 # SECCIÓN 2: INFLACIÓN
 # ---------------------------------------------------------------------------
 
-st.subheader("📊 2. Inflación (INPC) — ¿cuánto nos cuesta producir?")
+st.subheader("2. Inflación (INPC) — ¿cuánto nos cuesta producir?")
 st.caption("La inflación impacta directamente el costo de energía, logística y materias auxiliares.")
 
 v_inf = inflacion.get("valor_actual") or 0
@@ -226,7 +226,7 @@ if v_inf:
         color = "#E65100"
     elif v_inf > 3:
         sit = f"Inflación en {v_inf:.2f}% — cerca del objetivo, controlada."
-        imp = "Costos estables. Banxico en modo de relajación → mejora de crédito para construcción."
+        imp = "Costos estables. Banxico en modo de relajación, lo que mejora el crédito para construcción."
         acc = "Mantener precios. Anticipar recuperación de demanda hipotecaria si la tasa baja."
         color = "#FDD835"
     else:
@@ -238,7 +238,7 @@ if v_inf:
     col_t, col_g = st.columns([1, 2])
     with col_t:
         _tarjeta_indicador(
-            titulo=f"📊 INPC: {v_inf:.2f}%",
+            titulo=f"INPC: {v_inf:.2f}%",
             valor_str=f"{v_inf:.2f}%",
             tendencia_str=f"{t_inf:+.2f} pp vs mes anterior",
             situacion=sit,
@@ -254,7 +254,7 @@ if v_inf:
             umbral_rojo=6, umbral_amarillo=4,
             unidad="%"
         )
-        st.plotly_chart(fig_gauge, use_container_width=True)
+        st.plotly_chart(fig_gauge, width="stretch")
     with col_g:
         # La tabla INPC solo guarda el ÍNDICE base (80-170), no la variación %.
         # Calculamos YoY mes a mes: (índice_hoy / índice_hace_12_meses - 1) * 100
@@ -289,15 +289,15 @@ if v_inf:
                 umbral_critico=6, umbral_alerta=4,
                 height=290,
                 mostrar_labels=True,
-                anotacion_leyenda="🟢 < 4% | 🟠 4–6% | 🔴 > 6%",
+                anotacion_leyenda="Favorable < 4% | Alerta 4–6% | Crítico > 6%",
             )
-            # Para inflación: rojo es ALTO (malo), verde es BAJO (bueno) → invertir semáforo
+            # Para inflación: rojo es ALTO (malo), verde es BAJO (bueno); invertir semáforo
             new_colors = [
                 "#C62828" if v > 6 else "#E65100" if v > 4 else "#2E7D32"
                 for v in y_inf_bar
             ]
             fig_inf.update_traces(marker_color=new_colors)
-            st.plotly_chart(fig_inf, use_container_width=True)
+            st.plotly_chart(fig_inf, width="stretch")
             ultima_inf = df_yoy["fecha"].max()
             st.caption(f"Dato más reciente: **{ultima_inf.strftime('%B %Y')}** | Calculado como variación del índice INPC vs mismo mes del año anterior.")
         else:
@@ -311,7 +311,7 @@ st.divider()
 # SECCIÓN 3: PIB
 # ---------------------------------------------------------------------------
 
-st.subheader("🏛️ 3. PIB — ¿crece o se contrae la economía?")
+st.subheader("3. PIB — ¿crece o se contrae la economía?")
 st.caption("El PIB es el termómetro general. Una economía que crece invierte más en infraestructura y vivienda.")
 
 v_pib = pib.get("valor_actual") or 0
@@ -335,14 +335,14 @@ if v_pib:
         color = "#FDD835"
     else:
         sit = f"PIB crece {v_pib:.1f}% — expansión sólida."
-        imp = "Mayor inversión → más proyectos de vivienda e infraestructura → más demanda de acero."
+        imp = "Mayor inversión genera más proyectos de vivienda e infraestructura y más demanda de acero."
         acc = "Capturar oportunidades. Evaluar si la capacidad de producción puede responder al crecimiento."
         color = "#2E7D32"
 
     col_t, col_g = st.columns([1, 2])
     with col_t:
         _tarjeta_indicador(
-            titulo=f"🏛️ PIB: {v_pib:.1f}% YoY",
+            titulo=f"PIB: {v_pib:.1f}% YoY",
             valor_str=f"{v_pib:.1f}%",
             tendencia_str=f"{t_pib:+.1f} pp vs trimestre anterior",
             situacion=sit,
@@ -406,15 +406,15 @@ if v_pib:
                 umbral_critico=0, umbral_alerta=1.5,
                 height=310,
                 mostrar_labels=True,
-                anotacion_leyenda="🔴 < 0% | 🟠 0–1.5% | 🟢 > 1.5%",
+                anotacion_leyenda="Crítico < 0% | Alerta 0–1.5% | Favorable > 1.5%",
             )
-            st.plotly_chart(fig_pib, use_container_width=True)
+            st.plotly_chart(fig_pib, width="stretch")
             # Nota ejecutiva sobre el rezago
             ultima_fecha_pib = df_pib_filtrado["_fecha"].max() if "df_pib_filtrado" in dir() and not df_pib_filtrado.empty else None
             if ultima_fecha_pib is not None:
                 trimestre_str = f"Q{((ultima_fecha_pib.month - 1) // 3) + 1} {ultima_fecha_pib.year}"
                 st.caption(
-                    f"📅 Dato más reciente disponible: **{trimestre_str}**. "
+                    f"Dato más reciente disponible: **{trimestre_str}**. "
                     "INEGI publica el PIB con ~2 meses de rezago tras cerrar el trimestre. "
                     "El dato de Q1 2026 (enero–marzo) se publicará aproximadamente en junio 2026."
                 )
@@ -433,7 +433,7 @@ if v_pib:
                     {v_pib:+.1f}%
                 </div>
                 <div style="font-size: 13px; color: #777; margin-top: 8px;">
-                    {'📈 Economía creciendo' if v_pib >= 2 else '⚠️ Crecimiento débil' if v_pib >= 0 else '📉 Economía en contracción'}
+                    {'Economía creciendo' if v_pib >= 2 else 'Crecimiento débil' if v_pib >= 0 else 'Economía en contracción'}
                 </div>
             </div>
             """)
@@ -449,7 +449,7 @@ st.divider()
 # SECCIÓN 4: USD/MXN
 # ---------------------------------------------------------------------------
 
-st.subheader("💱 4. Tipo de Cambio USD/MXN — ¿cuánto cuesta el acero importado?")
+st.subheader("4. Tipo de Cambio USD/MXN — ¿cuánto cuesta el acero importado?")
 st.caption("El peso débil encarece las importaciones de acero; el peso fuerte las abarata y aumenta la competencia.")
 
 v_usd = usd_mxn.get("valor_actual") or 0
@@ -465,7 +465,7 @@ if v_usd and not (10 <= float(v_usd) <= 30):
 if v_usd:
     if v_usd > 20:
         sit = f"USD/MXN en ${v_usd:.2f} — peso débil."
-        imp = "El acero importado es más caro en pesos → protección natural para producción nacional. Pero si usamos insumos importados (chatarra, ferroaleaciones), nuestros costos también suben."
+        imp = "El acero importado es más caro en pesos, lo que da protección natural para producción nacional. Pero si usamos insumos importados (chatarra, ferroaleaciones), nuestros costos también suben."
         acc = "Verificar si el diferencial de precio compensa la competencia importada. Comunicar ventaja de acero nacional."
         color = "#2E7D32"
     elif v_usd > 17.5:
@@ -475,14 +475,14 @@ if v_usd:
         color = "#FDD835"
     else:
         sit = f"USD/MXN en ${v_usd:.2f} — peso fuerte."
-        imp = "El acero importado es barato en pesos → mayor competencia de China y otros exportadores. Riesgo de pérdida de mercado."
+        imp = "El acero importado es barato en pesos, lo que genera mayor competencia de China y otros exportadores. Riesgo de pérdida de mercado."
         acc = "Reforzar diferenciación por servicio: entrega inmediata, crédito, soporte técnico. No competir solo en precio."
         color = "#C62828"
 
     col_t, col_g = st.columns([1, 2])
     with col_t:
         _tarjeta_indicador(
-            titulo=f"💱 USD/MXN: ${v_usd:.2f}",
+            titulo=f"USD/MXN: ${v_usd:.2f}",
             valor_str=f"${v_usd:.2f}",
             tendencia_str=f"{t_usd:+.2f}% vs mes anterior",
             situacion=sit,
@@ -556,10 +556,10 @@ if v_usd:
                 plot_bgcolor="#ffffff", paper_bgcolor="#ffffff",
                 margin=dict(t=50, b=50, l=55, r=80),
             )
-            st.plotly_chart(fig_fx, use_container_width=True)
+            st.plotly_chart(fig_fx, width="stretch")
             st.caption(
-                "🟢 > $20 — peso débil, importaciones más caras, protección para producción nacional. "
-                "🔴 < $17.5 — peso fuerte, acero importado más barato, mayor competencia."
+                "Peso débil > $20: importaciones más caras, protección para producción nacional. "
+                "Peso fuerte < $17.5: acero importado más barato, mayor competencia."
             )
         else:
             st.info("Sin datos de tipo de cambio disponibles.")
@@ -572,14 +572,14 @@ st.divider()
 # SECCIÓN 6: SÍNTESIS Y ESCENARIOS
 # ---------------------------------------------------------------------------
 
-st.subheader("🔮 Escenarios: ¿qué puede pasar en los próximos 3 meses?")
+st.subheader("Escenarios: ¿qué puede pasar en los próximos 3 meses?")
 
 col_a, col_b, col_c = st.columns(3)
 
 with col_a:
     st.html("""
     <div style="background:#FFEBEE; border:1px solid #C62828; border-radius:8px; padding:14px;">
-        <div style="font-size:15px; font-weight:700; color:#C62828; margin-bottom:8px;">🔴 Escenario Adverso</div>
+        <div style="font-size:15px; font-weight:700; color:#C62828; margin-bottom:8px;">Escenario Adverso</div>
         <ul style="margin:0; padding-left:18px; font-size:13px; color:#333;">
             <li>Construcción sigue cayendo más de 10%</li>
             <li>Crédito de construcción sigue restringido</li>
@@ -597,7 +597,7 @@ with col_a:
 with col_b:
     st.html("""
     <div style="background:#FFF3E0; border:1px solid #E65100; border-radius:8px; padding:14px;">
-        <div style="font-size:15px; font-weight:700; color:#E65100; margin-bottom:8px;">🟡 Escenario Base</div>
+        <div style="font-size:15px; font-weight:700; color:#E65100; margin-bottom:8px;">Escenario Base</div>
         <ul style="margin:0; padding-left:18px; font-size:13px; color:#333;">
             <li>Construcción estabiliza entre -5% y 0%</li>
             <li>Financiamiento de obra mejora gradualmente</li>
@@ -615,7 +615,7 @@ with col_b:
 with col_c:
     st.html("""
     <div style="background:#E8F5E9; border:1px solid #2E7D32; border-radius:8px; padding:14px;">
-        <div style="font-size:15px; font-weight:700; color:#2E7D32; margin-bottom:8px;">🟢 Escenario Positivo</div>
+        <div style="font-size:15px; font-weight:700; color:#2E7D32; margin-bottom:8px;">Escenario Positivo</div>
         <ul style="margin:0; padding-left:18px; font-size:13px; color:#333;">
             <li>Gasto público activa obras en Q2</li>
             <li>Crédito hipotecario y de obra se reactiva</li>
@@ -636,7 +636,7 @@ st.divider()
 # SECCIÓN 7: ALERTAS AUTOMÁTICAS
 # ---------------------------------------------------------------------------
 
-st.subheader("⚠️ Alertas Activas")
+st.subheader("Alertas Activas")
 
 alertas = []
 recomendaciones = []
@@ -649,26 +649,26 @@ for indicador, info in macro_data.items():
 
     if indicador == "construccion":
         if v < -10:
-            alertas.append("🔴 **Construcción en contracción severa** — impacto directo y sostenido en demanda de varilla y alambrón.")
+            alertas.append("**Construcción en contracción severa** — impacto directo y sostenido en demanda de varilla y alambrón.")
             recomendaciones.append("Revisar inventario. No comprar materia prima extra. Activar búsqueda de nuevos segmentos.")
         elif v < -5:
-            alertas.append(f"🟡 **Construcción debilitándose** ({v:.1f}%) — monitorear de cerca.")
+            alertas.append(f"**Construcción debilitándose** ({v:.1f}%) — monitorear de cerca.")
             recomendaciones.append("Segmentar cartera. Priorizar clientes con proyectos activos.")
         if t < -3:
-            alertas.append(f"🟠 **Construcción acelerando caída** (tendencia {t:+.1f} pp) — riesgo de que profundice.")
+            alertas.append(f"**Construcción acelerando caída** (tendencia {t:+.1f} pp) — riesgo de que profundice.")
     elif indicador == "inflacion":
         if v > 6:
-            alertas.append(f"🔴 **Inflación muy alta** ({v:.2f}%) — presión en costos de producción.")
+            alertas.append(f"**Inflación muy alta** ({v:.2f}%) — presión en costos de producción.")
             recomendaciones.append("Revisar precios y contratos. Confirmar cláusulas de ajuste.")
         elif v > 4.5 and t > 0:
-            alertas.append(f"🟡 **Inflación subiendo** ({v:.2f}%, {t:+.2f} pp) — vigilar evolución.")
+            alertas.append(f"**Inflación subiendo** ({v:.2f}%, {t:+.2f} pp) — vigilar evolución.")
     elif indicador == "pib":
         if v < 0:
-            alertas.append(f"🔴 **PIB negativo** ({v:.1f}%) — economía en contracción.")
+            alertas.append(f"**PIB negativo** ({v:.1f}%) — economía en contracción.")
             recomendaciones.append("Posición defensiva. Control de cartera y crédito.")
     elif indicador == "usd_mxn":
         if v and v < 17:
-            alertas.append(f"🟡 **Peso fuerte** (${v:.2f}) — acero importado barato, mayor competencia.")
+            alertas.append(f"**Peso fuerte** (${v:.2f}) — acero importado barato, mayor competencia.")
             recomendaciones.append("Reforzar diferenciación por servicio vs. precio de importación.")
 
 raw_seg = macro_data.get("construccion_segmentada", [])
@@ -682,17 +682,17 @@ if isinstance(raw_seg, list) and raw_seg:
             if not seg_df.empty:
                 ultimo = seg_df.iloc[0]["valor"]
                 if ultimo < -15:
-                    alertas.append(f"🔴 **{seg}**: caída de {abs(ultimo):.1f}% — subsector en contracción severa.")
+                    alertas.append(f"**{seg}**: caída de {abs(ultimo):.1f}% — subsector en contracción severa.")
 
 if alertas:
     for a in alertas:
         st.markdown(a)
     if recomendaciones:
-        st.markdown("**💡 Recomendaciones:**")
+        st.markdown("**Recomendaciones:**")
         for i, r in enumerate(recomendaciones, 1):
             st.markdown(f"{i}. {r}")
 else:
-    st.success("✅ No hay alertas críticas en los indicadores macroeconómicos actuales.")
+    st.success("No hay alertas críticas en los indicadores macroeconómicos actuales.")
 
 st.divider()
 st.caption(f"Datos: INEGI · Banxico · BigQuery TYASA · Actualizado: {get_last_update()}")

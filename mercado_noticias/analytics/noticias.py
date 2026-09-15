@@ -74,7 +74,7 @@ def _extract_date_from_url(url: str) -> str:
     """
     if not url:
         return ""
-    # Patrón /YYYY/MM/DD/  →  la mayoría de medios latinos y anglosajones
+    # Patrón /YYYY/MM/DD/  (la mayoría de medios latinos y anglosajones)
     m = re.search(r'/(\d{4})/(\d{1,2})/(\d{1,2})/', url)
     if m:
         try:
@@ -283,7 +283,7 @@ def buscar_noticias_actuales(
 ) -> list[dict]:
     """
     Busca noticias de los últimos N días para una variable de mercado.
-    Prioridad: Google News RSS → NewsAPI como respaldo.
+    Prioridad: Google News RSS, NewsAPI como respaldo.
     Sin límites de requests. Retorna hasta max_resultados artículos deduplicados.
     """
     queries = QUERIES.get(variable, [variable.replace("_", " ")])

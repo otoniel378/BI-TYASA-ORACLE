@@ -32,13 +32,13 @@ def tabla_ejecutiva(
                 except Exception:
                     pass
 
-    label = f"📋 {titulo}" if titulo else "📋 Ver tabla de datos"
+    label = titulo if titulo else "Ver tabla de datos"
     with st.expander(label, expanded=False):
-        st.dataframe(df_display, height=height, use_container_width=True, hide_index=True)
+        st.dataframe(df_display, height=height, width="stretch", hide_index=True)
         _boton_descarga(df, key=key)
 
 
-def _boton_descarga(df: pd.DataFrame, key: str = "export", label: str = "⬇ Exportar Excel") -> None:
+def _boton_descarga(df: pd.DataFrame, key: str = "export", label: str = "Exportar Excel") -> None:
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="Datos")
@@ -71,9 +71,9 @@ def tabla_clasificacion_abc(df_abc: pd.DataFrame, key: str = "abc") -> None:
                 lambda v: fmt.format(v) if pd.notna(v) else ""
             )
 
-    with st.expander("📋 Clasificación ABC — detalle", expanded=False):
-        st.dataframe(df_display, height=320, use_container_width=True, hide_index=True)
-        _boton_descarga(df_abc, key=key, label="⬇ Exportar ABC")
+    with st.expander("Clasificación ABC — detalle", expanded=False):
+        st.dataframe(df_display, height=320, width="stretch", hide_index=True)
+        _boton_descarga(df_abc, key=key, label="Exportar ABC")
 
 
 def tabla_metricas(metricas: dict, titulo: str = "Métricas del modelo") -> None:

@@ -11,7 +11,7 @@ from aceros_largos.loaders import load_market_data, get_last_update, get_data_so
 # ---------------------------------------------------------------------------
 # CONFIG
 # ---------------------------------------------------------------------------
-st.title("💹 Aceros Largos — Mercado y Costos")
+st.title("Aceros Largos — Mercado y Costos")
 st.markdown("Monitoreo de variables clave: tipo de cambio, precios de materias primas y costos operativos")
 
 # ---------------------------------------------------------------------------
@@ -29,7 +29,6 @@ with col1:
     # USD/MXN
     usd_mxn = data["usd_mxn"]
     trend_color = "#C62828" if usd_mxn["trend_type"] == "up" else "#2E7D32"  # Up = malo para importaciones
-    trend_icon = "📈" if usd_mxn["trend_type"] == "up" else "📉"
     
     st.html(f"""
     <div style="background: linear-gradient(135deg, rgba(27, 58, 92, 0.1) 0%, rgba(75, 123, 167, 0.05) 100%);
@@ -38,10 +37,9 @@ with col1:
             <div>
                 <div style="font-size: 12px; color: #666; margin-bottom: 5px;">{usd_mxn["label"]}</div>
                 <div style="font-size: 32px; font-weight: bold; color: #1B3A5C; margin-bottom: 5px;">{usd_mxn["value"]}</div>
-                <div style="font-size: 11px; color: {trend_color};">{trend_icon} {usd_mxn["trend"]}</div>
+                <div style="font-size: 11px; color: {trend_color};">{usd_mxn["trend"]}</div>
                 <div style="font-size: 10px; color: #999; margin-top: 3px;">{usd_mxn["unit"]}</div>
             </div>
-            <div style="font-size: 32px; opacity: 0.3;">💱</div>
         </div>
     </div>
     """)
@@ -50,7 +48,6 @@ with col2:
     # CHATARRA
     scrap = data["scrap_price"]
     trend_color = "#2E7D32" if scrap["trend_type"] == "down" else "#C62828"  # Down = bueno para costos
-    trend_icon = "📉" if scrap["trend_type"] == "down" else "📈"
     
     st.html(f"""
     <div style="background: linear-gradient(135deg, rgba(27, 58, 92, 0.1) 0%, rgba(75, 123, 167, 0.05) 100%);
@@ -59,10 +56,9 @@ with col2:
             <div>
                 <div style="font-size: 12px; color: #666; margin-bottom: 5px;">{scrap["label"]}</div>
                 <div style="font-size: 32px; font-weight: bold; color: #1B3A5C; margin-bottom: 5px;">{scrap["value"]}</div>
-                <div style="font-size: 11px; color: {trend_color};">{trend_icon} {scrap["trend"]}</div>
+                <div style="font-size: 11px; color: {trend_color};">{scrap["trend"]}</div>
                 <div style="font-size: 10px; color: #999; margin-top: 3px;">{scrap["unit"]}</div>
             </div>
-            <div style="font-size: 32px; opacity: 0.3;">🔩</div>
         </div>
     </div>
     """)
@@ -73,7 +69,7 @@ with col2:
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("💱 Evolución USD/MXN (Simulada)")
+    st.subheader("Evolución USD/MXN (Simulada)")
     
     # Generar datos simulados para los últimos 30 días
     dates = [datetime.now() - timedelta(days=i) for i in range(30, 0, -1)]
@@ -103,10 +99,10 @@ with col1:
         showlegend=False
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 with col2:
-    st.subheader("🔩 Precio Chatarra (Simulado)")
+    st.subheader("Precio Chatarra (Simulado)")
     
     # Generar datos simulados para precio de chatarra
     scrap_dates = [datetime.now() - timedelta(days=i) for i in range(30, 0, -1)]
@@ -136,18 +132,18 @@ with col2:
         showlegend=False
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
 # ---------------------------------------------------------------------------
 # MATRIZ DE IMPACTOS
 # ---------------------------------------------------------------------------
-st.subheader("🎯 Matriz de Impactos de Precios")
+st.subheader("Matriz de Impactos de Precios")
 
 impact_data = [
-    {"Variable": "USD/MXN ↑ (+1.64%)", "Costos": "Neutro", "Ventas": "Positivo", "Margen": "Positivo", "Comentario": "Mejora competitividad exportadora"},
-    {"Variable": "Chatarra ↓ (-2.1%)", "Costos": "Muy Positivo", "Ventas": "Neutro", "Margen": "Muy Positivo", "Comentario": "Reduce 60% del costo directo"},
+    {"Variable": "USD/MXN (+1.64%)", "Costos": "Neutro", "Ventas": "Positivo", "Margen": "Positivo", "Comentario": "Mejora competitividad exportadora"},
+    {"Variable": "Chatarra (-2.1%)", "Costos": "Muy Positivo", "Ventas": "Neutro", "Margen": "Muy Positivo", "Comentario": "Reduce 60% del costo directo"},
     {"Variable": "Energía (Stable)", "Costos": "Neutro", "Ventas": "Neutro", "Margen": "Neutro", "Comentario": "Sin variaciones significativas"},
-    {"Variable": "Construcción ↓ (-15.6%)", "Costos": "Neutro", "Ventas": "Muy Negativo", "Margen": "Muy Negativo", "Comentario": "Principal mercado contraído"},
+    {"Variable": "Construcción (-15.6%)", "Costos": "Neutro", "Ventas": "Muy Negativo", "Margen": "Muy Negativo", "Comentario": "Principal mercado contraído"},
 ]
 
 # Crear tabla con colores
@@ -178,7 +174,7 @@ for item in impact_data:
 # ---------------------------------------------------------------------------
 # CALCULADORA DE SENSIBILIDAD
 # ---------------------------------------------------------------------------
-st.subheader("🧮 Calculadora de Sensibilidad")
+st.subheader("Calculadora de Sensibilidad")
 st.markdown("Simula el impacto de cambios en variables clave sobre márgenes")
 
 col1, col2, col3 = st.columns(3)
@@ -198,16 +194,15 @@ margin_impact = (usd_change * 0.3) + (scrap_change * -0.8) + (volume_change * 0.
 new_margin = base_margin + margin_impact
 
 impact_color = "#2E7D32" if margin_impact > 0 else "#C62828"
-impact_icon = "📈" if margin_impact > 0 else "📉"
 
-st.markdown("### 📊 Resultado de Sensibilidad")
+st.markdown("### Resultado de Sensibilidad")
 st.html(f"""
 <div style="background: linear-gradient(135deg, rgba(27, 58, 92, 0.1) 0%, rgba(75, 123, 167, 0.05) 100%);
             border: 1px solid rgba(75, 123, 167, 0.2); border-radius: 12px; padding: 20px; text-align: center;">
     <div style="font-size: 14px; color: #666; margin-bottom: 10px;">Margen Operativo Proyectado</div>
     <div style="font-size: 36px; font-weight: bold; color: #1B3A5C;">{new_margin:.1f}%</div>
     <div style="font-size: 14px; color: {impact_color}; margin-top: 10px;">
-        {impact_icon} {margin_impact:+.1f}pp vs base ({base_margin}%)
+        {margin_impact:+.1f}pp vs base ({base_margin}%)
     </div>
 </div>
 """)

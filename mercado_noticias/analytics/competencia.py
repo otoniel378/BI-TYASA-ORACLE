@@ -40,7 +40,7 @@ _APIFY_BASE = "https://api.apify.com/v2"
 # ════════════════════════════════════════════════════════════════════════════
 EMPRESAS_COMPETENCIA: dict[str, dict] = {
     "ArcelorMittal": {
-        "color": "#1B3A5C", "bg": "#E8EFF6", "icon": "⚙️",
+        "color": "#1B3A5C", "bg": "#E8EFF6",
         "linkedin_id":    "arcelormittal",
         "facebook_user":  "ArcelorMittalMexico",
         "instagram_user": "arcelormittalmx",
@@ -54,7 +54,7 @@ EMPRESAS_COMPETENCIA: dict[str, dict] = {
         ],
     },
     "Ternium": {
-        "color": "#DC2626", "bg": "#FEE2E2", "icon": "🔩",
+        "color": "#DC2626", "bg": "#FEE2E2",
         "linkedin_id":    "ternium",
         "facebook_user":  "Ternium.mx",
         "instagram_user": "aceroternium",
@@ -67,7 +67,7 @@ EMPRESAS_COMPETENCIA: dict[str, dict] = {
         ],
     },
     "Deacero": {
-        "color": "#059669", "bg": "#D1FAE5", "icon": "🏭",
+        "color": "#059669", "bg": "#D1FAE5",
         "linkedin_id":    "deacero",
         "facebook_user":  "grupodeacero",
         "instagram_user": "grupodeacero",
@@ -80,7 +80,7 @@ EMPRESAS_COMPETENCIA: dict[str, dict] = {
         ],
     },
     "Tenaris TAMSA": {
-        "color": "#7C3AED", "bg": "#EDE9FE", "icon": "🔧",
+        "color": "#7C3AED", "bg": "#EDE9FE",
         "linkedin_id":    "tenaris",
         "facebook_user":  "TenarisEvents",
         "instagram_user": "tenaristamsa",
@@ -93,7 +93,7 @@ EMPRESAS_COMPETENCIA: dict[str, dict] = {
         ],
     },
     "Grupo SIMEC": {
-        "color": "#D97706", "bg": "#FEF3C7", "icon": "📊",
+        "color": "#D97706", "bg": "#FEF3C7",
         "linkedin_id":    "grupo-simec",
         "facebook_user":  "",
         "instagram_user": "",
@@ -105,7 +105,7 @@ EMPRESAS_COMPETENCIA: dict[str, dict] = {
         ],
     },
     "AHMSA": {
-        "color": "#374151", "bg": "#F3F4F6", "icon": "🏗️",
+        "color": "#374151", "bg": "#F3F4F6",
         "linkedin_id":    "altos-hornos-de-mexico",
         "facebook_user":  "",
         "instagram_user": "aceroahmsa",
@@ -117,7 +117,7 @@ EMPRESAS_COMPETENCIA: dict[str, dict] = {
         ],
     },
     "Gerdau": {
-        "color": "#0F766E", "bg": "#CCFBF1", "icon": "⛏️",
+        "color": "#0F766E", "bg": "#CCFBF1",
         "linkedin_id":    "gerdau",
         "facebook_user":  "gerdaueng",
         "instagram_user": "",
@@ -129,7 +129,7 @@ EMPRESAS_COMPETENCIA: dict[str, dict] = {
         ],
     },
     "Corsa Acero": {
-        "color": "#92400E", "bg": "#FEF3C7", "icon": "🔨",
+        "color": "#92400E", "bg": "#FEF3C7",
         "linkedin_id":    "corsa-acero",
         "facebook_user":  "GerdauCorsaOficial",
         "instagram_user": "gerdaucorsamx",
@@ -244,11 +244,11 @@ def _normalizar_fecha(raw) -> str:
 # ════════════════════════════════════════════════════════════════════════════
 def _empresa_badge(empresa: str) -> str:
     meta = EMPRESAS_COMPETENCIA.get(empresa, {})
-    c, bg, icon = meta.get("color", "#374151"), meta.get("bg", "#F3F4F6"), meta.get("icon", "🏭")
+    c, bg = meta.get("color", "#374151"), meta.get("bg", "#F3F4F6")
     return (
         f"<span style='background:{bg};color:{c};padding:2px 9px;"
         f"border-radius:14px;font-size:9px;font-weight:700;"
-        f"white-space:nowrap;'>{icon} {empresa}</span>"
+        f"white-space:nowrap;'>{empresa}</span>"
     )
 
 
@@ -344,7 +344,6 @@ def render_feed_noticias(
     if not filtradas:
         return (
             _IC_CSS + '<div class="ic"><div class="ic-empty">'
-            '<div class="ic-empty-icon">📭</div>'
             '<div class="ic-empty-title">Sin noticias en el período</div>'
             '<div class="ic-empty-sub">Ajusta el rango de fechas o selecciona más empresas.</div>'
             '</div></div>'
@@ -360,14 +359,14 @@ def render_feed_noticias(
         url     = (n.get("url", "") or "").strip()
         fecha   = (n.get("fecha_pub", "") or "").strip()
         leer    = (
-            f'<a href="{url}" target="_blank" class="ic-read" style="color:{c};">Leer →</a>'
+            f'<a href="{url}" target="_blank" class="ic-read" style="color:{c};">Leer</a>'
         ) if url else ""
         cards.append(
             f'<div class="ic-nc">'
             f'<div class="ic-nc-top" style="background:{c};"></div>'
             f'<div class="ic-nc-body">'
             f'<div class="ic-nc-meta">{_empresa_badge(empresa)}'
-            f'<span class="ic-nc-date">📅 {fecha}</span></div>'
+            f'<span class="ic-nc-date">{fecha}</span></div>'
             f'<div class="ic-nc-title">{titulo}</div>'
             f'<div class="ic-nc-desc">{desc}</div>'
             f'<div class="ic-nc-footer"><span class="ic-source">{fuente}</span>{leer}</div>'
@@ -407,11 +406,10 @@ def render_feed_social(
     if not filtrados:
         return (
             _IC_CSS + '<div class="ic"><div class="ic-empty">'
-            '<div class="ic-empty-icon">📱</div>'
             '<div class="ic-empty-title">Sin publicaciones en el período</div>'
             '<div class="ic-empty-sub">Instagram está temporalmente bloqueado por rate-limit. '
             'Las tarjetas de presencia de LinkedIn, Facebook y X aparecen en las redes '
-            'correspondientes. Haz clic en 🔄 Actualizar para reintentar Instagram.</div>'
+            'correspondientes. Haz clic en Actualizar para reintentar Instagram.</div>'
             '</div></div>'
         )
 
@@ -420,10 +418,9 @@ def render_feed_social(
         empresa   = p.get("empresa", "")
         red       = p.get("red", "")
         meta_e    = EMPRESAS_COMPETENCIA.get(empresa, {})
-        meta_r    = _RED_META.get(red, {"label": red, "color": "#6B7280", "bg": "#F3F4F6", "icon": "🌐"})
+        meta_r    = _RED_META.get(red, {"label": red, "color": "#6B7280", "bg": "#F3F4F6"})
         c         = meta_e.get("color", "#374151")
         bg        = meta_e.get("bg", "#F3F4F6")
-        icon      = meta_e.get("icon", "🏭")
         rc        = meta_r["color"]
         texto     = (p.get("texto", "") or "").strip()
         snippet   = texto[:220] + ("…" if len(texto) > 220 else "")
@@ -437,32 +434,33 @@ def render_feed_social(
 
         net_pill = (
             f'<span class="ic-net-pill" style="color:{rc};">'
-            f'{meta_r["icon"]} {meta_r["label"]}</span>'
+            f'{meta_r["label"]}</span>'
         )
         stats_html = []
         if es_perfil:
-            seg_label = "👥 Seguidores"
+            seg_label = "Seguidores"
             if red == "facebook":
-                seg_label = "👍 Likes"
+                seg_label = "Likes"
             if likes:  stats_html.append(f'<span class="ic-stat">{seg_label}: {likes:,}</span>')
-            if shares: stats_html.append(f'<span class="ic-stat">📝 {shares:,} tweets</span>')
+            if shares: stats_html.append(f'<span class="ic-stat">{shares:,} tweets</span>')
         else:
-            if likes:   stats_html.append(f'<span class="ic-stat">❤️ {likes:,}</span>')
-            if coments: stats_html.append(f'<span class="ic-stat">💬 {coments:,}</span>')
-            if shares:  stats_html.append(f'<span class="ic-stat">🔄 {shares:,}</span>')
-            if vistas:  stats_html.append(f'<span class="ic-stat">👁 {vistas:,}</span>')
+            if likes:   stats_html.append(f'<span class="ic-stat">{likes:,} likes</span>')
+            if coments: stats_html.append(f'<span class="ic-stat">{coments:,} comentarios</span>')
+            if shares:  stats_html.append(f'<span class="ic-stat">{shares:,} compartidos</span>')
+            if vistas:  stats_html.append(f'<span class="ic-stat">{vistas:,} vistas</span>')
         if not stats_html:
             stats_html.append('<span class="ic-stat" style="color:#D1D5DB;">Sin métricas</span>')
 
-        link_html = f'<a href="{url}" target="_blank" class="ic-link" title="Ver original">↗</a>' if url else ""
+        link_html = f'<a href="{url}" target="_blank" class="ic-link" title="Ver original">Ver</a>' if url else ""
 
+        avatar_ini = (empresa[:1] or "?").upper()
         cards.append(
             f'<div class="ic-card">'
             f'<div class="ic-card-top" style="background:{c};">{net_pill}</div>'
             f'<div class="ic-card-body">'
             f'<div class="ic-card-header">'
             f'<div class="ic-company-row">'
-            f'<div class="ic-avatar" style="background:{bg};color:{c};">{icon}</div>'
+            f'<div class="ic-avatar" style="background:{bg};color:{c};">{avatar_ini}</div>'
             f'<span class="ic-co-name" style="color:{c};">{empresa}</span>'
             f'</div>'
             f'<span class="ic-date">{fecha}</span>'
@@ -521,7 +519,7 @@ def _apify_instagram(empresa: str, api_token: str, n: int = 8) -> list[dict]:
     username = meta.get("instagram_user", "")
     if not username:
         return []
-    # Actor verificado: apify~instagram-scraper (4.7★, 322K usuarios)
+    # Actor verificado: apify~instagram-scraper (4.7 estrellas, 322K usuarios)
     items = _apify_run("apify~instagram-scraper", {
         "directUrls":    [f"https://www.instagram.com/{username}/"],
         "resultsType":   "posts",
