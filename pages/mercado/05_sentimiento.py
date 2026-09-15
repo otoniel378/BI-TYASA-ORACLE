@@ -45,7 +45,7 @@ st.html("""<style>
 </style>""")
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
-sidebar_header("Sentimiento", "🌡️")
+sidebar_header("Sentimiento")
 dias_hist = st.sidebar.slider("Período de análisis (días)", 7, 90, 30, key="sent_dias")
 grupo_filtro = st.sidebar.selectbox(
     "Filtrar por grupo",
@@ -64,7 +64,7 @@ alcance_filtro = st.sidebar.radio(
 # ── Título ────────────────────────────────────────────────────────────────────
 st.html(f"""
 <div style="margin-bottom:6px;">
-  <h2 style="color:{_P};margin:0;font-size:1.5rem;">🌡️ Termómetro de Sentimiento Siderúrgico</h2>
+  <h2 style="color:{_P};margin:0;font-size:1.5rem;">Termómetro de Sentimiento Siderúrgico</h2>
   <p style="color:{_T2};margin:0;font-size:0.85rem;">
     Clasificación IA de noticias desde la perspectiva de TYASA — actualizado diariamente
   </p>
@@ -103,10 +103,10 @@ _RT_KEY = f"sentimiento_rt_{date.today().isoformat()}_{grupo_filtro}_{alcance_fi
 col_btn, col_info = st.columns([1, 3])
 with col_btn:
     run_rt = st.button(
-        "🤖 Clasificar noticias de hoy",
+        "Clasificar noticias de hoy",
         key="btn_sent_rt",
         disabled=not bool(_GEMINI_KEY),
-        use_container_width=True,
+        width="stretch",
     )
 with col_info:
     if not _GEMINI_KEY:
@@ -167,7 +167,7 @@ if indice_activo:
 
     with col_gauge:
         indice_val = indice_activo["indice"]
-        gauge_val  = (indice_val + 1) / 2 * 10   # escala -1..1 → 0..10
+        gauge_val  = (indice_val + 1) / 2 * 10   # escala -1..1 a 0..10
 
         fig_t = go.Figure(go.Indicator(
             mode="gauge+number+delta",
@@ -193,8 +193,8 @@ if indice_activo:
             height=220, margin=dict(t=30, b=0, l=10, r=10),
             paper_bgcolor="white", font=dict(family="Segoe UI, sans-serif"),
         )
-        st.plotly_chart(fig_t, use_container_width=True, config={"displayModeBar": False})
-        st.caption(f"Score: {indice_activo['indice']:+.3f} (–1 muy negativo → +1 muy positivo)")
+        st.plotly_chart(fig_t, width="stretch", config={"displayModeBar": False})
+        st.caption(f"Score: {indice_activo['indice']:+.3f} (–1 muy negativo a +1 muy positivo)")
 
     with col_kpis:
         n_pos = indice_activo.get("n_positivas", 0)
@@ -268,7 +268,7 @@ if not df_trend.empty and "fecha_pub" in df_trend.columns:
         xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#EEF2FF", title="Score"),
         font=dict(family="Segoe UI, sans-serif", size=11),
     )
-    st.plotly_chart(fig_trend, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig_trend, width="stretch", config={"displayModeBar": False})
 elif not usar_rt:
     st.info("Ejecuta el script `update_sentimiento_noticias.py` para acumular histórico de sentimiento.")
 
@@ -304,7 +304,7 @@ if _bq_ok and not df_hist.empty and "variable_principal" in df_hist.columns:
         yaxis=dict(tickfont=dict(size=10)),
         font=dict(family="Segoe UI, sans-serif", size=11),
     )
-    st.plotly_chart(fig_var, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig_var, width="stretch", config={"displayModeBar": False})
 
 st.divider()
 
@@ -316,18 +316,17 @@ if _bq_ok and not df_sent.empty:
     alertas_sent = detectar_cambio_sentimiento(df_sent, ventana_reciente=3, ventana_base=dias_hist)
 
     if not alertas_sent:
-        st.success("✅ Sin cambios bruscos de sentimiento en los últimos 3 días.")
+        st.success("Sin cambios bruscos de sentimiento en los últimos 3 días.")
     else:
         for a in alertas_sent[:6]:
             col_bord = _ER if a["cambio"] < 0 else _OK
             bg = "#FEE2E2" if a["cambio"] < 0 else "#DCFCE7"
-            dot = "🔴" if a["nivel"] == "Alta" else "🟠" if a["nivel"] == "Media" else "🟡"
             st.html(f"""<div style="background:{bg};border-radius:10px;padding:12px 14px;
                  border-left:4px solid {col_bord};margin-bottom:6px;
                  display:flex;justify-content:space-between;align-items:center;">
               <div>
                 <div style="font-size:12.5px;font-weight:700;color:{_T1};">
-                  {dot} {a['variable'].replace('_',' ')}
+                  {a['variable'].replace('_',' ')} ({a['nivel']})
                 </div>
                 <div style="font-size:11px;color:{_T2};margin-top:2px;">{a['descripcion']}</div>
               </div>
@@ -349,9 +348,9 @@ elif _bq_ok and not df_sent.empty:
     noticias_mostrar = df_sent.to_dict("records")
 
 _SENT_STYLE = {
-    "positivo": (_OK, "#DCFCE7", "✅"),
-    "negativo": (_ER, "#FEE2E2", "⚠️"),
-    "neutro":   (_T3, "#F1F5F9", "ℹ️"),
+    "positivo": (_OK, "#DCFCE7"),
+    "negativo": (_ER, "#FEE2E2"),
+    "neutro":   (_T3, "#F1F5F9"),
 }
 
 col_orden, col_filtro = st.columns([1, 2])
@@ -389,7 +388,7 @@ else:
     for n in noticias_mostrar[:20]:
         sent  = n.get("sentimiento", "neutro")
         score = float(n.get("score", 0.0) or 0.0)
-        color, bg, dot = _SENT_STYLE.get(sent, (_T3, "#F1F5F9", "ℹ️"))
+        color, bg = _SENT_STYLE.get(sent, (_T3, "#F1F5F9"))
 
         titulo  = (n.get("titulo", "") or "Sin título")[:90]
         fuente  = n.get("fuente", "")
@@ -414,7 +413,6 @@ else:
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
             <div style="flex:1;">
               <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;">
-                <span style="font-size:14px;">{dot}</span>
                 <a href="{url}" target="_blank" style="font-size:12.5px;font-weight:700;
                    color:{_P};text-decoration:none;">{titulo}</a>
               </div>
@@ -442,8 +440,8 @@ _SINT_KEY = f"sentimiento_sintesis_{date.today().isoformat()}_{grupo_filtro}"
 
 col_sb, col_si = st.columns([1, 3])
 with col_sb:
-    run_sint = st.button("🤖 Generar síntesis", key="btn_sint_sent",
-                         disabled=not bool(_GEMINI_KEY), use_container_width=True)
+    run_sint = st.button("Generar síntesis", key="btn_sint_sent",
+                         disabled=not bool(_GEMINI_KEY), width="stretch")
 with col_si:
     if not _GEMINI_KEY:
         st.caption("Requiere GEMINI_API_KEY.")
@@ -471,7 +469,7 @@ Noticias POSITIVAS para TYASA:
 Noticias NEGATIVAS para TYASA:
 {neg_txt}
 
-Genera exactamente 4 bullets ejecutivos (máx 20 palabras c/u) con emoji relevante:
+Genera exactamente 4 bullets ejecutivos (máx 20 palabras c/u), sin emojis:
 1. Estado general del mercado de acero hoy
 2. Principal oportunidad que debe aprovechar ventas
 3. Principal riesgo que debe vigilar dirección
@@ -495,7 +493,7 @@ def _render_sint(txt: str | None) -> str:
          padding:16px 20px;margin-top:8px;">
       <div style="font-size:10px;font-weight:700;color:#0369A1;text-transform:uppercase;
            letter-spacing:.06em;margin-bottom:10px;">
-        🤖 Síntesis IA — {date.today().strftime('%d %b %Y')} — Perspectiva TYASA
+        Síntesis IA — {date.today().strftime('%d %b %Y')} — Perspectiva TYASA
       </div>
       <ul style="margin:0;padding-left:18px;">{items}</ul>
     </div>"""

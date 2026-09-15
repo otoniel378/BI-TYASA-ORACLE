@@ -106,7 +106,7 @@ with st.form("snice_filtros", border=True):
 
     with c5:
         st.markdown("<div style='height:1.6rem'></div>", unsafe_allow_html=True)
-        st.form_submit_button("Aplicar filtros", use_container_width=True, type="primary")
+        st.form_submit_button("Aplicar filtros", width="stretch", type="primary")
 
 partida_filtro = cat_partida_map.get(cat_sel) if cat_sel != "Todas las categorías" else None
 pais_filtro = pais_sel if pais_sel != "Todos los países" else None
@@ -120,10 +120,10 @@ resumen = load_resumen(periodo_sel)
 if resumen:
     volumen_ton = (resumen.get("volumen_total") or 0) / 1000
     render_kpi_row([
-        {"label": "Volumen importado", "value": round(volumen_ton), "suffix": " ton", "icon": "📦"},
-        {"label": "Avisos autorizados", "value": int(resumen.get("avisos_total") or 0), "icon": "📄"},
-        {"label": "Empresas importadoras", "value": int(resumen.get("empresas_distintas") or 0), "icon": "🏢"},
-        {"label": "Países de origen", "value": int(resumen.get("paises_distintos") or 0), "icon": "🌐"},
+        {"label": "Volumen importado", "value": round(volumen_ton), "suffix": " ton"},
+        {"label": "Avisos autorizados", "value": int(resumen.get("avisos_total") or 0)},
+        {"label": "Empresas importadoras", "value": int(resumen.get("empresas_distintas") or 0)},
+        {"label": "Países de origen", "value": int(resumen.get("paises_distintos") or 0)},
     ])
 
 st.divider()
@@ -228,7 +228,7 @@ with tab_resumen:
                 html += (
                     f"<div style='margin-top:14px;padding:11px 14px;border-radius:10px;"
                     f"background:#FFF3E0;color:#8A5000;font-size:0.8rem;border:1px solid #FFE0B2;'>"
-                    f"⚠️ Los 3 países principales concentran <b>{conc3:.1f}%</b> del volumen — "
+                    f"Los 3 países principales concentran <b>{conc3:.1f}%</b> del volumen — "
                     f"dependencia alta de pocos orígenes.</div>"
                 )
         html += _CARD_CLOSE
@@ -275,7 +275,7 @@ with tab_empresas:
             "avisos": "Avisos", cat_col: "Categorías", "paises_distintos": "Países",
         })
         cols_mostrar = [c for c in ["Razón social", "Volumen (ton)", "Avisos", "Categorías", "Países"] if c in tabla.columns]
-        st.dataframe(tabla[cols_mostrar], hide_index=True, use_container_width=True, height=340)
+        st.dataframe(tabla[cols_mostrar], hide_index=True, width="stretch", height=340)
 
         st.markdown("##### Ficha de empresa")
         empresa_sel = st.selectbox(
@@ -322,7 +322,7 @@ with tab_empresas:
                             "fecha_tramite": "Fecha trámite",
                         })
                         cols = [c for c in ["Fecha trámite", "Fracción", "Categoría", "País", "Volumen (kg)"] if c in av.columns]
-                        st.dataframe(av[cols], hide_index=True, use_container_width=True)
+                        st.dataframe(av[cols], hide_index=True, width="stretch")
             else:
                 st.caption(
                     "Sin detalle disponible para esta empresa en el periodo seleccionado "
@@ -354,13 +354,13 @@ with tab_detalle:
         })
         st.dataframe(
             tabla[["Fecha", "Folio", "Razón social", "Fracción", "Categoría", "País", "Volumen (kg)"]],
-            hide_index=True, use_container_width=True, height=360,
+            hide_index=True, width="stretch", height=360,
         )
 
         total_paginas = max(1, -(-total // TAM_PAGINA))
         c_prev, c_info, c_next = st.columns([1, 3, 1])
         with c_prev:
-            if st.button("‹ Anterior", disabled=st.session_state.snice_pagina <= 1, use_container_width=True):
+            if st.button("‹ Anterior", disabled=st.session_state.snice_pagina <= 1, width="stretch"):
                 st.session_state.snice_pagina -= 1
                 st.rerun()
         with c_info:
@@ -370,7 +370,7 @@ with tab_detalle:
                 unsafe_allow_html=True,
             )
         with c_next:
-            if st.button("Siguiente ›", disabled=st.session_state.snice_pagina >= total_paginas, use_container_width=True):
+            if st.button("Siguiente ›", disabled=st.session_state.snice_pagina >= total_paginas, width="stretch"):
                 st.session_state.snice_pagina += 1
                 st.rerun()
 
@@ -378,7 +378,7 @@ with tab_detalle:
         df_export = load_avisos_para_exportar(
             periodo_sel, partida=partida_filtro, pais=pais_filtro, busqueda_empresa=busqueda_filtro,
         )
-        _boton_descarga(df_export, key=f"snice_detalle_{periodo_sel}", label="⬇ Exportar todo el filtro a Excel")
+        _boton_descarga(df_export, key=f"snice_detalle_{periodo_sel}", label="Exportar todo el filtro a Excel")
 
 # ── PARTICIPACIÓN TYASA (CANACERO × SNICE) ──────────────────────────────────
 with tab_tyasa:
@@ -393,7 +393,7 @@ with tab_tyasa:
         c_up1, c_up2 = st.columns([2, 1])
         with c_up1:
             archivo_canacero = st.file_uploader(
-                "CSV exportado de CANACERO SICEP (Grupos Personalizados → Grupo Fracciones → "
+                "CSV exportado de CANACERO SICEP (Grupos Personalizados > Grupo Fracciones > "
                 "Base de datos tradicional, agrupado por Fracciones)",
                 type=["csv"], key="canacero_uploader",
             )
@@ -464,10 +464,10 @@ with tab_tyasa:
         empresa_top = empresas_tyasa.iloc[0]["razon_social"] if not empresas_tyasa.empty else "—"
 
         render_kpi_row([
-            {"label": f"Volumen nacional CANACERO ({periodo_canacero_sel})", "value": round(vol_nacional_ton), "suffix": " ton", "icon": "🌎"},
-            {"label": f"Reportado en avisos SNICE ({periodo_sel})", "value": round(vol_snice_ton), "suffix": " ton", "icon": "📦"},
-            {"label": "Cobertura SNICE / CANACERO", "value": round(cobertura_pct, 1), "suffix": " %", "icon": "🔎"},
-            {"label": "Empresa líder (SNICE)", "value": empresa_top, "icon": "🏢"},
+            {"label": f"Volumen nacional CANACERO ({periodo_canacero_sel})", "value": round(vol_nacional_ton), "suffix": " ton"},
+            {"label": f"Reportado en avisos SNICE ({periodo_sel})", "value": round(vol_snice_ton), "suffix": " ton"},
+            {"label": "Cobertura SNICE / CANACERO", "value": round(cobertura_pct, 1), "suffix": " %"},
+            {"label": "Empresa líder (SNICE)", "value": empresa_top},
         ])
         st.caption(
             "\"Volumen nacional CANACERO\" es la suma de TODO México en las fracciones del catálogo "
@@ -486,7 +486,7 @@ with tab_tyasa:
                     titulo="Volumen nacional CANACERO mensual — fracciones TYASA",
                     y_label="Ton", show_area=True,
                 ),
-                use_container_width=True,
+                width="stretch",
             )
 
         with col_bar:
@@ -510,7 +510,7 @@ with tab_tyasa:
                         titulo="Participación por empresa (SNICE) vs. total nacional (CANACERO)",
                         x_label="Ton", max_items=7,
                     ),
-                    use_container_width=True,
+                    width="stretch",
                 )
 
         st.markdown("###### Fracciones CANACERO por volumen nacional")
@@ -549,7 +549,7 @@ with tab_tyasa:
                         titulo="Fracciones CANACERO por volumen nacional", x_label="Ton",
                         max_items=len(seleccion_chart),
                     ),
-                    use_container_width=True,
+                    width="stretch",
                 )
 
         st.divider()
@@ -573,7 +573,7 @@ with tab_tyasa:
                     titulo=f"Volumen nacional mensual — {etiquetas_fraccion[fraccion_sel]}",
                     y_label="Ton", show_area=True,
                 ),
-                use_container_width=True,
+                width="stretch",
             )
 
         with col_f2:
@@ -594,7 +594,7 @@ with tab_tyasa:
                 })
                 st.dataframe(
                     tabla_f[["Razón social", "País", "Volumen (ton)", "Fecha trámite", "Inicio vigencia", "Fin vigencia"]],
-                    hide_index=True, use_container_width=True, height=280,
+                    hide_index=True, width="stretch", height=280,
                 )
 
         with st.expander("Ranking de empresas (SNICE, fracciones TYASA)"):
@@ -618,7 +618,7 @@ with tab_tyasa:
                     "avisos": "Avisos", "fracciones_distintas": "Fracciones TYASA", "paises_distintos": "Países",
                 })
                 cols_mostrar = [c for c in ["Razón social", "Volumen (ton)", "Avisos", "Fracciones TYASA", "Países"] if c in tabla.columns]
-                st.dataframe(tabla[cols_mostrar], hide_index=True, use_container_width=True)
+                st.dataframe(tabla[cols_mostrar], hide_index=True, width="stretch")
 
 st.caption(
     f"Datos: SNICE — Secretaría de Economía · Periodo {periodo_sel} · "

@@ -139,7 +139,7 @@ def chart_area_tendencia(
     reciente = y[-3:] if len(y) >= 3 else y
     tendencia_baja = reciente[-1] < reciente[0] if len(reciente) > 1 else False
 
-    # Para inflación/tasa: bajar es bueno → verde cuando baja
+    # Para inflación/tasa: bajar es bueno, verde cuando baja
     if color_positivo:
         color_linea = VERDE if tendencia_baja else ROJO
         fill_color  = FILL_VERDE if tendencia_baja else FILL_ROJO
@@ -274,7 +274,7 @@ def chart_barras_apiladas_comercio(
         marker_color=ROJO,
         marker_line_width=0,
         opacity=0.85,
-        hovertemplate="%{x}: <b>%{y:,.0f} ton</b><extra>📥 Importaciones</extra>",
+        hovertemplate="%{x}: <b>%{y:,.0f} ton</b><extra>Importaciones</extra>",
     ))
 
     fig.add_trace(go.Bar(
@@ -283,7 +283,7 @@ def chart_barras_apiladas_comercio(
         marker_color=VERDE,
         marker_line_width=0,
         opacity=0.85,
-        hovertemplate="%{x}: <b>%{y:,.0f} ton</b><extra>📤 Exportaciones</extra>",
+        hovertemplate="%{x}: <b>%{y:,.0f} ton</b><extra>Exportaciones</extra>",
     ))
 
     # Línea de balanza
@@ -294,7 +294,7 @@ def chart_barras_apiladas_comercio(
         mode="lines+markers",
         line=dict(color=AZUL, width=2.5, dash="dot"),
         marker=dict(size=6, color=AZUL),
-        hovertemplate="%{x}: balanza <b>%{y:+,.0f} ton</b><extra>⚖️</extra>",
+        hovertemplate="%{x}: balanza <b>%{y:+,.0f} ton</b><extra>Balanza</extra>",
     ))
 
     fig.add_hline(y=0, line_width=2, line_color=GRIS, opacity=0.5)

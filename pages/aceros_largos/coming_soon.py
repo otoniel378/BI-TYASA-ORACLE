@@ -13,7 +13,7 @@ from config import COLORS
 st.html(
     f"""
     <div style='text-align:center;padding:60px 20px;'>
-        <div style='font-size:4rem;margin-bottom:16px;'>📏</div>
+
         <h2 style='color:{COLORS["primary"]};'>Aceros Largos</h2>
         <p style='color:{COLORS["neutral"]};font-size:1.1rem;max-width:500px;margin:0 auto 24px;'>
             Esta area sera desarrollada por el equipo de <b>Aceros Largos</b>.
@@ -28,7 +28,7 @@ st.html(
             display:inline-block;
             color:{COLORS["neutral"]};
             font-weight:600;
-        '>🔜 Proximo</div>
+        '>Proximo</div>
     </div>
     """
 )

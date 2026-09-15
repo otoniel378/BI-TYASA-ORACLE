@@ -54,7 +54,7 @@ _CAT_LABEL = {
 }
 
 
-def build_indicadores_html(df_vars: pd.DataFrame, titulo: str = "📊 Indicadores Financieros Clave") -> str:
+def build_indicadores_html(df_vars: pd.DataFrame, titulo: str = "Indicadores Financieros Clave") -> str:
     """
     Genera HTML de tabla de indicadores con valor actual, cambio % diario y fecha.
     Retorna '' si df_vars está vacío.

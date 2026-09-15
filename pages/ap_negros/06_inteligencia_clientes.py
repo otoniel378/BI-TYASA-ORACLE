@@ -143,7 +143,7 @@ def _tendencia(df_mens: pd.DataFrame) -> str:
     s = df_mens.sort_values("PERIODO")["PESO_TON"].tail(6).values
     mid = len(s) // 2
     return "creciente ▲" if s[mid:].mean() > s[:mid].mean() * 1.05 else \
-           "decreciente ▼" if s[mid:].mean() < s[:mid].mean() * 0.95 else "estable →"
+           "decreciente ▼" if s[mid:].mean() < s[:mid].mean() * 0.95 else "estable"
 
 
 def _mix_change(df_trans: pd.DataFrame) -> pd.DataFrame:
@@ -271,7 +271,7 @@ def _html_mix_change(df_change: pd.DataFrame) -> str:
     return (
         f'<div style="background:#FFF;border-radius:12px;padding:12px 14px;'
         f'border:1px solid #E2E8F0;box-shadow:0 1px 3px rgba(0,0,0,.04);margin-top:10px;">'
-        f'<div class="ic-label">Cambio en mix  (1ª mitad → 2ª mitad)</div>'
+        f'<div class="ic-label">Cambio en mix  (1ª mitad vs 2ª mitad)</div>'
         f'{rows_html}</div>'
     )
 
@@ -281,13 +281,13 @@ def _html_briefing_result(result: dict | None) -> str:
         return (
             f'<div style="color:{_T3};font-size:12px;padding:14px;text-align:center;'
             f'background:#FFF;border-radius:12px;border:1px dashed #E2E8F0;">'
-            f'Haz clic en "✨ Generar Briefing" para crear el brief de visita con IA</div>'
+            f'Haz clic en "Generar Briefing" para crear el brief de visita con IA</div>'
         )
     error = result.get("_error")
     briefing = result.get("briefing", "")
     if error and not briefing:
         return f'<div style="color:{_ER};padding:10px;font-size:12px;border-radius:8px;background:#FEF2F2;">{error}</div>'
-    cached = ' <span style="font-size:9px;color:#94A3B8;">📦 caché</span>' if result.get("_cached") else ""
+    cached = ' <span style="font-size:9px;color:#94A3B8;">caché</span>' if result.get("_cached") else ""
     lines = [l.strip() for l in briefing.strip().split("\n") if l.strip()]
     bullets = ""
     for line in lines:
@@ -422,7 +422,7 @@ def render():
     col_h, col_sel = st.columns([2, 3])
     with col_h:
         st.markdown(
-            f"<h2 style='color:{_P};margin:0;font-size:22px;'>🧠 Inteligencia de Clientes</h2>"
+            f"<h2 style='color:{_P};margin:0;font-size:22px;'>Inteligencia de Clientes</h2>"
             f"<p style='color:{_T3};font-size:12px;margin:2px 0 0;'>Ficha 360° · Aceros Planos Negros</p>",
             unsafe_allow_html=True,
         )
@@ -509,7 +509,7 @@ def render():
             unsafe_allow_html=True,
         )
         if not df_mens.empty:
-            st.plotly_chart(_chart_24m(df_mens), use_container_width=True, key="ic_24m")
+            st.plotly_chart(_chart_24m(df_mens), width="stretch", key="ic_24m")
         else:
             st.info("Sin historial de compras registrado.")
         st.markdown(
@@ -518,7 +518,7 @@ def render():
             unsafe_allow_html=True,
         )
         if not df_mens.empty:
-            st.plotly_chart(_chart_yoy_bars(df_mens), use_container_width=True, key="ic_yoy")
+            st.plotly_chart(_chart_yoy_bars(df_mens), width="stretch", key="ic_yoy")
 
     with c3:
         st.html(_html_yoy(df_mens))
@@ -534,7 +534,7 @@ def render():
             unsafe_allow_html=True,
         )
         if not df_mix.empty:
-            st.plotly_chart(_chart_donut(df_mix), use_container_width=True, key="ic_donut")
+            st.plotly_chart(_chart_donut(df_mix), width="stretch", key="ic_donut")
         df_change = _mix_change(df_trans)
         st.html(_html_mix_change(df_change))
 
@@ -545,7 +545,7 @@ def render():
             unsafe_allow_html=True,
         )
         if not df_trans.empty:
-            st.plotly_chart(_chart_seasonality(df_trans), use_container_width=True, key="ic_season")
+            st.plotly_chart(_chart_seasonality(df_trans), width="stretch", key="ic_season")
         else:
             st.info("Sin datos de estacionalidad.")
 
@@ -553,7 +553,7 @@ def render():
     st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
     st.markdown(
         f"<div style='font-size:11px;font-weight:700;color:{_T3};text-transform:uppercase;"
-        f"letter-spacing:.07em;margin-bottom:6px;'>✨ Briefing de Visita — IA</div>",
+        f"letter-spacing:.07em;margin-bottom:6px;'>Briefing de Visita — IA</div>",
         unsafe_allow_html=True,
     )
 
@@ -567,7 +567,7 @@ def render():
         )
     with col_btn:
         st.markdown("<div style='height:4px;'></div>", unsafe_allow_html=True)
-        run_brief = st.button("✨ Generar Briefing", key="ic_brief_run", use_container_width=True)
+        run_brief = st.button("Generar Briefing", key="ic_brief_run", width="stretch")
     with col_frz:
         st.markdown("<div style='height:4px;'></div>", unsafe_allow_html=True)
         frz_brief = st.checkbox("Regenerar", value=False, key="ic_brief_frz")

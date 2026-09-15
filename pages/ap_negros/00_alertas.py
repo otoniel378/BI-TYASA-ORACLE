@@ -57,12 +57,12 @@ st.html("""<style>
 </style>""")
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
-sidebar_header("Centro de Alertas", "⚡")
+sidebar_header("Centro de Alertas")
 
 # ── Título ────────────────────────────────────────────────────────────────────
 st.html(f"""
 <div style="margin-bottom:6px;">
-  <h2 style="color:{_P};margin:0;font-size:1.5rem;">⚡ Centro de Alertas</h2>
+  <h2 style="color:{_P};margin:0;font-size:1.5rem;">Centro de Alertas</h2>
   <p style="color:{_T2};margin:0;font-size:0.85rem;">
     Aceros Planos Negros — Pulso del negocio en tiempo real
   </p>
@@ -225,7 +225,6 @@ else:
     vel_hist  = prom_hist
     vel_pct   = (vel_act / vel_hist * 100) if vel_hist > 0 else 100
     col_vel   = _OK if vel_pct >= 90 else _WA if vel_pct >= 70 else _ER
-    dot_vel   = "🟢" if vel_pct >= 90 else "🟡" if vel_pct >= 70 else "🔴"
 
     # KPI 2: Clientes activos este mes vs histórico
     cli_act_count = 0
@@ -237,7 +236,6 @@ else:
         cli_hist_avg = float(hist_rows["N_CLIENTES"].mean()) if not hist_rows.empty else cli_act_count
     cli_pct   = (cli_act_count / cli_hist_avg * 100) if cli_hist_avg > 0 else 100
     col_cli   = _OK if cli_pct >= 85 else _WA if cli_pct >= 65 else _ER
-    dot_cli   = "🟢" if cli_pct >= 85 else "🟡" if cli_pct >= 65 else "🔴"
 
     # KPI 3: Concentración top 3 clientes este mes
     conc_pct = 0.0
@@ -251,7 +249,6 @@ else:
             total_m = ts_mes["PESO_TON"].sum()
             conc_pct = top3 / total_m * 100 if total_m > 0 else 0
     col_conc = _OK if conc_pct <= 50 else _WA if conc_pct <= 70 else _ER
-    dot_conc = "🟢" if conc_pct <= 50 else "🟡" if conc_pct <= 70 else "🔴"
 
     # KPI 4: Variación MoM
     mes_ant = mes_act - 1 if mes_act > 1 else 12
@@ -260,19 +257,18 @@ else:
     ton_ant = float(row_ant["PESO_TON"].sum()) if not row_ant.empty else 0.0
     mom_pct = ((ton_act - ton_ant) / ton_ant * 100) if ton_ant > 0 else 0.0
     col_mom = _OK if mom_pct >= 0 else _WA if mom_pct >= -10 else _ER
-    dot_mom = "🟢" if mom_pct >= 0 else "🟡" if mom_pct >= -10 else "🔴"
 
     c1, c2, c3, c4 = st.columns(4)
-    for col_st, dot, lbl, val_str, sub, col in [
-        (c1, dot_vel,  "Velocidad de Ventas", f"{vel_pct:.0f}%",    f"{_fmt(vel_act)} ton vs hist. {_fmt(vel_hist)} ton", col_vel),
-        (c2, dot_cli,  "Clientes Activos",    f"{cli_act_count}",   f"{cli_pct:.0f}% del histórico ({cli_hist_avg:.0f} prom.)", col_cli),
-        (c3, dot_conc, "Conc. Top 3",         f"{conc_pct:.0f}%",   "del volumen en solo 3 clientes", col_conc),
-        (c4, dot_mom,  "Variación MoM",       f"{mom_pct:+.1f}%",   f"vs mes anterior ({_fmt(ton_ant)} ton)", col_mom),
+    for col_st, lbl, val_str, sub, col in [
+        (c1, "Velocidad de Ventas", f"{vel_pct:.0f}%",    f"{_fmt(vel_act)} ton vs hist. {_fmt(vel_hist)} ton", col_vel),
+        (c2, "Clientes Activos",    f"{cli_act_count}",   f"{cli_pct:.0f}% del histórico ({cli_hist_avg:.0f} prom.)", col_cli),
+        (c3, "Conc. Top 3",         f"{conc_pct:.0f}%",   "del volumen en solo 3 clientes", col_conc),
+        (c4, "Variación MoM",       f"{mom_pct:+.1f}%",   f"vs mes anterior ({_fmt(ton_ant)} ton)", col_mom),
     ]:
         with col_st:
             st.html(f"""<div class="al-card" style="border-left:4px solid {col};">
               <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-                <span style="font-size:16px;">{dot}</span>
+                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{col};"></span>
                 <span class="al-label" style="margin-bottom:0;">{lbl}</span>
               </div>
               <div class="al-val" style="color:{col};">{val_str}</div>
@@ -357,7 +353,6 @@ else:
         st.html(f"""
         <div style="background:#FEF3C7;border:1px solid #D97706;border-radius:8px;
              padding:8px 14px;display:flex;align-items:center;gap:10px;margin-top:4px;">
-          <span style="font-size:18px;">⚠️</span>
           <span style="font-size:12px;color:#92400E;">
             <strong>{n_q} quiebre(s) estructural(es) activo(s)</strong> en variables de mercado:
             {vars_q}{' …' if n_q > 3 else ''}
@@ -382,13 +377,12 @@ if not df_cliente.empty and "ULTIMA_COMPRA" in df_cliente.columns and "PESO_TON"
     en_fuga = df_c[df_c["dias_sin_compra"] > 60].sort_values("PESO_TON", ascending=False)
     for _, row in en_fuga.head(5).iterrows():
         dias = int(row["dias_sin_compra"])
-        sev  = "🔴" if dias > 90 else "🟠"
         col  = _ER if dias > 90 else _WA
         anomalias.append({
             "tipo": "Cliente en fuga",
             "desc": f"{row.get('CLIENTE','?')} — {dias} días sin comprar",
             "accion": "Contactar equipo de ventas para reactivación urgente",
-            "color": col, "dot": sev,
+            "color": col,
         })
 
 # A2: Productos en caída > 25% MoM
@@ -413,7 +407,7 @@ if not df_cli_ts.empty:
                 "tipo": "Volumen inusual",
                 "desc": f"{row.get('CLIENTE','?')} — {_fmt(row['PESO_TON'])} ton ({row['PESO_TON']/row['avg_hist']:.1f}x su promedio)",
                 "accion": "Confirmar pedidos y disponibilidad de material; posible oportunidad de contrato",
-                "color": _OK, "dot": "🟢",
+                "color": _OK,
             })
 
 # A3: Nuevos clientes (última 30 días)
@@ -427,25 +421,25 @@ if not df_cliente.empty and "PRIMERA_COMPRA" in df_cliente.columns:
             "tipo": "Nuevos clientes",
             "desc": f"{len(nuevos)} cliente(s) nuevo(s) en últimos 30 días: {lista_n}",
             "accion": "Hacer seguimiento de segunda compra; incluir en campaña de fidelización",
-            "color": _OK, "dot": "🟢",
+            "color": _OK,
         })
 
 if not anomalias:
-    st.success("✅ Sin anomalías críticas detectadas en este período.")
+    st.success("Sin anomalías críticas detectadas en este período.")
 else:
     n_rojas  = sum(1 for a in anomalias if a["color"] == _ER)
     n_amaril = sum(1 for a in anomalias if a["color"] == _WA)
     st.html(f"""
     <div style="display:flex;gap:10px;margin-bottom:10px;">
-      <span class="al-badge" style="background:#FEE2E2;color:#991B1B;">🔴 {n_rojas} crítica(s)</span>
-      <span class="al-badge" style="background:#FEF3C7;color:#92400E;">🟠 {n_amaril} en seguimiento</span>
-      <span class="al-badge" style="background:#DCFCE7;color:#166534;">🟢 {len(anomalias)-n_rojas-n_amaril} positiva(s)</span>
+      <span class="al-badge" style="background:#FEE2E2;color:#991B1B;">{n_rojas} crítica(s)</span>
+      <span class="al-badge" style="background:#FEF3C7;color:#92400E;">{n_amaril} en seguimiento</span>
+      <span class="al-badge" style="background:#DCFCE7;color:#166534;">{len(anomalias)-n_rojas-n_amaril} positiva(s)</span>
     </div>""")
 
     for a in anomalias:
         st.html(f"""<div class="al-anom" style="border-left-color:{a['color']};">
           <div style="display:flex;align-items:flex-start;gap:8px;">
-            <span style="font-size:16px;line-height:1.3;">{a['dot']}</span>
+            <span style="display:inline-block;width:8px;height:8px;margin-top:6px;border-radius:50%;background:{a['color']};flex-shrink:0;"></span>
             <div style="flex:1;">
               <div style="font-size:11px;font-weight:700;color:{_T2};text-transform:uppercase;
                    letter-spacing:.04em;">{a['tipo']}</div>
@@ -466,7 +460,7 @@ _IA_KEY = f"alertas_resumen_ia_{date.today().isoformat()}"
 
 col_btn, col_info = st.columns([1, 3])
 with col_btn:
-    run_ia = st.button("🤖 Generar resumen IA", key="btn_alertas_ia",
+    run_ia = st.button("Generar resumen IA", key="btn_alertas_ia",
                        disabled=not bool(_GEMINI_KEY))
 with col_info:
     if not _GEMINI_KEY:
@@ -482,7 +476,7 @@ if run_ia and _GEMINI_KEY:
 
     prompt = f"""Eres analista comercial senior de TYASA (acería mexicana de acero plano).
 Resume el estado actual del negocio en 3 bullets ejecutivos y accionables.
-Máximo 20 palabras por bullet. Usa emoji relevante. Sin introducción.
+Máximo 20 palabras por bullet. No uses emojis. Sin introducción.
 
 Estado del mes:
 - Toneladas actuales: {_fmt(ton_act)} ton
@@ -508,7 +502,7 @@ def _render_ia(txt: str | None) -> str:
     return f"""<div style="background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;
          padding:16px 20px;margin-top:8px;">
       <div style="font-size:10px;font-weight:700;color:#0369A1;text-transform:uppercase;
-           letter-spacing:.06em;margin-bottom:10px;">🤖 Análisis IA — {date.today().strftime('%d %b %Y')}</div>
+           letter-spacing:.06em;margin-bottom:10px;">Análisis IA — {date.today().strftime('%d %b %Y')}</div>
       <ul style="margin:0;padding-left:18px;">{items}</ul>
     </div>"""
 

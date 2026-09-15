@@ -18,29 +18,26 @@ BQ_DATASET     = "tyasa_bi"
 AREAS = {
     "aceros_planos": {
         "nombre": "Aceros Planos",
-        "icono":  "🔩",
         "responsable": "Otoniel",
         "subsecciones": {
-            "negros":       {"nombre": "Aceros Negros",      "status": "activo",       "icono": "⚫"},
-            "galvanizados": {"nombre": "Aceros Galvanizados", "status": "en_desarrollo", "icono": "✨"},
-            "formados":     {"nombre": "Aceros Formados",    "status": "en_desarrollo", "icono": "🔧"},
+            "negros":       {"nombre": "Aceros Negros",      "status": "activo"},
+            "galvanizados": {"nombre": "Aceros Galvanizados", "status": "en_desarrollo"},
+            "formados":     {"nombre": "Aceros Formados",    "status": "en_desarrollo"},
         },
     },
     "aceros_largos": {
         "nombre": "Aceros Largos",
-        "icono":  "📏", 
         "responsable": "Equipo BI Externo",
         "subsecciones": {
-            "dashboard":    {"nombre": "Dashboard Ejecutivo",     "status": "activo",       "icono": "📊"},
-            "macro":        {"nombre": "Macroeconomía",          "status": "activo",       "icono": "🏦"},
-            "mercado":      {"nombre": "Mercado y Costos",       "status": "activo",       "icono": "💹"},
-            "sectores":     {"nombre": "Sectores Productivos",   "status": "activo",       "icono": "🏭"},
-            "comercio":     {"nombre": "Comercio Exterior",      "status": "activo",       "icono": "🌍"},
+            "dashboard":    {"nombre": "Dashboard Ejecutivo",     "status": "activo"},
+            "macro":        {"nombre": "Macroeconomía",          "status": "activo"},
+            "mercado":      {"nombre": "Mercado y Costos",       "status": "activo"},
+            "sectores":     {"nombre": "Sectores Productivos",   "status": "activo"},
+            "comercio":     {"nombre": "Comercio Exterior",      "status": "activo"},
         },
     },
     "aceros_sbq": {
         "nombre": "Aceros SBQ",
-        "icono":  "🔑",
         "responsable": "Por definir",
         "subsecciones": {},
     },
@@ -58,7 +55,7 @@ ASSETS_DIR  = os.path.join(BASE_DIR, "assets")
 # ---------------------------------------------------------------------------
 APP_NAME     = "TYASA BI"
 APP_SUBTITLE = "Plataforma de Inteligencia Comercial"
-APP_ICON     = "🏭"
+APP_ICON     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "img", "tyasa_logo.webp")
 
 # ---------------------------------------------------------------------------
 # Paleta de colores corporativa TYASA

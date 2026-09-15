@@ -113,7 +113,8 @@ def aplicar_filtro_lista(
     return df[df[col].isin(seleccion)].reset_index(drop=True)
 
 
-def sidebar_header(titulo: str, icono: str = "🔩") -> None:
+def sidebar_header(titulo: str, icono: str = "") -> None:
+    icono_html = f'<span style="font-size:1rem;">{icono}</span>' if icono else ""
     st.sidebar.markdown(
         f"""
         <div style="
@@ -122,7 +123,7 @@ def sidebar_header(titulo: str, icono: str = "🔩") -> None:
             border-bottom:1px solid #DDE3EC;
             margin-bottom:10px;
         ">
-            <span style="font-size:1rem;">{icono}</span>
+            {icono_html}
             <span style="color:#1B3A5C;font-weight:700;font-size:0.72rem;
                          text-transform:uppercase;letter-spacing:0.07em;">{titulo}</span>
         </div>

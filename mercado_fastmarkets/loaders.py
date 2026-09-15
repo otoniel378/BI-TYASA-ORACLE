@@ -3,7 +3,7 @@ mercado_fastmarkets/loaders.py — Funciones de carga de BRONZE_FASTMARKETS_PREC
 para alimentar el pronóstico de comercio exterior (variable exógena) y el
 panel de benchmark visual (pages/mercado/08_pronostico_comercio.py).
 
-Mapeo símbolo↔familia curado a mano contra las 63 series cargadas y las
+Mapeo símbolo-familia curado a mano contra las 63 series cargadas y las
 familias de producto de CANACERO (mercado/canacero/loaders.py::load_descripciones_tyasa).
 Ajustable a futuro si algún benchmark no resulta representativo.
 """

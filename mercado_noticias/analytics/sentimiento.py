@@ -2,9 +2,9 @@
 sentimiento.py — Clasificación de sentimiento de noticias siderúrgicas para TYASA.
 
 Interpreta cada noticia desde la perspectiva de TYASA como productora EAF de acero plano:
-  positivo  → beneficia a TYASA (alza de precios HRC, demanda sube, aranceles protegen)
-  negativo  → perjudica a TYASA (chatarra cara, dumping chino, baja demanda)
-  neutro    → informativo sin impacto directo claro
+  positivo  : beneficia a TYASA (alza de precios HRC, demanda sube, aranceles protegen)
+  negativo  : perjudica a TYASA (chatarra cara, dumping chino, baja demanda)
+  neutro    : informativo sin impacto directo claro
 
 Usa Gemini con JSON estructurado. Caché local por hash de URL + fecha.
 """

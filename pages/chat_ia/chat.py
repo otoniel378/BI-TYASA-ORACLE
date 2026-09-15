@@ -52,7 +52,6 @@ st.html("""
     border-radius:12px; padding:18px 24px; margin-bottom:16px;
     display:flex; align-items:center; gap:14px;
 ">
-    <span style="font-size:2rem;">🤖</span>
     <div>
         <div style="color:#fff;font-size:1.2rem;font-weight:700;font-family:'Segoe UI',sans-serif;">
             Chat Analítico TYASA BI
@@ -66,7 +65,7 @@ st.html("""
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("### 🤖 Chat IA")
+    st.markdown("### Chat IA")
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
 
     n_msgs = len(st.session_state[_MSGS_KEY])
@@ -78,7 +77,7 @@ with st.sidebar:
     st.markdown("---")
 
     # Guardar insights de la sesión actual
-    if st.button("💾 Guardar insights de esta sesión", use_container_width=True,
+    if st.button("Guardar insights de esta sesión", width="stretch",
                  disabled=n_msgs < 4):
         with st.spinner("Extrayendo insights..."):
             try:
@@ -88,7 +87,7 @@ with st.sidebar:
                 )
                 if nuevas:
                     guardar_memorias(nuevas)
-                    st.success(f"✅ {len(nuevas)} insights guardados")
+                    st.success(f"{len(nuevas)} insights guardados")
                     # Refrescar memorias en contexto
                     mems = cargar_memorias_contexto()
                     st.session_state[_MEM_KEY] = mems
@@ -98,7 +97,7 @@ with st.sidebar:
             except Exception as e:
                 st.warning(f"No se pudo guardar: {e}")
 
-    if st.button("🗑️ Nueva conversación", use_container_width=True):
+    if st.button("Nueva conversación", width="stretch"):
         st.session_state[_HIST_KEY] = []
         st.session_state[_MSGS_KEY] = []
         st.rerun()
@@ -107,11 +106,10 @@ with st.sidebar:
     mems = st.session_state.get(_MEM_KEY, [])
     if mems:
         st.markdown("---")
-        st.markdown(f"**🧠 Memoria activa** ({len(mems)} insights)")
+        st.markdown(f"**Memoria activa** ({len(mems)} insights)")
         for m in mems[:5]:
-            rel = m.get("relevancia", "")
-            dot = "🔴" if rel == "Alta" else "🟡" if rel == "Media" else "⚪"
-            st.caption(f"{dot} **{m.get('tema','')}**: {m.get('contenido','')[:60]}...")
+            rel = m.get("relevancia", "") or "Baja"
+            st.caption(f"**{m.get('tema','')}** ({rel}): {m.get('contenido','')[:60]}...")
 
     st.markdown("---")
     st.markdown("**Modelo:** Gemini 2.5 Flash")
@@ -123,7 +121,7 @@ if st.session_state[_MEM_KEY]:
     st.html(f"""
     <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;
                 padding:8px 14px;margin-bottom:12px;font-size:0.78rem;color:#1E40AF;">
-        🧠 <strong>Memoria activa:</strong> {n_m} insights de sesiones anteriores
+        <strong>Memoria activa:</strong> {n_m} insights de sesiones anteriores
         inyectados como contexto.
     </div>
     """)
@@ -134,7 +132,7 @@ if not st.session_state[_MSGS_KEY]:
     cols = st.columns(2)
     for i, pregunta in enumerate(PREGUNTAS_SUGERIDAS):
         with cols[i % 2]:
-            if st.button(pregunta, key=f"sug_{i}", use_container_width=True):
+            if st.button(pregunta, key=f"sug_{i}", width="stretch"):
                 st.session_state["_chat_sug"] = pregunta
                 st.rerun()
     st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
@@ -154,12 +152,12 @@ for msg in st.session_state[_MSGS_KEY]:
                 if _err:
                     st.error(f"Error: {_err}")
                 elif _sql:
-                    with st.expander(f"🔍 {_titulo} — {_filas} filas", expanded=False):
+                    with st.expander(f"{_titulo} — {_filas} filas", expanded=False):
                         st.code(_sql, language="sql")
 
             st.markdown(msg["content"])
             if msg.get("error"):
-                st.warning(f"⚠️ {msg['error']}")
+                st.warning(msg["error"])
 
 # ── Procesar sugerida pendiente ────────────────────────────────────────────────
 _sug_pendiente = st.session_state.pop("_chat_sug", None)
@@ -202,10 +200,10 @@ if prompt:
             if _err:
                 st.error(f"Error: {_err}")
             elif _sql:
-                with st.expander(f"🔍 {_titulo} — {_filas} filas", expanded=True):
+                with st.expander(f"{_titulo} — {_filas} filas", expanded=True):
                     st.code(_sql, language="sql")
                     if _df is not None and not _df.empty:
-                        st.dataframe(_df, use_container_width=True,
+                        st.dataframe(_df, width="stretch",
                                      height=min(320, 35 + 35 * len(_df)))
 
         if respuesta:
@@ -229,6 +227,6 @@ if prompt:
 
     if len(st.session_state[_MSGS_KEY]) >= _MAX_TURNS * 2:
         st.info(
-            "💡 Conversación larga. Para mejor rendimiento usa "
-            "'🗑️ Nueva conversación' y guarda los insights primero."
+            "Conversación larga. Para mejor rendimiento usa "
+            "'Nueva conversación' y guarda los insights primero."
         )

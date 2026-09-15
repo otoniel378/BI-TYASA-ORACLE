@@ -42,6 +42,7 @@ def kpi_card(
             delta_html = f"<span style='color:{COLORS['neutral']};font-size:0.82rem;'>{delta}</span>"
 
     help_attr = f'title="{help_text}"' if help_text else ""
+    label_html = f"{icon} {label}" if icon else label
 
     st.markdown(
         f"""
@@ -60,7 +61,7 @@ def kpi_card(
                 text-transform:uppercase;
                 letter-spacing:0.05em;
                 margin-bottom:4px;
-            '>{icon} {label}</div>
+            '>{label_html}</div>
             <div style='
                 color:{COLORS["primary"]};
                 font-size:1.8rem;

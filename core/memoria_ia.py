@@ -209,9 +209,8 @@ def construir_contexto_previo(memorias: list[dict]) -> str:
         return ""
     lineas = ["CONTEXTO DE SESIONES ANTERIORES:"]
     for m in memorias:
-        rel = m.get("relevancia", "")
-        prefix = "🔴" if rel == "Alta" else "🟡" if rel == "Media" else "⚪"
+        rel = m.get("relevancia", "") or "Baja"
         lineas.append(
-            f"{prefix} [{m.get('tipo','insight').upper()}] {m.get('tema','')}: {m.get('contenido','')}"
+            f"[{m.get('tipo','insight').upper()}] ({rel}) {m.get('tema','')}: {m.get('contenido','')}"
         )
     return "\n".join(lineas)

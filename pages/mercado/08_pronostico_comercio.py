@@ -45,7 +45,6 @@ from aceros_planos.negros.analytics.forecasting import (
     MODELOS_DISPONIBLES,
 )
 from core.components.kpi_cards import seccion_titulo
-from core.components.filters import sidebar_header
 from core.components.tables import tabla_ejecutiva
 from core.components.charts import barras_horizontales
 
@@ -125,38 +124,40 @@ def _contexto_a_formato_largo(df_ctx: pd.DataFrame) -> pd.DataFrame:
     largo["categoria"] = largo["nombre"].apply(_categoria)
     return largo.dropna(subset=["valor"])
 
-# ---------------------------------------------------------------------------
-# Sidebar
-# ---------------------------------------------------------------------------
-sidebar_header("Parámetros", "🔮")
-horizonte = st.sidebar.slider(
-    "Horizonte (meses)", min_value=1, max_value=FORECAST_HORIZON_MAX,
-    value=FORECAST_HORIZON_DEFAULT, key="fc_com_horizonte",
-)
-modelo_key = st.sidebar.selectbox(
-    "Modelo de pronóstico", options=list(MODELOS_DISPONIBLES.keys()),
-    format_func=lambda k: MODELOS_DISPONIBLES[k], index=0, key="fc_com_modelo",
-)
-movimiento_label = st.sidebar.radio(
-    "Movimiento", ["Importación", "Exportación"], key="fc_com_movimiento",
-)
-movimiento = "IMPORTACION" if movimiento_label == "Importación" else "EXPORTACION"
-st.sidebar.markdown("---")
-st.sidebar.markdown(
-    f"""
-    <div style='font-size:0.78rem;color:{COLORS["text_light"]};'>
-    <b>Guía de modelos</b><br><br>
-    ETS — Holt-Winters. Ideal para volumen estable con estacionalidad anual.<br><br>
-    SARIMA — Clásico estadístico. Bueno cuando hay tendencia clara.<br><br>
-    XGBoost — Machine Learning con rezagos. Captura patrones no lineales.<br><br>
-    Naive — Baseline: igual al mismo mes del año pasado.<br><br>
-    Auto — Prueba los 4 y elige el de menor MAPE en backtesting.
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
 st.title("Pronóstico de Comercio Exterior")
+
+col_h, col_m, col_mv = st.columns(3)
+with col_h:
+    horizonte = st.slider(
+        "Horizonte (meses)", min_value=1, max_value=FORECAST_HORIZON_MAX,
+        value=FORECAST_HORIZON_DEFAULT, key="fc_com_horizonte",
+    )
+with col_m:
+    modelo_key = st.selectbox(
+        "Modelo de pronóstico", options=list(MODELOS_DISPONIBLES.keys()),
+        format_func=lambda k: MODELOS_DISPONIBLES[k], index=0, key="fc_com_modelo",
+    )
+with col_mv:
+    movimiento_label = st.radio(
+        "Movimiento", ["Importación", "Exportación"], key="fc_com_movimiento", horizontal=True,
+    )
+movimiento = "IMPORTACION" if movimiento_label == "Importación" else "EXPORTACION"
+
+with st.expander("Guía de modelos"):
+    st.markdown(
+        """
+        **ETS** — Holt-Winters. Ideal para volumen estable con estacionalidad anual.
+
+        **SARIMA** — Clásico estadístico. Bueno cuando hay tendencia clara.
+
+        **XGBoost** — Machine Learning con rezagos. Captura patrones no lineales.
+
+        **Naive** — Baseline: igual al mismo mes del año pasado.
+
+        **Auto** — Prueba los 4 y elige el de menor MAPE en backtesting.
+        """
+    )
+
 st.divider()
 
 with st.spinner("Cargando series históricas..."):
@@ -336,7 +337,7 @@ def _render_resumen_anio(df_ctx: pd.DataFrame, df_ctx_largo: pd.DataFrame, anio:
             with cols[i % len(cols)]:
                 st.plotly_chart(
                     _grafico_barras_grupo(df_anio, grupo, anio, titulo),
-                    use_container_width=True, key=f"{key_prefix}_bar_{anio}_{i}",
+                    width="stretch", key=f"{key_prefix}_bar_{anio}_{i}",
                 )
     else:
         st.caption(f"Sin datos de contexto macro para {anio}.")
@@ -359,7 +360,7 @@ def _render_resumen_anio(df_ctx: pd.DataFrame, df_ctx_largo: pd.DataFrame, anio:
             tabla_q = pd.DataFrame(quiebres_anio).sort_values(
                 by="Severidad", key=lambda s: s.map(_ORDEN_SEVERIDAD)
             )
-            st.dataframe(tabla_q, hide_index=True, use_container_width=True, height=220)
+            st.dataframe(tabla_q, hide_index=True, width="stretch", height=220)
         else:
             st.caption("Sin rupturas estadísticas significativas en ningún mes de este año.")
 
@@ -379,7 +380,7 @@ def _render_detalle_punto(df_ctx_largo: pd.DataFrame, fecha: pd.Timestamp, key_p
     confirmación estadística de quiebre (detector.py), evento histórico
     curado si cae cerca, y análisis con IA a petición (no automático)."""
     with st.container(border=True):
-        st.markdown(f"**📍 {_mes_anio_es(fecha)}**")
+        st.markdown(f"**{_mes_anio_es(fecha)}**")
 
         resultados_quiebre = [
             r for r in detectar_quiebres(df_ctx_largo, fecha_corte=fecha, umbral_sigma=1.5)
@@ -397,7 +398,7 @@ def _render_detalle_punto(df_ctx_largo: pd.DataFrame, fecha: pd.Timestamp, key_p
                     "Variable": r.variable, "Sigma": r.sigma, "Cambio %": r.cambio_pct,
                     "Severidad": r.severidad,
                 } for r in resultados_quiebre])
-                st.dataframe(tabla_q, hide_index=True, use_container_width=True)
+                st.dataframe(tabla_q, hide_index=True, width="stretch")
 
         with col_e:
             st.markdown("**Evento histórico**")
@@ -427,7 +428,7 @@ def _render_detalle_punto(df_ctx_largo: pd.DataFrame, fecha: pd.Timestamp, key_p
                     st.caption("No se encontraron noticias recientes relacionadas.")
             else:
                 st.caption(
-                    f"🔍 Búsqueda en vivo solo disponible para periodos de los últimos {DIAS_NOTICIAS_RECIENTES} "
+                    f"Búsqueda en vivo solo disponible para periodos de los últimos {DIAS_NOTICIAS_RECIENTES} "
                     "días — no existe un archivo confiable de noticias pasadas para fechas históricas. Por eso "
                     "las fechas viejas dependen de que el evento esté catalogado arriba."
                 )
@@ -437,10 +438,10 @@ def _render_detalle_punto(df_ctx_largo: pd.DataFrame, fecha: pd.Timestamp, key_p
 
         ck_ia = f"{key_prefix}_ia_{fecha.strftime('%Y%m')}"
         if not _GEMINI_KEY:
-            st.caption("🤖 Análisis con IA no disponible — falta configurar GEMINI_API_KEY.")
+            st.caption("Análisis con IA no disponible — falta configurar GEMINI_API_KEY.")
         elif ck_ia in st.session_state:
             st.markdown(st.session_state[ck_ia])
-        elif st.button("🤖 Analizar con IA", key=f"btn_{ck_ia}"):
+        elif st.button("Analizar con IA", key=f"btn_{ck_ia}"):
             partes_prompt = [f"Fecha: {_mes_anio_es(fecha)}."]
             if resultados_quiebre:
                 partes_prompt.append("Rupturas estadísticas detectadas: " + "; ".join(
@@ -496,13 +497,13 @@ def _render_resultado(res, key_prefix: str, familia: str | None, df_ctx: pd.Data
             )
 
     fig = _grafico_forecast(res, titulo=f"Histórico + Pronóstico {horizonte} meses")
-    st.plotly_chart(fig, use_container_width=True, key=f"{key_prefix}_chart_forecast")
+    st.plotly_chart(fig, width="stretch", key=f"{key_prefix}_chart_forecast")
 
     if not df_ctx.empty and not res.historico.empty:
         seccion_titulo("Contexto macro", "Mismo periodo, indexado a 100")
         st.plotly_chart(
             _grafico_contexto_macro(df_ctx, res.historico["ds"].min()),
-            use_container_width=True, key=f"{key_prefix}_chart_macro",
+            width="stretch", key=f"{key_prefix}_chart_macro",
         )
         if any(c in NOMBRES_FASTMARKETS for c in df_ctx.columns):
             st.caption(
@@ -537,7 +538,7 @@ def _render_resultado(res, key_prefix: str, familia: str | None, df_ctx: pd.Data
         seccion_titulo(
             "Benchmark Fastmarkets", "Precio de referencia — no comparable en magnitud al volumen pronosticado"
         )
-        st.dataframe(df_bench, hide_index=True, use_container_width=True)
+        st.dataframe(df_bench, hide_index=True, width="stretch")
         st.caption(
             "Precio ($/ton) y volumen (toneladas) miden cosas distintas — esto es una referencia de "
             "tendencia (¿hacia dónde apunta el precio?), no una validación del pronóstico de volumen."
@@ -551,7 +552,7 @@ def _render_resultado(res, key_prefix: str, familia: str | None, df_ctx: pd.Data
                 res.contribuciones.head(10), x="contribucion", y="variable",
                 titulo="Contribución promedio por variable en el horizonte", x_label="Contribución (ton)",
             ),
-            use_container_width=True, key=f"{key_prefix}_chart_sensibilidad",
+            width="stretch", key=f"{key_prefix}_chart_sensibilidad",
         )
         st.caption(
             "Barras más largas = esa variable movió más el pronóstico. Las variables con prefijo del "
@@ -586,7 +587,7 @@ def _render_resultado(res, key_prefix: str, familia: str | None, df_ctx: pd.Data
             legend=dict(orientation="h", y=-0.25, x=0.5, xanchor="center"), barmode="overlay",
             transition=dict(duration=400, easing="cubic-in-out"),
         )
-        st.plotly_chart(fig_bt, use_container_width=True, key=f"{key_prefix}_chart_backtest")
+        st.plotly_chart(fig_bt, width="stretch", key=f"{key_prefix}_chart_backtest")
 
 
 def _cache_key(prefix: str, modelo: str, horizonte: int, dim: str = "") -> str:
@@ -683,7 +684,7 @@ with tab_comparar:
                     rows.append({"Modelo": MODELOS_DISPONIBLES[mk], "MAE": m.get("MAE", "—"),
                                  "MAPE": f"{mape_v:.1f}%" if not np.isnan(mape_v) else "—",
                                  "RMSE": m.get("RMSE", "—")})
-            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
             fig_comp = go.Figure()
             colores_comp = {"ets": COLORS["success"], "sarima": COLORS["secondary"],
@@ -712,7 +713,7 @@ with tab_comparar:
                            font=dict(size=14, color=COLORS["primary"]), x=0), height=420,
                 transition=dict(duration=400, easing="cubic-in-out"),
             )
-            st.plotly_chart(fig_comp, use_container_width=True, key="comparar_chart_modelos")
+            st.plotly_chart(fig_comp, width="stretch", key="comparar_chart_modelos")
         else:
             st.info("Haz clic en el botón para comparar los 4 modelos.")
 

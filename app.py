@@ -207,7 +207,6 @@ st.html(f"""
 <div style="background:#1B3A5C;padding:10px 20px;margin:-0.4rem -0.9rem 14px -0.9rem;
     display:flex;align-items:center;justify-content:space-between;">
   <div style="display:flex;align-items:center;gap:10px;">
-    <span style="font-size:1.1rem;">🏭</span>
     <div>
       <div style="color:#FFFFFF;font-size:0.88rem;font-weight:700;
                   letter-spacing:0.01em;font-family:'Segoe UI',sans-serif;line-height:1.2;">
@@ -237,45 +236,46 @@ st.html(f"""
 # Definición de secciones
 # ---------------------------------------------------------------------------
 SECCIONES = {
-    "inicio": {"icon": "🏠", "label": "INICIO"},
-    "aceros_planos": {"icon": "🔩", "label": "ACEROS PLANOS"},
-    "aceros_largos": {"icon": "📏", "label": "ACEROS LARGOS"},
-    "aceros_sbq": {"icon": "🔑", "label": "ACEROS SBQ"},
-    "mercado": {"icon": "🌐", "label": "MERCADO GLOBAL"},
-    "chat_ia": {"icon": "🤖", "label": "CHAT IA"},
+    "inicio": {"label": "INICIO"},
+    "aceros_planos": {"label": "ACEROS PLANOS"},
+    "aceros_largos": {"label": "ACEROS LARGOS"},
+    "aceros_sbq": {"label": "ACEROS SBQ"},
+    "mercado": {"label": "MERCADO GLOBAL"},
+    "chat_ia": {"label": "CHAT IA"},
 }
 
 # Subsecciones (pestañas horizontales en contenido)
 SUBSECCIONES = {
     "inicio": {
-        "bienvenida": ("🏠", "Bienvenida"),
+        "bienvenida": "Bienvenida",
     },
     "aceros_planos": {
-        "negros": ("⚫", "Aceros Negros"),
-        "galvanizados": ("✨", "Aceros Galvanizados"),
-        "formados": ("🔧", "Aceros Formados"),
+        "negros": "Aceros Negros",
+        "galvanizados": "Aceros Galvanizados",
+        "formados": "Aceros Formados",
     },
     "aceros_largos": {
-        "al_resumen": ("📊", "Dashboard Ejecutivo"),
-        "al_macro": ("🏦", "Macroeconomía"),
-        "al_sectores": ("🏭", "Sectores Productivos"),
-        "al_comercio": ("🌍", "Comercio Exterior"),
+        "al_resumen": "Dashboard Ejecutivo",
+        "al_macro": "Macroeconomía",
+        "al_sectores": "Sectores Productivos",
+        "al_comercio": "Comercio Exterior",
     },
     "aceros_sbq": {
-        "sbq_soon": ("⏳", "Próximamente"),
+        "sbq_soon": "Próximamente",
     },
     "mercado": {
-        "mkt_monitor": ("📡", "Monitor de Quiebres"),
-        "mkt_vars": ("🌐", "Variables Globales"),
-        "mkt_industria": ("🏭", "Monitor Siderúrgico"),
-        "mkt_inegi": ("📈", "Indicadores INEGI"),
-        "mkt_sentimiento": ("🌡️", "Sentimiento"),
-        "mkt_competencia": ("🎯", "Competencia"),
-        "mkt_comercio": ("🌍", "Comercio Exterior"),
-        "mkt_pronostico": ("🔮", "Pronóstico"),
+        "mkt_monitor": "Monitor de Quiebres",
+        "mkt_vars": "Variables Globales",
+        "mkt_industria": "Monitor Siderúrgico",
+        "mkt_inegi": "Indicadores INEGI",
+        "mkt_mapa_estatal": "Mapa por Estado",
+        "mkt_sentimiento": "Sentimiento",
+        "mkt_competencia": "Competencia",
+        "mkt_comercio": "Comercio Exterior",
+        "mkt_pronostico": "Pronóstico",
     },
     "chat_ia": {
-        "chat": ("💬", "Chat con los datos"),
+        "chat": "Chat con los datos",
     },
 }
 
@@ -314,6 +314,7 @@ PAGINAS = {
     "mkt_vars": "pages.mercado.02_variables",
     "mkt_industria": "pages.mercado.03_industria",
     "mkt_inegi": "pages.mercado.04_indicadores",
+    "mkt_mapa_estatal": "pages.mercado.09_mapa_estatal",
     "mkt_sentimiento": "pages.mercado.05_sentimiento",
     "mkt_competencia": "pages.mercado.06_competencia",
     "mkt_comercio": "pages.mercado.07_comercio_exterior",
@@ -347,7 +348,7 @@ with st.sidebar:
         </div>
         """)
 
-    st.markdown("### 📍 Navegación")
+    st.markdown("### Navegación")
     st.markdown("<div style='margin-bottom:8px'></div>", unsafe_allow_html=True)
 
     for seccion_id, seccion in SECCIONES.items():
@@ -355,7 +356,7 @@ with st.sidebar:
         if seccion_id == "chat_ia":
             continue
         btn_type = "primary" if st.session_state.nav_seccion == seccion_id else "secondary"
-        if st.button(f"{seccion['icon']} {seccion['label']}", use_container_width=True, type=btn_type, key=f"nav_{seccion_id}"):
+        if st.button(seccion["label"], width="stretch", type=btn_type, key=f"nav_{seccion_id}"):
             st.session_state.nav_seccion = seccion_id
             first_sub = list(SUBSECCIONES[seccion_id].keys())[0]
             st.session_state.nav_subseccion = first_sub
@@ -364,15 +365,15 @@ with st.sidebar:
     # ── Botón Asistente IA (siempre visible en sidebar) ──────────────────────
     st.markdown("---")
     _drawer_on = st.session_state.chat_drawer_abierto
-    _btn_label = "✕ Cerrar Asistente" if _drawer_on else "🤖 Asistente IA"
+    _btn_label = "Cerrar Asistente" if _drawer_on else "Asistente IA"
     _btn_type  = "primary" if _drawer_on else "secondary"
-    if st.button(_btn_label, use_container_width=True, type=_btn_type, key="nav_chat_toggle"):
+    if st.button(_btn_label, width="stretch", type=_btn_type, key="nav_chat_toggle"):
         st.session_state.chat_drawer_abierto = not _drawer_on
         st.rerun()
 
     # ── Cerrar sesión ─────────────────────────────────────────────────────────
     st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-    if st.button("🚪 Cerrar sesión", use_container_width=True, type="secondary", key="nav_logout"):
+    if st.button("Cerrar sesión", width="stretch", type="secondary", key="nav_logout"):
         from core.auth import cerrar_sesion
         cerrar_sesion()
         st.rerun()
@@ -387,10 +388,10 @@ if len(subsecciones) > 1:
     st.markdown('<div id="area-tabs-marker" style="display:none"></div>', unsafe_allow_html=True)
     all_cols = st.columns([1] * len(subsecciones))
     tab_cols = all_cols
-    for i, (sub_id, (icon, label)) in enumerate(subsecciones.items()):
+    for i, (sub_id, label) in enumerate(subsecciones.items()):
         with tab_cols[i]:
             btn_type = "primary" if st.session_state.nav_subseccion == sub_id else "secondary"
-            if st.button(f"{icon}  {label}", type=btn_type, key=f"tab_{sub_id}"):
+            if st.button(label, type=btn_type, key=f"tab_{sub_id}"):
                 st.session_state.nav_subseccion = sub_id
                 st.rerun()
     st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
@@ -431,24 +432,24 @@ elif seccion == "chat_ia":
 # ---------------------------------------------------------------------------
 if seccion == "aceros_planos" and subseccion == "negros":
     MODULOS_NEGROS = {
-        "apn_alertas":  ("⚡", "Alertas"),
-        "apn_resumen":  ("📊", "Resumen"),
-        "apn_seg":      ("👥", "Segmentación"),
-        "apn_series":   ("📈", "Series"),
-        "apn_forecast": ("🔮", "Pronóstico"),
-        "apn_mix":      ("🎯", "Mix"),
-        "apn_intel":    ("🧠", "Intel."),
-        "apn_mercado":  ("🌐", "Mercado"),
+        "apn_alertas":  "Alertas",
+        "apn_resumen":  "Resumen",
+        "apn_seg":      "Segmentación",
+        "apn_series":   "Series",
+        "apn_forecast": "Pronóstico",
+        "apn_mix":      "Mix",
+        "apn_intel":    "Intel.",
+        "apn_mercado":  "Mercado",
     }
 
     st.markdown('<div id="module-tabs-marker" style="display:none"></div>', unsafe_allow_html=True)
     mod_all = st.columns([1] * len(MODULOS_NEGROS))
     mod_cols = mod_all
-    for i, (mod_id, (icon, label)) in enumerate(MODULOS_NEGROS.items()):
+    for i, (mod_id, label) in enumerate(MODULOS_NEGROS.items()):
         with mod_cols[i]:
             active = st.session_state.get("nav_modulo_planos") == mod_id
             btn_type = "primary" if active else "secondary"
-            if st.button(f"{icon} {label}", type=btn_type, key=f"mod_{mod_id}"):
+            if st.button(label, type=btn_type, key=f"mod_{mod_id}"):
                 st.session_state.nav_modulo_planos = mod_id
                 st.rerun()
     st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)

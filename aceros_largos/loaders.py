@@ -230,7 +230,7 @@ def load_ticker_data() -> List[Dict[str, str]]:
             {"label": "USD/MXN", "value": "$17.82", "color": "white"},
             {"label": "Inv. Pública", "value": "$542 mil mdp", "color": "white"},
             {"label": "Arancel China", "value": "25-50%", "color": "tertiary"},
-            {"label": "Expo MX→USA", "value": "-49%", "color": "tertiary"},
+            {"label": "Expo MX-USA", "value": "-49%", "color": "tertiary"},
             {"label": "TYASA Laminador", "value": "$450 MDD inv.", "color": "secondary"},
             {"label": "CMIC 2026-29", "value": "+2.6% prom.", "color": "secondary"}
         ]
@@ -585,7 +585,7 @@ def load_macro_data() -> Dict[str, Any]:
             {"label": "Recorte inversión pública", "val": "-9.7% interan.", "impacto": "Alto"},
             {"label": "Tasa Banxico (dic 2025)", "val": "7.00%", "impacto": "Medio"},
             {"label": "Arancel China acero", "val": "25–50%", "impacto": "Alto"},
-            {"label": "Expo México→USA", "val": "-49%", "impacto": "Alto"},
+            {"label": "Expo México-USA", "val": "-49%", "impacto": "Alto"},
             {"label": "Nearshoring (oportunidad)", "val": "Activo 2026", "impacto": "Oport."}
         ]
     }

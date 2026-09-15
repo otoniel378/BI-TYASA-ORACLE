@@ -30,7 +30,7 @@ from core.components.tables import tabla_ejecutiva
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
-sidebar_header("Filtros", "📊")
+sidebar_header("Filtros")
 fecha_inicio, fecha_fin = filtro_rango_fechas(key_prefix="re")
 
 # ---------------------------------------------------------------------------
@@ -63,7 +63,7 @@ except Exception:
 # ---------------------------------------------------------------------------
 st.markdown(
     f"""
-    <h2 style='color:{COLORS["primary"]};margin-bottom:0;'>📊 Resumen Ejecutivo</h2>
+    <h2 style='color:{COLORS["primary"]};margin-bottom:0;'>Resumen Ejecutivo</h2>
     <p style='color:{COLORS["text_light"]};'>Aceros Planos Negros — Demanda historica</p>
     """,
     unsafe_allow_html=True,
@@ -76,13 +76,13 @@ st.divider()
 kpis_data = calcular_kpis_resumen(df_cliente, df_producto, df_mensual_f)
 
 render_kpi_row([
-    {"label": "Toneladas Totales",     "value": kpis_data.toneladas_totales, "suffix": " ton",  "icon": "⚖️",
+    {"label": "Toneladas Totales",     "value": kpis_data.toneladas_totales, "suffix": " ton",
      "help_text": "Suma total de toneladas en el periodo seleccionado."},
-    {"label": "Clientes Activos",      "value": kpis_data.clientes_activos,  "icon": "👥",
+    {"label": "Clientes Activos",      "value": kpis_data.clientes_activos,
      "help_text": "Numero de clientes con al menos un embarque."},
-    {"label": "Productos Activos",     "value": kpis_data.productos_activos, "icon": "🔩",
+    {"label": "Productos Activos",     "value": kpis_data.productos_activos,
      "help_text": "Numero de productos unicos vendidos."},
-    {"label": "Ticket Prom. / Cliente","value": kpis_data.ticket_promedio,   "suffix": " ton",  "icon": "📦",
+    {"label": "Ticket Prom. / Cliente","value": kpis_data.ticket_promedio,   "suffix": " ton",
      "delta": kpis_data.variacion_mom, "delta_label": "vs mes anterior",
      "help_text": "Toneladas promedio por cliente activo."},
 ])
@@ -144,7 +144,7 @@ if _ctx_ok:
             paper_bgcolor="white",
             font=dict(family="Segoe UI, sans-serif"),
         )
-        st.plotly_chart(fig_g, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig_g, width="stretch", config={"displayModeBar": False})
 
     with col_m:
         # A3 — 4 mini-cards de contexto externo
@@ -233,7 +233,7 @@ with col_trend:
             fig_linea = linea_temporal(serie, x="PERIODO", y="PESO_TON",
                                        titulo="Toneladas mensuales", show_area=True)
             fig_linea.update_layout(height=260)
-            st.plotly_chart(fig_linea, use_container_width=True)
+            st.plotly_chart(fig_linea, width="stretch")
 
         elif vista == "YoY %":
             s = serie.copy()
@@ -256,7 +256,7 @@ with col_trend:
                     xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#EEF2FF"),
                 )
                 fig_yoy.add_hline(y=0, line_dash="dot", line_color="#94A3B8", line_width=1)
-                st.plotly_chart(fig_yoy, use_container_width=True,
+                st.plotly_chart(fig_yoy, width="stretch",
                                 config={"displayModeBar": False})
 
         else:  # Índice base=100
@@ -269,7 +269,7 @@ with col_trend:
                                      titulo="Índice (primer mes = 100)", show_area=False)
             fig_idx.update_layout(height=260)
             fig_idx.add_hline(y=100, line_dash="dot", line_color="#94A3B8", line_width=1)
-            st.plotly_chart(fig_idx, use_container_width=True)
+            st.plotly_chart(fig_idx, width="stretch")
 
 with col_part:
     if not df_part.empty:
@@ -277,7 +277,7 @@ with col_part:
         fig_barras = barras_verticales(df_part.head(10), x="PRODUCTO_LIMPIO", y="PESO_TON",
                                        titulo="", x_label="", y_label="Toneladas")
         fig_barras.update_layout(height=290, xaxis_tickangle=-45)
-        st.plotly_chart(fig_barras, use_container_width=True)
+        st.plotly_chart(fig_barras, width="stretch")
 
 # ---------------------------------------------------------------------------
 # Fila 2: Donut Mixto + Comparación Mes x Año (lado a lado)
@@ -289,7 +289,7 @@ with col_donut:
         seccion_titulo("Mix por Producto", "")
         fig_donut = donut(df_part.head(8), names="PRODUCTO_LIMPIO", values="PESO_TON", titulo="")
         fig_donut.update_layout(height=260, legend_orientation="h", legend_y=-0.25)
-        st.plotly_chart(fig_donut, use_container_width=True)
+        st.plotly_chart(fig_donut, width="stretch")
 
 with col_yoy:
     if not df_mensual_f.empty:
@@ -309,7 +309,7 @@ with col_yoy:
                               "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"],
                 ),
             )
-            st.plotly_chart(fig_yoy, use_container_width=True)
+            st.plotly_chart(fig_yoy, width="stretch")
 
 # ---------------------------------------------------------------------------
 # Top 10 Clientes y Top 10 Productos
@@ -321,14 +321,14 @@ with col_c:
     top_clientes = calcular_top_n(df_cliente, "CLIENTE", n=10)
     if not top_clientes.empty:
         fig_cli = barras_horizontales(top_clientes, x="PESO_TON", y="CLIENTE", x_label="Toneladas")
-        st.plotly_chart(fig_cli, use_container_width=True)
+        st.plotly_chart(fig_cli, width="stretch")
 
 with col_d:
     seccion_titulo("Top 10 Productos", "Por volumen de toneladas")
     top_prod = calcular_top_n(df_producto, "PRODUCTO_LIMPIO", n=10)
     if not top_prod.empty:
         fig_prod = barras_horizontales(top_prod, x="PESO_TON", y="PRODUCTO_LIMPIO", x_label="Toneladas")
-        st.plotly_chart(fig_prod, use_container_width=True)
+        st.plotly_chart(fig_prod, width="stretch")
 
 # ---------------------------------------------------------------------------
 # Tabla resumen

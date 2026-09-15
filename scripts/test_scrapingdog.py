@@ -36,7 +36,7 @@ def _test(nombre, url, params):
                 # Buscar listas anidadas
                 for k, v in data.items():
                     if isinstance(v, list):
-                        print(f"  [{k}] → lista con {len(v)} elementos")
+                        print(f"  [{k}] -> lista con {len(v)} elementos")
             else:
                 print(f"TIPO: {type(data).__name__}, VALOR: {str(data)[:200]}")
         except Exception:

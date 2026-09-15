@@ -198,14 +198,14 @@ def _render_sintesis(result: dict | None) -> str:
         return (
             "<div style='background:#F0F9FF;border:1px solid #BAE6FD;border-radius:8px;"
             "padding:16px;color:#0369A1;font-size:13px;'>"
-            "ℹ️ Haz clic en <b>▶ Generar síntesis</b> para obtener el análisis "
+            "Haz clic en <b>▶ Generar síntesis</b> para obtener el análisis "
             "ejecutivo de la competencia con IA.</div>"
         )
     err = result.get("_error")
     if err:
         return (
             f"<div style='background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;"
-            f"padding:16px;color:#DC2626;font-size:13px;'>⚠️ {err}</div>"
+            f"padding:16px;color:#DC2626;font-size:13px;'>{err}</div>"
         )
 
     nivel  = result.get("nivel_actividad_general", "—")
@@ -215,22 +215,22 @@ def _render_sintesis(result: dict | None) -> str:
     cached  = result.get("_cached", False)
     cache_b = (
         '<span style="background:#F3F4F6;color:#6B7280;padding:3px 10px;'
-        'border-radius:20px;font-size:11px;margin-left:6px;">💾 Caché</span>'
+        'border-radius:20px;font-size:11px;margin-left:6px;">Caché</span>'
     ) if cached else ""
 
     header = (
         f"<div style='display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;'>"
         f"<span style='background:{nb};color:{nc};padding:5px 14px;border-radius:20px;"
-        f"font-size:12px;font-weight:700;'>⚡ Actividad competitiva: {nivel}</span>"
+        f"font-size:12px;font-weight:700;'>Actividad competitiva: {nivel}</span>"
         f"<span style='background:#F3F4F6;color:#6B7280;padding:4px 12px;"
-        f"border-radius:20px;font-size:11px;'>📅 {fecha}</span>{cache_b}"
+        f"border-radius:20px;font-size:11px;'>{fecha}</span>{cache_b}"
         f"</div>"
     )
 
     resumen_html = (
         f"<div style='background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;"
         f"padding:16px;margin-bottom:14px;font-size:13px;color:#374151;line-height:1.65;'>"
-        f"🌐 {resumen}</div>"
+        f"{resumen}</div>"
     ) if resumen else ""
 
     por_empresa = result.get("por_empresa", []) or []
@@ -245,12 +245,11 @@ def _render_sintesis(result: dict | None) -> str:
         meta   = EMPRESAS_COMPETENCIA.get(emp, {})
         emp_c  = meta.get("color", "#374151")
         emp_bg = meta.get("bg", "#F3F4F6")
-        emp_ico = meta.get("icon", "🏭")
         filas.append(
             f"<tr>"
             f"<td style='padding:10px 12px;'>"
             f"<span style='background:{emp_bg};color:{emp_c};padding:3px 10px;"
-            f"border-radius:14px;font-size:10px;font-weight:700;'>{emp_ico} {emp}</span></td>"
+            f"border-radius:14px;font-size:10px;font-weight:700;'>{emp}</span></td>"
             f"<td style='padding:10px 12px;'>"
             f"<span style='background:{eb};color:{ec};padding:2px 9px;border-radius:14px;"
             f"font-size:10px;font-weight:700;'>{niv}</span></td>"
@@ -266,7 +265,7 @@ def _render_sintesis(result: dict | None) -> str:
         tabla_html = (
             "<div style='margin-bottom:14px;overflow-x:auto;'>"
             "<div style='font-size:11px;font-weight:800;color:#1B3A5C;"
-            "letter-spacing:.06em;margin-bottom:8px;'>📊 ACTIVIDAD POR EMPRESA</div>"
+            "letter-spacing:.06em;margin-bottom:8px;'>ACTIVIDAD POR EMPRESA</div>"
             "<table style='width:100%;border-collapse:collapse;'>"
             "<thead><tr style='background:#F8FAFC;border-bottom:2px solid #E2E8F0;'>"
             "<th style='padding:8px 12px;font-size:10px;color:#6B7280;font-weight:700;'>EMPRESA</th>"
@@ -295,10 +294,10 @@ def _render_sintesis(result: dict | None) -> str:
     dos_col = (
         "<div style='display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;'>"
         "<div><div style='font-size:11px;font-weight:800;color:#DC2626;"
-        "letter-spacing:.06em;margin-bottom:8px;'>⚠️ ALERTAS PARA TYASA</div>"
+        "letter-spacing:.06em;margin-bottom:8px;'>ALERTAS PARA TYASA</div>"
         f"{_items(alertas,'#DC2626','#FEF2F2')}</div>"
         "<div><div style='font-size:11px;font-weight:800;color:#059669;"
-        "letter-spacing:.06em;margin-bottom:8px;'>✅ OPORTUNIDADES</div>"
+        "letter-spacing:.06em;margin-bottom:8px;'>OPORTUNIDADES</div>"
         f"{_items(opors,'#059669','#F0FDF4')}</div>"
         "</div>"
     )
@@ -307,7 +306,7 @@ def _render_sintesis(result: dict | None) -> str:
     rec_html = (
         f"<div style='background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;"
         f"padding:12px 16px;font-size:13px;color:#1E40AF;'>"
-        f"🎯 <b>Recomendación para TYASA:</b> {rec}</div>"
+        f"<b>Recomendación para TYASA:</b> {rec}</div>"
     ) if rec else ""
 
     return header + resumen_html + tabla_html + dos_col + rec_html
@@ -316,13 +315,13 @@ def _render_sintesis(result: dict | None) -> str:
 # ════════════════════════════════════════════════════════════════════════════
 # SIDEBAR
 # ════════════════════════════════════════════════════════════════════════════
-sidebar_header("Competencia", "🎯")
+sidebar_header("Competencia")
 
 # ════════════════════════════════════════════════════════════════════════════
 # HEADER
 # ════════════════════════════════════════════════════════════════════════════
 st.html(
-    f"<h2 style='color:{COLORS['primary']};margin-bottom:4px;'>🎯 Monitor de Competencia</h2>"
+    f"<h2 style='color:{COLORS['primary']};margin-bottom:4px;'>Monitor de Competencia</h2>"
     f"<p style='color:#6B7280;font-size:13px;margin-bottom:0;'>"
     f"ArcelorMittal · Ternium · Deacero · Tenaris TAMSA · SIMEC · AHMSA · Gerdau · Corsa Acero</p>"
 )
@@ -359,7 +358,7 @@ with col_rng:
 
 with col_act:
     st.markdown("<div style='padding-top:22px;'></div>", unsafe_allow_html=True)
-    if st.button("🔄 Actualizar", key="comp_refresh", width="stretch"):
+    if st.button("Actualizar", key="comp_refresh", width="stretch"):
         limpiar_cache_social()
         st.cache_data.clear()
 
@@ -381,11 +380,11 @@ st.caption(
 # TABS
 # ════════════════════════════════════════════════════════════════════════════
 tab_noticias, tab_pub, tab_bench, tab_temas, tab_sintesis = st.tabs([
-    "📰 Noticias en Medios",
-    "📌 Publicaciones Reales",
-    "📊 Evaluación Comparativa",
-    "🏷️ Análisis de Contenido IA",
-    "🤖 Síntesis Ejecutiva",
+    "Noticias en Medios",
+    "Publicaciones Reales",
+    "Evaluación Comparativa",
+    "Análisis de Contenido IA",
+    "Síntesis Ejecutiva",
 ])
 
 
@@ -403,7 +402,7 @@ with tab_pub:
             "<div style='background:#FFF7ED;border:1px solid #FED7AA;border-radius:12px;"
             "padding:24px;max-width:640px;margin:24px auto;'>"
             "<div style='font-size:18px;font-weight:800;color:#92400E;margin-bottom:12px;'>"
-            "📌 Publicaciones Reales — Configuración requerida</div>"
+            "Publicaciones Reales — Configuración requerida</div>"
             "<p style='font-size:13px;color:#78350F;margin-bottom:16px;line-height:1.65;'>"
             "Para ver las publicaciones reales (contenido, likes, fecha) de "
             "Instagram, Facebook y Twitter/X de tus competidores necesitas "
@@ -412,7 +411,7 @@ with tab_pub:
             "padding:16px;margin-bottom:14px;font-size:12.5px;color:#374151;line-height:1.8;'>"
             "<b>Pasos para activarlo:</b><br>"
             "1. Crea cuenta en <b>https://apify.com</b> (plan Starter)<br>"
-            "2. Ve a <b>Settings → Integrations</b> → copia tu <b>API Token</b><br>"
+            "2. Ve a <b>Settings, Integrations</b> y copia tu <b>API Token</b><br>"
             "3. Pega el token en <code>.streamlit/secrets.toml</code>:<br>"
             "<code style='background:#F3F4F6;padding:4px 8px;border-radius:4px;display:block;"
             "margin-top:6px;'>APIFY_API_TOKEN = \"apify_api_xxxxxxxxxxxx\"</code><br>"
@@ -421,31 +420,31 @@ with tab_pub:
             "<div style='font-size:11.5px;color:#92400E;margin-top:10px;'>"
             "<b>Qué obtendrás:</b> Texto de publicación · Fecha · Likes · Comentarios · "
             "Compartidos · Link directo<br>"
-            "<b>Confiabilidad:</b> Instagram ✅ Alta · Facebook ✅ Alta · "
-            "Twitter/X ⚠️ Media · LinkedIn ⚠️ Media<br><br>"
+            "<b>Confiabilidad:</b> Instagram Alta · Facebook Alta · "
+            "Twitter/X Media · LinkedIn Media<br><br>"
             "<b>LinkedIn (paso extra):</b> Para ver posts de LinkedIn además del API Token "
-            "necesitas tu cookie de sesión: abre linkedin.com → F12 → Application → Cookies "
-            "→ copia el valor de <code>li_at</code> → pégalo en secrets.toml como "
+            "necesitas tu cookie de sesión: abre linkedin.com, ve a F12, Application, Cookies "
+            "y copia el valor de <code>li_at</code>. Pégalo en secrets.toml como "
             "<code>LINKEDIN_LI_AT_COOKIE</code>.</div>"
             "</div>"
         )
     else:
         # Mostrar estado de configuración por red
         _red_status = [
-            ("📸 Instagram", True, "Alta"),
-            ("📘 Facebook",  True, "Alta"),
-            ("𝕏 Twitter",   True, "Media"),
-            ("💼 LinkedIn",  True, "Alta"),
+            ("Instagram", True, "Alta"),
+            ("Facebook",  True, "Alta"),
+            ("Twitter",   True, "Media"),
+            ("LinkedIn",  True, "Alta"),
         ]
         status_html = "<div style='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;'>"
         for red_n, ok, conf in _red_status:
             bg = "#D1FAE5" if ok else "#FEF3C7"
             tc = "#065F46" if ok else "#92400E"
-            ico = "✅" if ok else "⚙️"
+            estado = "Activo" if ok else "Pendiente"
             status_html += (
                 f"<span style='background:{bg};color:{tc};padding:4px 12px;"
                 f"border-radius:20px;font-size:11px;font-weight:600;'>"
-                f"{ico} {red_n} — {conf}</span>"
+                f"{red_n} — {estado} — {conf}</span>"
             )
         status_html += "</div>"
         st.html(status_html)
@@ -453,10 +452,10 @@ with tab_pub:
         # Las 4 redes disponibles sin cookies
         _ap_redes_opts = {
             "Todas":          None,
-            "📸 Instagram":   "instagram",
-            "📘 Facebook":    "facebook",
-            "𝕏 Twitter":     "twitter",
-            "💼 LinkedIn":    "linkedin",
+            "Instagram":      "instagram",
+            "Facebook":       "facebook",
+            "Twitter":        "twitter",
+            "LinkedIn":       "linkedin",
         }
 
         apc1, apc2, apc3 = st.columns([2, 2, 1])
@@ -467,7 +466,7 @@ with tab_pub:
             ap_emp_label = st.selectbox("Empresa", ap_emp_opts, key="ap_emp")
         with apc3:
             st.markdown("<div style='padding-top:22px;'></div>", unsafe_allow_html=True)
-            ap_refresh = st.button("🔄", key="ap_refresh", help="Forzar recarga desde Apify")
+            ap_refresh = st.button("Actualizar", key="ap_refresh", help="Forzar recarga desde Apify")
 
         ap_red_val = _ap_redes_opts[ap_red_label]
         ap_redes   = [ap_red_val] if ap_red_val else ["instagram", "facebook", "twitter", "linkedin"]
@@ -510,8 +509,8 @@ with tab_pub:
 
         st.caption(
             f"**{len(apify_filtrados)}** publicaciones en el período "
-            f"{fecha_desde} → {fecha_hasta} (total: {len(apify_posts)}) · "
-            f"cargadas a las {_ap_ts_str} — usa 🔄 para actualizar"
+            f"{fecha_desde} a {fecha_hasta} (total: {len(apify_posts)}) · "
+            f"cargadas a las {_ap_ts_str} — usa Actualizar para refrescar"
         )
 
         if not apify_filtrados and apify_posts:
@@ -543,7 +542,6 @@ with tab_pub:
                 meta  = EMPRESAS_COMPETENCIA.get(emp, {})
                 ec    = meta.get("color", "#374151")
                 eb    = meta.get("bg", "#F3F4F6")
-                ico   = meta.get("icon", "🏭")
                 rc, rb = _RED_COLORS.get(red, ("#6B7280", "#F3F4F6"))
                 red_label_map = {"instagram": "Instagram", "facebook": "Facebook", "twitter": "X/Twitter", "linkedin": "LinkedIn"}
                 red_label = red_label_map.get(red, red)
@@ -559,10 +557,10 @@ with tab_pub:
                 ) if texto_preview else ""
 
                 stats_parts = []
-                if likes:   stats_parts.append(f"❤️ {likes:,}")
-                if coms:    stats_parts.append(f"💬 {coms:,}")
-                if shares:  stats_parts.append(f"🔁 {shares:,}")
-                if views:   stats_parts.append(f"👁 {views:,}")
+                if likes:   stats_parts.append(f"{likes:,} likes")
+                if coms:    stats_parts.append(f"{coms:,} comentarios")
+                if shares:  stats_parts.append(f"{shares:,} compartidos")
+                if views:   stats_parts.append(f"{views:,} vistas")
                 stats_html_str = (
                     f"<div style='display:flex;gap:10px;flex-wrap:wrap;font-size:11px;"
                     f"color:#6B7280;margin-bottom:8px;'>{'  '.join(stats_parts)}</div>"
@@ -570,7 +568,7 @@ with tab_pub:
 
                 link_html = (
                     f"<a href='{url}' target='_blank' style='font-size:11px;color:{rc};"
-                    f"text-decoration:none;font-weight:600;'>Ver publicación →</a>"
+                    f"text-decoration:none;font-weight:600;'>Ver publicación</a>"
                 ) if url else ""
 
                 cards_html += (
@@ -578,11 +576,11 @@ with tab_pub:
                     f"padding:14px;display:flex;flex-direction:column;'>"
                     f"<div style='display:flex;gap:6px;align-items:center;margin-bottom:10px;flex-wrap:wrap;'>"
                     f"<span style='background:{eb};color:{ec};padding:2px 9px;border-radius:14px;"
-                    f"font-size:10px;font-weight:700;'>{ico} {emp}</span>"
+                    f"font-size:10px;font-weight:700;'>{emp}</span>"
                     f"<span style='background:{rb};color:{rc};padding:2px 8px;border-radius:14px;"
                     f"font-size:10px;font-weight:600;'>{red_label}</span>"
                     f"<span style='background:#F3F4F6;color:#9CA3AF;padding:2px 8px;border-radius:14px;"
-                    f"font-size:10px;'>📅 {fecha}</span>"
+                    f"font-size:10px;'>{fecha}</span>"
                     f"</div>"
                     f"{img_html}{texto_html}{stats_html_str}{link_html}"
                     f"</div>"
@@ -605,7 +603,7 @@ with tab_bench:
     metricas = calcular_metricas_benchmarking(posts_bm, noticias_bm, empresas_sel, fecha_desde, fecha_hasta)
 
     # ── Nivel 1: KPIs ─────────────────────────────────────────────────────────
-    seccion_titulo("📊 Nivel 1 — Actividad")
+    seccion_titulo("Nivel 1 — Actividad")
 
     emp_mas_activo = max(metricas.items(), key=lambda x: x[1].get("total_posts", 0), default=("—", {}))
     emp_mas_eng    = max(metricas.items(), key=lambda x: x[1].get("avg_engagement", 0), default=("—", {}))
@@ -621,13 +619,13 @@ with tab_bench:
             f"<div style='font-size:11px;color:#9CA3AF;margin-top:2px;'>{sub}</div>"
             f"</div>"
             for lbl, val, clr, sub in [
-                ("🏆 EMPRESA MÁS ACTIVA",   emp_mas_activo[0], "#1B3A5C",
+                ("EMPRESA MÁS ACTIVA",   emp_mas_activo[0], "#1B3A5C",
                  f"{emp_mas_activo[1].get('total_posts', 0)} posts en período"),
-                ("⚡ MAYOR ENGAGEMENT",      emp_mas_eng[0],    "#DC2626",
+                ("MAYOR ENGAGEMENT",      emp_mas_eng[0],    "#DC2626",
                  f"~{emp_mas_eng[1].get('avg_engagement', 0):.0f} por post"),
-                ("📌 TOTAL PUBLICACIONES",   str(total_posts_bm), "#059669",
+                ("TOTAL PUBLICACIONES",   str(total_posts_bm), "#059669",
                  f"{len(empresas_sel)} empresas · todas las redes"),
-                ("📰 MENCIONES EN MEDIOS",   str(total_nots_bm), "#D97706",
+                ("MENCIONES EN MEDIOS",   str(total_nots_bm), "#D97706",
                  "Google News últimos 30 días"),
             ]
         ])
@@ -658,14 +656,14 @@ with tab_bench:
             template="simple_white", margin=dict(t=60, b=20, l=0, r=0),
             yaxis_title="# Publicaciones",
         )
-        st.plotly_chart(fig_freq, use_container_width=True)
+        st.plotly_chart(fig_freq, width="stretch")
     else:
         st.info("No hay datos de publicaciones para el período seleccionado. "
-                "Ve a 📌 Publicaciones Reales y carga datos primero.")
+                "Ve a Publicaciones Reales y carga datos primero.")
 
     # ── Nivel 2: Engagement ────────────────────────────────────────────────────
     st.markdown("---")
-    seccion_titulo("📈 Nivel 2 — Engagement")
+    seccion_titulo("Nivel 2 — Engagement")
 
     df_eng = pd.DataFrame([
         {
@@ -688,7 +686,7 @@ with tab_bench:
             template="simple_white", margin=dict(t=60, b=20, l=0, r=0),
             yaxis_title="Promedio por post",
         )
-        st.plotly_chart(fig_eng, use_container_width=True)
+        st.plotly_chart(fig_eng, width="stretch")
 
     top_posts_all: list[dict] = []
     for emp_t, m_t in metricas.items():
@@ -704,9 +702,9 @@ with tab_bench:
             })
 
     if top_posts_all:
-        st.markdown("**🏅 Top posts por empresa**")
+        st.markdown("**Top posts por empresa**")
         df_top = pd.DataFrame(top_posts_all).sort_values("Likes", ascending=False)
-        st.dataframe(df_top, use_container_width=True, hide_index=True)
+        st.dataframe(df_top, width="stretch", hide_index=True)
 
     _dias_full  = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
     _dias_short = ["Lun",   "Mar",    "Mié",       "Jue",    "Vie",     "Sáb",    "Dom"]
@@ -728,11 +726,11 @@ with tab_bench:
                 title_font_size=14, font_family="Inter, sans-serif",
                 template="simple_white", margin=dict(t=50, b=20, l=0, r=0),
             )
-            st.plotly_chart(fig_heat, use_container_width=True)
+            st.plotly_chart(fig_heat, width="stretch")
 
     if noticias_bm:
         st.markdown("---")
-        st.markdown("**📰 Últimas noticias de la competencia**")
+        st.markdown("**Últimas noticias de la competencia**")
         df_news_bm = pd.DataFrame([
             {
                 "Empresa": n.get("empresa", ""),
@@ -743,7 +741,7 @@ with tab_bench:
             for n in sorted(noticias_bm, key=lambda x: x.get("fecha_pub", ""), reverse=True)[:15]
         ])
         if not df_news_bm.empty:
-            st.dataframe(df_news_bm, use_container_width=True, hide_index=True)
+            st.dataframe(df_news_bm, width="stretch", hide_index=True)
 
 
 # ── Tab 4: Análisis de Contenido IA ──────────────────────────────────────────
@@ -751,7 +749,7 @@ with tab_temas:
     import pandas as pd
     import plotly.express as px
 
-    seccion_titulo("🏷️ Nivel 3 — Análisis de Contenido con IA")
+    seccion_titulo("Nivel 3 — Análisis de Contenido con IA")
     st.caption(
         "Gemini clasifica cada publicación en temas siderúrgicos para detectar "
         "qué estrategias está comunicando cada competidor."
@@ -766,7 +764,7 @@ with tab_temas:
             disabled=not _GEMINI_KEY,
         )
         if not _GEMINI_KEY:
-            st.caption("⚙️ Configura GEMINI_API_KEY en secrets.toml para usar esta función.")
+            st.caption("Configura GEMINI_API_KEY en secrets.toml para usar esta función.")
     with _temas_col_frz:
         frz_temas = st.checkbox("Regenerar", key="comp_temas_frz", value=False)
 
@@ -778,7 +776,7 @@ with tab_temas:
         if posts_t:
             st.session_state[_TEMAS_KEY] = clasificar_temas_ia(posts_t, _GEMINI_KEY)
         else:
-            st.warning("No hay publicaciones cargadas. Ve a 📌 Publicaciones Reales primero.")
+            st.warning("No hay publicaciones cargadas. Ve a Publicaciones Reales primero.")
 
     temas_result = st.session_state.get(_TEMAS_KEY)
 
@@ -786,7 +784,7 @@ with tab_temas:
         st.html(
             "<div style='background:#F0F9FF;border:1px solid #BAE6FD;border-radius:8px;"
             "padding:16px;color:#0369A1;font-size:13px;'>"
-            "ℹ️ Haz clic en <b>▶ Clasificar publicaciones</b> para detectar los temas "
+            "Haz clic en <b>▶ Clasificar publicaciones</b> para detectar los temas "
             "estratégicos que comunica cada competidor.</div>"
         )
     elif isinstance(temas_result, dict) and temas_result:
@@ -811,18 +809,18 @@ with tab_temas:
                 template="simple_white", margin=dict(t=70, b=20, l=0, r=0),
                 yaxis_title="# Posts clasificados",
             )
-            st.plotly_chart(fig_temas, use_container_width=True)
+            st.plotly_chart(fig_temas, width="stretch")
 
             pivot_temas = df_temas.pivot_table(index="Empresa", columns="Tema", values="Posts", fill_value=0)
             st.markdown("**Detalle por empresa y tema:**")
-            st.dataframe(pivot_temas, use_container_width=True)
+            st.dataframe(pivot_temas, width="stretch")
         else:
             st.info("La clasificación no produjo resultados. Intenta con más publicaciones.")
 
 
 # ── Tab 4: Síntesis IA ────────────────────────────────────────────────────────
 with tab_sintesis:
-    seccion_titulo("🤖 Análisis ejecutivo de la competencia con IA")
+    seccion_titulo("Análisis ejecutivo de la competencia con IA")
 
     col_btn, col_frz = st.columns([3, 1])
     with col_btn:
@@ -833,7 +831,7 @@ with tab_sintesis:
             disabled=not _GEMINI_KEY,
         )
         if not _GEMINI_KEY:
-            st.caption("⚙️ Configura GEMINI_API_KEY en secrets.toml para usar esta función.")
+            st.caption("Configura GEMINI_API_KEY en secrets.toml para usar esta función.")
     with col_frz:
         frz_sint = st.checkbox("Regenerar", key="comp_sint_frz", value=False)
 

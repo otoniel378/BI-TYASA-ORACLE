@@ -91,7 +91,7 @@ def render_login():
     header[data-testid="stHeader"],
     #MainMenu, footer { display:none !important; }
 
-    /* ── Fondo: azul muy oscuro → gris carbón → toque rojo profundo ── */
+    /* ── Fondo: azul muy oscuro a gris carbón a toque rojo profundo ── */
     .stApp {
         background:
             radial-gradient(ellipse 80% 60% at 10% 90%, rgba(220,38,38,.18) 0%, transparent 55%),
@@ -109,7 +109,7 @@ def render_login():
         animation: fadeUp .55s ease both;
     }
 
-    /* ── Columnas → forman el card ── */
+    /* ── Columnas: forman el card ── */
     [data-testid="stMainBlockContainer"] [data-testid="stHorizontalBlock"] {
         gap: 0 !important;
         align-items: stretch !important;

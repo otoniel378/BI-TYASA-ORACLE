@@ -92,10 +92,10 @@ def crear_tabla(nombre_tabla: str, schema: list, descripcion: str = ""):
     table.description = descripcion
     try:
         CLIENT.get_table(table_id)
-        print(f"  ✓ Tabla {nombre_tabla} ya existe — omitiendo")
+        print(f"  Tabla {nombre_tabla} ya existe — omitiendo")
     except Exception:
         CLIENT.create_table(table)
-        print(f"  ✓ Tabla {nombre_tabla} creada")
+        print(f"  Tabla {nombre_tabla} creada")
 
 
 def descargar_y_cargar_variables():
@@ -105,7 +105,7 @@ def descargar_y_cargar_variables():
         print("Instala yfinance: pip install yfinance")
         return
 
-    print("\nDescargando datos históricos (2024-01-01 → hoy)...")
+    print("\nDescargando datos históricos (2024-01-01 a hoy)...")
     rows = []
     ahora = datetime.utcnow()
 
@@ -114,7 +114,7 @@ def descargar_y_cargar_variables():
             df_t = yf.download(ticker, start="2024-01-01",
                                progress=False, auto_adjust=True)
             if len(df_t) < 10:
-                print(f"  ✗ {nombre}: sin datos")
+                print(f"  [ERROR] {nombre}: sin datos")
                 continue
             s = df_t['Close'].squeeze()
             if isinstance(s, pd.DataFrame):
@@ -129,9 +129,9 @@ def descargar_y_cargar_variables():
                     "valor":      float(valor) if not np.isnan(valor) else None,
                     "cargado_en": ahora,
                 })
-            print(f"  ✓ {nombre}: {len(s)} obs")
+            print(f"  {nombre}: {len(s)} obs")
         except Exception as e:
-            print(f"  ✗ {nombre}: {e}")
+            print(f"  [ERROR] {nombre}: {e}")
 
     if not rows:
         print("Sin datos para cargar.")
@@ -146,7 +146,7 @@ def descargar_y_cargar_variables():
     )
     job = CLIENT.load_table_from_dataframe(df_load, table_id, job_config=job_config)
     job.result()
-    print(f"\n✓ Cargadas {len(df_load):,} filas en gold_variables_mercado")
+    print(f"\nCargadas {len(df_load):,} filas en gold_variables_mercado")
 
 
 def cargar_quiebre_ormuz():
@@ -210,7 +210,7 @@ def cargar_quiebre_ormuz():
     )
     job = CLIENT.load_table_from_dataframe(df_q, table_id, job_config=job_config)
     job.result()
-    print(f"✓ {len(rows)} quiebres del evento Ormuz cargados en gold_quiebres_detectados")
+    print(f"{len(rows)} quiebres del evento Ormuz cargados en gold_quiebres_detectados")
 
 
 if __name__ == "__main__":
@@ -230,6 +230,6 @@ if __name__ == "__main__":
     cargar_quiebre_ormuz()
 
     print("\n" + "=" * 55)
-    print("✓ Inicialización completada")
+    print("Inicialización completada")
     print("  Siguiente paso: python scripts/update_market_data.py")
     print("=" * 55)

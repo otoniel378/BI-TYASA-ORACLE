@@ -31,7 +31,7 @@ from core.components.filters import sidebar_header
 from core.components.tables import tabla_ejecutiva, tabla_metricas
 
 # Sidebar
-sidebar_header("Parametros", "🔮")
+sidebar_header("Parametros")
 horizonte = st.sidebar.slider("Horizonte (meses)", min_value=1,
                                max_value=FORECAST_HORIZON_MAX, value=FORECAST_HORIZON_DEFAULT, key="fc_horizonte")
 modelo_key = st.sidebar.selectbox("Modelo de pronostico", options=list(MODELOS_DISPONIBLES.keys()),
@@ -169,7 +169,7 @@ def _render_resultado(res, key_prefix: str):
             tabla_metricas(res.metricas, titulo="Metricas de backtesting")
 
     fig = _grafico_forecast(res, titulo=f"Historico + Pronostico {horizonte} meses")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     df_fut = _tabla_futuro(res)
     if not df_fut.empty:
@@ -197,7 +197,7 @@ def _render_resultado(res, key_prefix: str):
             xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#E5E7EB", title="Toneladas"),
             legend=dict(orientation="h", y=-0.25, x=0.5, xanchor="center"), barmode="overlay",
         )
-        st.plotly_chart(fig_bt, use_container_width=True)
+        st.plotly_chart(fig_bt, width="stretch")
 
 
 def _cache_key(prefix: str, modelo: str, horizonte: int, dim: str = "") -> str:
@@ -211,7 +211,7 @@ def _get_or_compute(cache_key: str, fn):
     return st.session_state[cache_key]
 
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Demanda Total", "Comparar Modelos", "Por Proceso", "Por Familia", "🎯 Escenarios"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Demanda Total", "Comparar Modelos", "Por Proceso", "Por Familia", "Escenarios"])
 
 with tab1:
     seccion_titulo("Demanda Total", f"{horizonte} meses proyectados")
@@ -249,7 +249,7 @@ with tab2:
                     rows.append({"Modelo": MODELOS_DISPONIBLES[mk], "MAE": m.get("MAE", "—"),
                                  "MAPE": f"{mape_v:.1f}%" if not np.isnan(mape_v) else "—",
                                  "RMSE": m.get("RMSE", "—")})
-            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
 
             fig_comp = go.Figure()
             colores_comp = {"ets": COLORS["success"], "sarima": COLORS["secondary"],
@@ -277,7 +277,7 @@ with tab2:
                 title=dict(text="Comparacion de pronosticos — todos los modelos",
                            font=dict(size=14, color=COLORS["primary"]), x=0), height=420,
             )
-            st.plotly_chart(fig_comp, use_container_width=True)
+            st.plotly_chart(fig_comp, width="stretch")
         else:
             st.info("Haz clic en el boton para comparar los 4 modelos.")
 
@@ -352,7 +352,7 @@ with tab5:
 
                 with col_adv:
                     st.markdown(f"<div style='text-align:center;font-weight:700;color:#DC2626;"
-                                f"font-size:13px;margin-bottom:6px;'>🔴 Escenario Adverso</div>",
+                                f"font-size:13px;margin-bottom:6px;'>Escenario Adverso</div>",
                                 unsafe_allow_html=True)
                     pct_adv_mkt  = st.slider("Mercado acero (% ajuste)", -30, 0, -10,
                                               step=5, key="esc_adv_mkt")
@@ -363,7 +363,7 @@ with tab5:
 
                 with col_b:
                     st.markdown(f"<div style='text-align:center;font-weight:700;color:#D97706;"
-                                f"font-size:13px;margin-bottom:6px;'>🟡 Escenario Base</div>",
+                                f"font-size:13px;margin-bottom:6px;'>Escenario Base</div>",
                                 unsafe_allow_html=True)
                     pct_b_mkt  = st.slider("Mercado acero (% ajuste)", -10, 10, 0,
                                             step=5, key="esc_b_mkt", disabled=True)
@@ -374,7 +374,7 @@ with tab5:
 
                 with col_pos:
                     st.markdown(f"<div style='text-align:center;font-weight:700;color:#16A34A;"
-                                f"font-size:13px;margin-bottom:6px;'>🟢 Escenario Positivo</div>",
+                                f"font-size:13px;margin-bottom:6px;'>Escenario Positivo</div>",
                                 unsafe_allow_html=True)
                     pct_pos_mkt  = st.slider("Mercado acero (% ajuste)", 0, 30, 10,
                                               step=5, key="esc_pos_mkt")
@@ -416,7 +416,7 @@ with tab5:
                     yaxis=dict(gridcolor="#E5E7EB", title="Toneladas totales proyectadas",
                                range=[0, max(toneladas) * 1.18]),
                 )
-                st.plotly_chart(fig_esc, use_container_width=True, config={"displayModeBar": False})
+                st.plotly_chart(fig_esc, width="stretch", config={"displayModeBar": False})
 
                 # Cards de resumen
                 _ER = "#DC2626"; _WA = "#D97706"; _OK2 = "#16A34A"; _T1 = "#0F172A"
@@ -424,7 +424,7 @@ with tab5:
                 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:4px;">
                   <div style="background:#FEE2E2;border-radius:10px;padding:14px;border-left:4px solid {_ER};">
                     <div style="font-size:10px;font-weight:700;color:#991B1B;text-transform:uppercase;
-                         margin-bottom:4px;">🔴 Adverso</div>
+                         margin-bottom:4px;">Adverso</div>
                     <div style="font-size:20px;font-weight:800;color:{_ER};">{ton_adv:,.0f} ton</div>
                     <div style="font-size:11px;color:#991B1B;margin-top:3px;">
                       {(f_adv - 1) * 100:+.1f}% vs base
@@ -432,7 +432,7 @@ with tab5:
                   </div>
                   <div style="background:#FEF3C7;border-radius:10px;padding:14px;border-left:4px solid {_WA};">
                     <div style="font-size:10px;font-weight:700;color:#92400E;text-transform:uppercase;
-                         margin-bottom:4px;">🟡 Base</div>
+                         margin-bottom:4px;">Base</div>
                     <div style="font-size:20px;font-weight:800;color:{_WA};">{ton_base:,.0f} ton</div>
                     <div style="font-size:11px;color:#92400E;margin-top:3px;">
                       Modelo: {MODELOS_DISPONIBLES[modelo_key]}
@@ -440,7 +440,7 @@ with tab5:
                   </div>
                   <div style="background:#DCFCE7;border-radius:10px;padding:14px;border-left:4px solid {_OK2};">
                     <div style="font-size:10px;font-weight:700;color:#166534;text-transform:uppercase;
-                         margin-bottom:4px;">🟢 Positivo</div>
+                         margin-bottom:4px;">Positivo</div>
                     <div style="font-size:20px;font-weight:800;color:{_OK2};">{ton_pos:,.0f} ton</div>
                     <div style="font-size:11px;color:#166534;margin-top:3px;">
                       {(f_pos - 1) * 100:+.1f}% vs base
@@ -479,5 +479,5 @@ with tab5:
                     xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#E5E7EB", title="Toneladas"),
                     legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center"),
                 )
-                st.plotly_chart(fig_sc_ts, use_container_width=True,
+                st.plotly_chart(fig_sc_ts, width="stretch",
                                 config={"displayModeBar": False})

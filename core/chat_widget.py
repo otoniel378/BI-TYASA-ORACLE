@@ -59,7 +59,7 @@ def _construir_contexto(seccion_label: str, subseccion: str) -> str:
     partes: list[str] = []
 
     if seccion_label:
-        partes.append(f"PÁGINA ACTIVA: {seccion_label} → {subseccion}")
+        partes.append(f"PÁGINA ACTIVA: {seccion_label} / {subseccion}")
 
     # ── Contexto acumulativo del sistema ──────────────────────────────────────
     sys_ctx: dict = st.session_state.get(_SYS_KEY, {})
@@ -238,7 +238,6 @@ def render_drawer(gemini_key: str = "", seccion_label: str = "", subseccion: str
         display:flex; align-items:center; justify-content:space-between;
     ">
         <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:1.3rem;">🤖</span>
             <div>
                 <div style="color:#fff;font-size:0.85rem;font-weight:700;line-height:1.2;">
                     Asistente TYASA BI
@@ -255,17 +254,17 @@ def render_drawer(gemini_key: str = "", seccion_label: str = "", subseccion: str
     sys_ctx = st.session_state.get(_SYS_KEY, {})
     badges  = []
     if sys_ctx.get("negros_kpis") or sys_ctx.get("page_context", {}).get("toneladas_totales"):
-        badges.append("📊 KPIs")
+        badges.append("KPIs")
     if sys_ctx.get("mananera"):
-        badges.append("🎙️ Mañanera")
+        badges.append("Mañanera")
     if sys_ctx.get("quiebres"):
-        badges.append(f"⚡ {sys_ctx['quiebres'].get('n_quiebres',0)} quiebres")
+        badges.append(f"{sys_ctx['quiebres'].get('n_quiebres',0)} quiebres")
     if sys_ctx.get("sentimiento"):
         nivel = sys_ctx["sentimiento"].get("nivel", "")
-        badges.append(f"📰 {nivel}")
+        badges.append(nivel)
     mems = st.session_state.get(_MEM_KEY, [])
     if mems:
-        badges.append(f"🧠 {len(mems)} memorias")
+        badges.append(f"{len(mems)} memorias")
 
     if badges:
         badge_html = " &nbsp;".join(
@@ -296,7 +295,7 @@ def render_drawer(gemini_key: str = "", seccion_label: str = "", subseccion: str
         if not recents:
             st.html("""
             <div style="color:#6B7280;font-size:0.78rem;padding:10px;line-height:1.8;">
-                👋 <b>Hola!</b> Puedo ayudarte a:<br>
+                <b>Hola!</b> Puedo ayudarte a:<br>
                 • Analizar la mañanera de hoy con IA<br>
                 • Revisar quiebres del mercado<br>
                 • Consultar KPIs de ventas<br>
@@ -319,23 +318,23 @@ def render_drawer(gemini_key: str = "", seccion_label: str = "", subseccion: str
                             err    = tool.get("error")
 
                             if err:
-                                st.caption(f"⚠️ {err}")
+                                st.caption(err)
 
                             elif nombre == "ejecutar_sql" and tool.get("sql"):
                                 with st.expander(
-                                    f"🔍 {tool.get('titulo','SQL')} · {tool.get('filas',0)} filas",
+                                    f"{tool.get('titulo','SQL')} · {tool.get('filas',0)} filas",
                                     expanded=False
                                 ):
                                     st.code(tool["sql"], language="sql")
                                     _df = tool.get("_df")
                                     if _df is not None and not _df.empty:
-                                        st.dataframe(_df, use_container_width=True,
+                                        st.dataframe(_df, width="stretch",
                                                      height=min(200, 35 + 35 * len(_df)))
 
                             elif nombre == "buscar_noticias" and tool.get("noticias"):
                                 nots = tool["noticias"]
                                 with st.expander(
-                                    f"📰 Noticias · {len(nots)} resultados",
+                                    f"Noticias · {len(nots)} resultados",
                                     expanded=False
                                 ):
                                     for n in nots:
@@ -346,23 +345,20 @@ def render_drawer(gemini_key: str = "", seccion_label: str = "", subseccion: str
                                 _df = tool.get("_df")
                                 if _df is not None and not _df.empty:
                                     with st.expander(
-                                        f"📊 Precios mercado · {tool.get('filas',0)} registros",
+                                        f"Precios mercado · {tool.get('filas',0)} registros",
                                         expanded=False
                                     ):
-                                        st.dataframe(_df, use_container_width=True,
+                                        st.dataframe(_df, width="stretch",
                                                      height=min(200, 35 + 35 * len(_df)))
 
                             elif nombre == "ejecutar_analisis":
                                 analisis = tool.get("analisis", "")
-                                icons    = {"mananera": "🎙️", "quiebres_mercado": "⚡",
-                                            "kpis_ventas": "📊", "sentimiento_noticias": "📰"}
-                                icon     = icons.get(analisis, "🔧")
                                 res      = tool.get("_resultado_completo", {})
                                 n_items  = (
                                     len(res.get("resumen_ejecutivo", res.get("quiebres", [])))
                                     if res else 0
                                 )
-                                label = f"{icon} Análisis: {analisis} · {n_items} resultados"
+                                label = f"Análisis: {analisis} · {n_items} resultados"
                                 with st.expander(label, expanded=False):
                                     if res.get("error"):
                                         st.error(res["error"])
@@ -386,14 +382,14 @@ def render_drawer(gemini_key: str = "", seccion_label: str = "", subseccion: str
                             st.markdown(content)
 
                         if msg.get("error") and msg["error"] not in ("max_iter",):
-                            st.caption(f"⚠️ {msg['error']}")
+                            st.caption(msg["error"])
 
     # ── Auto-save indicator ────────────────────────────────────────────────────
     last_autosave = st.session_state.get("_autosave_last_n", 0)
     if last_autosave > 0 and last_autosave == len(msgs):
         st.html(
             "<div style='font-size:0.65rem;color:#059669;text-align:right;margin-top:2px;'>"
-            "🧠 Insights guardados automáticamente</div>"
+            "Insights guardados automáticamente</div>"
         )
 
     # ── Input ──────────────────────────────────────────────────────────────────
@@ -414,17 +410,17 @@ def render_drawer(gemini_key: str = "", seccion_label: str = "", subseccion: str
 
     c1, c2, c3 = st.columns([3, 1, 1])
     with c1:
-        enviar = st.button("▶ Enviar", use_container_width=True,
+        enviar = st.button("▶ Enviar", width="stretch",
                            type="primary", key="cw_send")
     with c2:
-        if st.button("🗑️", key="cw_clear", help="Limpiar conversación",
-                     use_container_width=True):
+        if st.button("Limpiar", key="cw_clear", help="Limpiar conversación",
+                     width="stretch"):
             st.session_state[_HIST_KEY] = []
             st.session_state[_MSGS_KEY] = []
             st.rerun()
     with c3:
-        if st.button("↗️", key="cw_full", help="Abrir chat completo",
-                     use_container_width=True):
+        if st.button("Abrir chat", key="cw_full", help="Abrir chat completo",
+                     width="stretch"):
             st.session_state.nav_seccion    = "chat_ia"
             st.session_state.nav_subseccion = "chat"
             st.session_state.chat_drawer_abierto = False

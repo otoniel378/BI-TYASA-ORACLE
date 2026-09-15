@@ -39,7 +39,7 @@ from core.components.filters import sidebar_header
 from core.components.charts import linea_temporal
 from core.components.tables import tabla_ejecutiva
 
-sidebar_header("Series de Tiempo", "📈")
+sidebar_header("Series de Tiempo")
 
 with st.spinner("Cargando datos..."):
     df_mensual_total = load_gold_demanda_mensual_total()
@@ -57,7 +57,7 @@ anios_total = _anios_de(df_mensual_total)
 
 st.markdown(
     f"""
-    <h2 style='color:{COLORS["primary"]};margin-bottom:0;'>📈 Series de Tiempo</h2>
+    <h2 style='color:{COLORS["primary"]};margin-bottom:0;'>Series de Tiempo</h2>
     <p style='color:{COLORS["text_light"]};'>Comportamiento temporal de la demanda de Aceros Planos Negros</p>
     """,
     unsafe_allow_html=True,
@@ -87,11 +87,11 @@ serie_var = calcular_variacion_mensual(serie)
 if not serie_var.empty:
     ult = serie_var.iloc[-1]
     render_kpi_row([
-        {"label": "Ultimo mes",       "value": ult["PESO_TON"], "suffix": " ton", "icon": "📅",
+        {"label": "Ultimo mes",       "value": ult["PESO_TON"], "suffix": " ton",
          "delta": ult.get("VAR_MOM_PCT"), "delta_label": "MoM"},
-        {"label": "Promedio mensual", "value": round(serie_var["PESO_TON"].mean(), 1), "suffix": " ton", "icon": "📊"},
-        {"label": "Maximo",           "value": round(serie_var["PESO_TON"].max(), 1),  "suffix": " ton", "icon": "📈"},
-        {"label": "Minimo",           "value": round(serie_var["PESO_TON"].min(), 1),  "suffix": " ton", "icon": "📉"},
+        {"label": "Promedio mensual", "value": round(serie_var["PESO_TON"].mean(), 1), "suffix": " ton"},
+        {"label": "Maximo",           "value": round(serie_var["PESO_TON"].max(), 1),  "suffix": " ton"},
+        {"label": "Minimo",           "value": round(serie_var["PESO_TON"].min(), 1),  "suffix": " ton"},
     ])
 
     # C1 — Vista toggle + C2 — overlay de quiebres
@@ -153,7 +153,7 @@ if not serie_var.empty:
             )
 
     fig_serie.update_layout(height=320)
-    st.plotly_chart(fig_serie, use_container_width=True)
+    st.plotly_chart(fig_serie, width="stretch")
 else:
     st.warning("Sin datos para el periodo seleccionado.")
 
@@ -175,7 +175,7 @@ if not serie_var.empty and "VAR_MOM_PCT" in serie_var.columns:
         xaxis=dict(showgrid=False), yaxis=dict(title="Variacion (%)", gridcolor="#E5E7EB"),
         showlegend=False, height=280,
     )
-    st.plotly_chart(fig_var, use_container_width=True)
+    st.plotly_chart(fig_var, width="stretch")
 
 # ── C3 — Índice Estacional ───────────────────────────────────────────────────
 st.divider()
@@ -218,7 +218,7 @@ if not serie_var.empty and "PESO_TON" in serie_var.columns:
         margin=dict(l=40, r=20, t=30, b=30), showlegend=False, height=270,
         xaxis=dict(showgrid=False), yaxis=dict(title="Índice (100 = promedio)", gridcolor="#E5E7EB"),
     )
-    st.plotly_chart(fig_est, use_container_width=True)
+    st.plotly_chart(fig_est, width="stretch")
     _idx_max = idx_mes.loc[idx_mes["Índice"].idxmax(), "Mes_lbl"]
     _idx_min = idx_mes.loc[idx_mes["Índice"].idxmin(), "Mes_lbl"]
     st.caption(f"Mes más alto: **{_idx_max}** · Mes más bajo: **{_idx_min}** · "
@@ -258,17 +258,17 @@ def _render_top(df, col_dim, titulo, key_suffix):
         top[["DIMENSION", "VAR_ABS", "VAR_PCT_STR"]].rename(
             columns={"DIMENSION": titulo, "VAR_ABS": "Var (ton)", "VAR_PCT_STR": "Var %"}
         ),
-        hide_index=True, use_container_width=True, height=310,
+        hide_index=True, width="stretch", height=310,
     )
 
 with col_p:
-    st.markdown("**📦 Productos**")
+    st.markdown("**Productos**")
     _render_top(df_gran_f, "PRODUCTO_LIMPIO", "Producto", "prod")
 with col_proc:
-    st.markdown("**⚙️ Procesos**")
+    st.markdown("**Procesos**")
     _render_top(df_proc_f, "PROCESO", "Proceso", "proc")
 with col_cli:
-    st.markdown("**👥 Clientes**")
+    st.markdown("**Clientes**")
     _render_top(df_cli_f, "CLIENTE", "Cliente", "cli")
 
 # ── SECCION 3 — Tendencia por producto ───────────────────────────────────────
@@ -311,7 +311,7 @@ if not df_gran_clean.empty and prods_sel:
         height=420, xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#E5E7EB", title="Toneladas"),
         title=dict(font=dict(size=14, color=COLORS["primary"]), x=0),
     )
-    st.plotly_chart(fig_tend, use_container_width=True)
+    st.plotly_chart(fig_tend, width="stretch")
 elif not prods_sel:
     st.info("Selecciona al menos un producto.")
 
@@ -357,7 +357,7 @@ if not df_gran_clean.empty and "PRODUCTO_LIMPIO" in df_gran_clean.columns:
             title=dict(text="Ranking de estabilidad — menor CV es mas estable",
                        font=dict(size=13, color=COLORS["primary"]), x=0),
         )
-        st.plotly_chart(fig_vol, use_container_width=True)
+        st.plotly_chart(fig_vol, width="stretch")
         tabla_ejecutiva(
             df_vol[["DIMENSION", "MEDIA", "STD", "CV", "ESTABILIDAD"]].rename(
                 columns={"DIMENSION": "PRODUCTO", "MEDIA": "PROM_TON", "STD": "DESV_STD"}
