@@ -22,6 +22,7 @@ from mercado.inegi.loaders import (
     load_serie,
     load_comparacion_anual,
 )
+from mercado.inegi.mapa_estatal import render as render_mapa_estatal
 from mercado.inegi.noticias_inegi import buscar_noticias_indicador
 from mercado.inegi.reportes import (
     generar_word_indicador,
@@ -668,8 +669,9 @@ def render():
     non_normal  = df_alerts[df_alerts["alerta"] != "Normal"]
     alert_count = len(non_normal)
     alert_label = f"Alertas ({alert_count})" if alert_count else "Alertas"
+    mapa_label  = "Mapa por Estado"
     tabs = st.tabs(
-        list(group_keys) + [alert_label]
+        list(group_keys) + [mapa_label, alert_label]
     )
 
     # ── Group tabs ───────────────────────────────────────────────────────────
@@ -734,6 +736,10 @@ def render():
                 exp_label = f"{label}  ·  {alerta.upper()}{z_str}"
                 with st.expander(exp_label, expanded=False):
                     _render_detail(clave, gkey, g, alerts_idx, _GEMINI_KEY)
+
+    # ── Mapa por Estado tab ──────────────────────────────────────────────────
+    with tabs[-2]:
+        render_mapa_estatal()
 
     # ── Alerts tab ───────────────────────────────────────────────────────────
     with tabs[-1]:

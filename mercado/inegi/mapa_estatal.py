@@ -1,18 +1,16 @@
 """
-09_mapa_estatal.py — Mapa de calor de indicadores INEGI por entidad federativa.
+mapa_estatal.py — Mapa de calor de indicadores INEGI por entidad federativa.
+Se embebe como pestaña dentro de pages/mercado/04_indicadores.py.
 
-A diferencia de 04_indicadores.py (indicadores nacionales), aquí la fuente es
-GOLD_INDICADORES_INEGI_ESTADO: mismas claves INEGI, desagregadas por área
-geográfica (01-32). El catálogo de indicadores con esta desagregación se va
-ampliando en mercado/inegi/loaders.py conforme se detectan más (ver nota ahí
-sobre qué SÍ y qué NO tiene desglose estatal).
+A diferencia de los indicadores nacionales (INDICADORES_CONFIG), aquí la
+fuente es GOLD_INDICADORES_INEGI_ESTADO: mismas claves INEGI, desagregadas
+por área geográfica (01-32). El catálogo de indicadores con esta
+desagregación se va ampliando en loaders.py (INDICADORES_ESTADO_CONFIG)
+conforme se detectan más — ver la nota ahí sobre qué SÍ y qué NO tiene
+desglose estatal.
 """
 
-import os, sys
-_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if _root not in sys.path:
-    sys.path.insert(0, _root)
-
+import os
 import json
 
 import pandas as pd
@@ -23,11 +21,11 @@ import plotly.graph_objects as go
 from mercado.inegi.loaders import (
     INDICADORES_ESTADO_CONFIG,
     INDICADORES_ESTADO_LABEL,
+    INDICADORES_ESTADO_UNIDAD,
     ESTADOS_INEGI,
     load_meses_disponibles_estado,
     load_mapa_estado,
     load_serie_estado,
-    load_ranking_yoy_estado,
 )
 
 _BG      = "#0F1923"
@@ -36,7 +34,8 @@ _GRID    = "#2A3A52"
 _TEXT    = "#94A3B8"
 _ACCENT  = "#81C784"
 
-_GEOJSON_PATH = os.path.join(_root, "assets", "mx_estados.geojson")
+_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+_GEOJSON_PATH = os.path.join(_ROOT, "assets", "mx_estados.geojson")
 
 # Sequential de un solo tono (verde, en línea con el grupo ENEC del dashboard
 # nacional) — oscuro/desaturado para valores bajos, brillante para altos, la
@@ -56,20 +55,40 @@ def _load_geojson() -> dict:
         return json.load(f)
 
 
-def _fmt_valor(v) -> str:
+def _fmt_pesos(v) -> str:
+    """Formatea un valor ya convertido a pesos reales (no crudo de la API).
+    Se mantiene todo en 'millones de pesos' (convención de reportes MX) salvo
+    montos billonarios, donde se escala a 'billones' para no mostrar 7+ dígitos."""
     try:
         f = float(v)
     except Exception:
         return "—"
-    if abs(f) >= 1_000_000:
-        return f"${f/1_000_000:,.1f}M"
-    if abs(f) >= 1_000:
-        return f"${f/1_000:,.0f}K"
-    return f"${f:,.0f}"
+    signo = "-" if f < 0 else ""
+    f = abs(f)
+    if f >= 1_000_000_000_000:
+        return f"{signo}${f/1_000_000_000_000:,.2f} billones MXN"
+    if f >= 1_000_000:
+        return f"{signo}${f/1_000_000:,.0f} M MXN"
+    if f >= 1_000:
+        return f"{signo}${f/1_000:,.0f} K MXN"
+    return f"{signo}${f:,.0f} MXN"
 
 
-def _make_mapa(df: pd.DataFrame, geojson: dict, label: str) -> go.Figure:
+def _fmt_personas(v) -> str:
+    try:
+        f = float(v)
+    except Exception:
+        return "—"
+    return f"{f:,.0f} personas"
+
+
+def _fmt_valor(v, unidad: str) -> str:
+    return _fmt_pesos(v) if unidad == "mxn" else _fmt_personas(v)
+
+
+def _make_mapa(df: pd.DataFrame, geojson: dict, label: str, unidad: str) -> go.Figure:
     vmax = df["valor"].quantile(0.90)
+    val_fmt = "$%{customdata[1]:,.0f} MXN" if unidad == "mxn" else "%{customdata[1]:,.0f} personas"
     fig = px.choropleth(
         df, geojson=geojson, locations="estado_iso", featureidkey="properties.id",
         color="valor", color_continuous_scale=_COLORSCALE,
@@ -79,7 +98,7 @@ def _make_mapa(df: pd.DataFrame, geojson: dict, label: str) -> go.Figure:
     )
     fig.update_traces(
         marker_line_color=_BG, marker_line_width=0.8,
-        hovertemplate="<b>%{customdata[0]}</b><br>" + label + ": %{customdata[1]:,.0f}<extra></extra>",
+        hovertemplate="<b>%{customdata[0]}</b><br>" + label + ": " + val_fmt + "<extra></extra>",
     )
     fig.update_geos(
         fitbounds="locations", visible=False,
@@ -99,18 +118,20 @@ def _make_mapa(df: pd.DataFrame, geojson: dict, label: str) -> go.Figure:
     return fig
 
 
-def _make_ranking(df: pd.DataFrame, label: str) -> go.Figure:
+def _make_ranking(df: pd.DataFrame, label: str, unidad: str) -> go.Figure:
     d = df.sort_values("valor", ascending=True)
     colors = [_ACCENT if v == d["valor"].max() else "#4E7A63" for v in d["valor"]]
+    val_fmt = "$%{x:,.0f} MXN" if unidad == "mxn" else "%{x:,.0f} personas"
+    tick_fmt = "$,.2s" if unidad == "mxn" else ",.2s"
     fig = go.Figure(go.Bar(
         x=d["valor"], y=d["estado_nombre"], orientation="h",
         marker=dict(color=colors),
-        hovertemplate="<b>%{y}</b><br>" + label + ": %{x:,.0f}<extra></extra>",
+        hovertemplate="<b>%{y}</b><br>" + label + ": " + val_fmt + "<extra></extra>",
     ))
     fig.update_layout(
         paper_bgcolor=_BG, plot_bgcolor=_SURFACE,
         font=dict(color=_TEXT, size=10.5),
-        xaxis=dict(gridcolor=_GRID, showgrid=True, title=None),
+        xaxis=dict(gridcolor=_GRID, showgrid=True, title=None, tickformat=tick_fmt),
         yaxis=dict(gridcolor=_GRID, showgrid=False, title=None, automargin=True),
         margin=dict(l=10, r=20, t=10, b=10),
         height=620, showlegend=False,
@@ -118,26 +139,29 @@ def _make_ranking(df: pd.DataFrame, label: str) -> go.Figure:
     return fig
 
 
-def _make_serie_estado(df_serie: pd.DataFrame, df_nacional: pd.DataFrame, label: str, color: str) -> go.Figure:
+def _make_serie_estado(df_serie: pd.DataFrame, df_nacional: pd.DataFrame, label: str, color: str, unidad: str) -> go.Figure:
+    val_fmt = "$%{y:,.0f} MXN" if unidad == "mxn" else "%{y:,.0f} personas"
+    val_fmt_nac = "$%{y:,.0f} MXN" if unidad == "mxn" else "%{y:,.0f} personas"
+    tick_fmt = "$,.2s" if unidad == "mxn" else ",.2s"
     fig = go.Figure()
     if not df_nacional.empty:
         dn = df_nacional.sort_values("fecha")
         fig.add_trace(go.Scatter(
             x=dn["fecha"], y=dn["valor"], mode="lines", name="Nacional",
             line=dict(color="#5B6B85", width=1.6, dash="dot"),
-            hovertemplate="Nacional %{x|%b %Y}: %{y:,.0f}<extra></extra>",
+            hovertemplate="Nacional %{x|%b %Y}: " + val_fmt_nac + "<extra></extra>",
         ))
     ds = df_serie.sort_values("fecha")
     fig.add_trace(go.Scatter(
         x=ds["fecha"], y=ds["valor"], mode="lines+markers", name=label,
         line=dict(color=color, width=2.5), marker=dict(size=5, color=color),
-        hovertemplate="%{x|%b %Y}: %{y:,.0f}<extra></extra>",
+        hovertemplate="%{x|%b %Y}: " + val_fmt + "<extra></extra>",
     ))
     fig.update_layout(
         paper_bgcolor=_BG, plot_bgcolor=_SURFACE,
         font=dict(color=_TEXT, size=11),
         xaxis=dict(gridcolor=_GRID, showgrid=True, title=None, tickformat="%b %Y"),
-        yaxis=dict(gridcolor=_GRID, showgrid=True, title=None),
+        yaxis=dict(gridcolor=_GRID, showgrid=True, title=None, tickformat=tick_fmt),
         margin=dict(l=50, r=20, t=20, b=20),
         height=320, hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.01, x=0, bgcolor="rgba(0,0,0,0)"),
@@ -152,24 +176,18 @@ def _kpi_card(titulo: str, valor: str, sub: str = "", color: str = _ACCENT) -> s
         f'border-left:4px solid {color};">'
         f'<div style="font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;'
         f'letter-spacing:0.06em;">{titulo}</div>'
-        f'<div style="margin-top:6px;font-size:22px;font-weight:700;color:#E2E8F0;'
+        f'<div style="margin-top:6px;font-size:19px;font-weight:700;color:#E2E8F0;'
         f'font-family:\'Courier New\',monospace;">{valor}</div>'
         f'{sub_html}</div>'
     )
 
 
-def main():
-    render()
-
-
-def render():
+def render() -> None:
     st.markdown(
-        "<h2 style='color:#E2E8F0;margin-bottom:2px;'>Mapa de Calor · INEGI por Estado</h2>"
-        "<p style='color:#64748B;margin:0;'>Monitoreo mensual de indicadores INEGI desagregados "
-        "por entidad federativa</p>",
+        "<p style='color:#94A3B8;font-size:12.5px;margin:4px 0 14px;line-height:1.5;'>"
+        "Monitoreo mensual de indicadores INEGI desagregados por entidad federativa.</p>",
         unsafe_allow_html=True,
     )
-    st.divider()
 
     claves = list(INDICADORES_ESTADO_CONFIG.keys())
     col_ind, col_mes = st.columns([2.5, 1.5])
@@ -180,6 +198,7 @@ def render():
             key="mapa_estado_clave",
         )
     label = INDICADORES_ESTADO_LABEL.get(clave, clave)
+    unidad = INDICADORES_ESTADO_UNIDAD.get(clave, "mxn")
 
     with st.spinner("Cargando meses disponibles..."):
         meses = load_meses_disponibles_estado(clave)
@@ -207,13 +226,13 @@ def render():
     suma_estados = df_mapa["valor"].sum()
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.html(_kpi_card("Nacional", _fmt_valor(valor_nac), mes_sel))
+        st.html(_kpi_card("Nacional", _fmt_valor(valor_nac, unidad), mes_sel))
     with c2:
-        st.html(_kpi_card("Suma 32 estados", _fmt_valor(suma_estados)))
+        st.html(_kpi_card("Suma 32 estados", _fmt_valor(suma_estados, unidad)))
     with c3:
-        st.html(_kpi_card("Estado líder", top_row["estado_nombre"], _fmt_valor(top_row["valor"]), "#66BB6A"))
+        st.html(_kpi_card("Estado líder", top_row["estado_nombre"], _fmt_valor(top_row["valor"], unidad), "#66BB6A"))
     with c4:
-        st.html(_kpi_card("Estado menor", bottom_row["estado_nombre"], _fmt_valor(bottom_row["valor"]), "#EF9A9A"))
+        st.html(_kpi_card("Estado menor", bottom_row["estado_nombre"], _fmt_valor(bottom_row["valor"], unidad), "#EF9A9A"))
 
     st.markdown("<div style='margin:12px 0 4px;'></div>", unsafe_allow_html=True)
 
@@ -221,10 +240,10 @@ def render():
     col_mapa, col_rank = st.columns([2.4, 1.6])
     geojson = _load_geojson()
     with col_mapa:
-        st.plotly_chart(_make_mapa(df_mapa, geojson, label), width="stretch", key="plt_mapa_estado")
+        st.plotly_chart(_make_mapa(df_mapa, geojson, label, unidad), width="stretch", key="plt_mapa_estado")
         st.caption("Escala de color truncada al percentil 90 para mejor contraste — pasa el cursor para ver el valor exacto de cada estado.")
     with col_rank:
-        st.plotly_chart(_make_ranking(df_mapa, label), width="stretch", key="plt_rank_estado")
+        st.plotly_chart(_make_ranking(df_mapa, label, unidad), width="stretch", key="plt_rank_estado")
 
     st.divider()
 
@@ -247,14 +266,10 @@ def render():
         df_serie_nac = load_serie_estado(clave, "00", periodos=60)
         if not df_serie_estado.empty:
             st.plotly_chart(
-                _make_serie_estado(df_serie_estado, df_serie_nac, estado_nombre_sel, _ACCENT),
+                _make_serie_estado(df_serie_estado, df_serie_nac, estado_nombre_sel, _ACCENT, unidad),
                 width="stretch", key="plt_serie_estado",
             )
         else:
             st.info("Sin historial disponible para este estado.")
 
     st.caption(f"Fuente: INEGI BIE · tabla gold_indicadores_inegi_estado · {len(claves)} indicador(es) con desagregación estatal")
-
-
-if __name__ == "__main__":
-    main()
