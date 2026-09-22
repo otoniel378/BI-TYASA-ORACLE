@@ -3,7 +3,7 @@
 Cards compactas de overview + expanders con gráfica Plotly + análisis IA por indicador.
 """
 
-import os, sys
+import os, sys, json
 _root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _root not in sys.path:
     sys.path.insert(0, _root)
@@ -16,6 +16,7 @@ from mercado.inegi.loaders import (
     GRUPOS_INEGI,
     GRUPOS_MENSUALES,
     GRUPOS_ANUALES,
+    GRUPOS_TOOLTIP,
     INDICADORES_LABEL,
     calcular_alertas,
     load_sparklines,
@@ -41,15 +42,56 @@ except Exception:
 _MESES_CORTOS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 _RANGOS = {"12M": 12, "24M": 24, "36M": 36, "5A": 60, "Todo": 999}
 
+# ── Paleta clara (consistente con config.py / assets/style.css) ─────────────
+_SURFACE     = "#FFFFFF"
+_BORDER      = "#DDE3EC"
+_CHART_BG    = "#FFFFFF"
+_GRID        = "#E2E8F0"
+_TEXT_DARK   = "#0F172A"
+_TEXT_BODY   = "#1E293B"
+_TEXT_MUTED  = "#64748B"
+_POS         = "#2E7D32"   # verde — variación positiva
+_NEG         = "#C62828"   # rojo — variación negativa (se deja rojo, solo un tono legible en blanco)
+
 # ── Paleta de alertas ────────────────────────────────────────────────────────
 _ALERT = {
-    "Critico":  {"color": "#EF5350", "bg": "rgba(239,83,80,0.15)"},
-    "Alto":     {"color": "#FF9800", "bg": "rgba(255,152,0,0.15)"},
-    "Moderado": {"color": "#FFC107", "bg": "rgba(255,193,7,0.12)"},
-    "Normal":   {"color": "#66BB6A", "bg": "rgba(102,187,106,0.10)"},
+    "Critico":  {"color": "#C62828", "bg": "rgba(198,40,40,0.10)"},
+    "Alto":     {"color": "#E65100", "bg": "rgba(230,81,0,0.10)"},
+    "Moderado": {"color": "#B45309", "bg": "rgba(180,83,9,0.10)"},
+    "Normal":   {"color": "#2E7D32", "bg": "rgba(46,125,50,0.10)"},
 }
-_SURFACE = "#1A2535"
 _ORDER   = {"Critico": 0, "Alto": 1, "Moderado": 2, "Normal": 3}
+
+
+# ── Tooltips nativos sobre las pestañas (IMAI, EMIM, ...) ────────────────────
+def _tabs_tooltip_script(tooltips: dict) -> str:
+    """Pone el atributo title (tooltip nativo del navegador) a cada botón de
+    pestaña cuyo texto coincida con una sigla del glosario. st.tabs() no
+    expone esto directamente, así que se hace por DOM una vez montado —
+    con MutationObserver para que también aplique si Streamlit vuelve a
+    dibujar las pestañas (cambio de Mensual/Anual, etc.)."""
+    data = json.dumps(tooltips, ensure_ascii=False)
+    return f"""
+    <script>
+    (function() {{
+        const TOOLTIPS = {data};
+        function aplicar() {{
+            document.querySelectorAll('[data-baseweb="tab"]').forEach(function(el) {{
+                const label = (el.innerText || '').trim();
+                if (TOOLTIPS[label] && el.title !== TOOLTIPS[label]) {{
+                    el.title = TOOLTIPS[label];
+                    el.style.cursor = 'help';
+                }}
+            }});
+        }}
+        aplicar();
+        if (!window.__inegiTooltipsObserver) {{
+            window.__inegiTooltipsObserver = new MutationObserver(aplicar);
+            window.__inegiTooltipsObserver.observe(document.body, {{childList: true, subtree: true}});
+        }}
+    }})();
+    </script>
+    """
 
 
 # ── Utilidades ───────────────────────────────────────────────────────────────
@@ -138,29 +180,40 @@ def _card(clave: str, label: str, valor, var_mom, alerta: str,
     try:
         v = float(var_mom)
         arrow = "▲" if v >= 0 else "▼"
-        vc    = "#66BB6A" if v >= 0 else "#EF5350"
+        vc    = _POS if v >= 0 else _NEG
         var_html = f'<span style="color:{vc};font-size:11px;font-weight:500;">{arrow} {abs(v):.1f}% MoM</span>'
     except Exception:
-        var_html = '<span style="color:#475569;font-size:11px;">— MoM</span>'
+        var_html = f'<span style="color:{_TEXT_MUTED};font-size:11px;">— MoM</span>'
     svg = _sparkline(spk_vals, group_color, f"sg_{clave}", h=36)
     return (
-        f'<div style="background:{_SURFACE};border-radius:12px;padding:14px 15px 10px;'
-        f'border-left:4px solid {group_color};">'
+        f'<div style="background:{_SURFACE};border:1px solid {_BORDER};border-radius:12px;'
+        f'padding:14px 15px 10px;border-left:4px solid {group_color};'
+        f'box-shadow:0 1px 3px rgba(15,23,42,0.05);">'
         f'<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:6px;">'
-        f'<div style="font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;'
+        f'<div style="font-size:10px;color:{_TEXT_MUTED};font-weight:600;text-transform:uppercase;'
         f'letter-spacing:0.06em;line-height:1.35;flex:1;min-width:0;">{label}</div>'
         f'{badge}</div>'
-        f'<div style="margin-top:8px;font-size:22px;font-weight:700;color:#E2E8F0;'
+        f'<div style="margin-top:8px;font-size:22px;font-weight:700;color:{_TEXT_DARK};'
         f'font-family:\'Courier New\',monospace;">{_fmt(valor)}</div>'
         f'<div style="margin-top:3px;">{var_html}</div>'
-        f'<div style="margin-top:8px;opacity:0.7;">{svg}</div>'
+        f'<div style="margin-top:8px;opacity:0.85;">{svg}</div>'
         f'</div>'
     )
 
 
-def _group_grid(claves, alerts_idx, sparklines, group_color, desc) -> str:
+def _group_grid(gkey, g, alerts_idx, sparklines) -> str:
+    claves      = g["claves"]
+    group_color = g["color"]
+    tooltip     = GRUPOS_TOOLTIP.get(gkey, "")
+    titulo = (
+        f'<p style="margin:2px 0 4px;">'
+        f'<abbr title="{tooltip}" style="text-decoration:none;border-bottom:1.5px dotted {_TEXT_MUTED};'
+        f'cursor:help;font-weight:800;font-size:14px;color:{_TEXT_DARK};">{gkey}</abbr>'
+        f'<span style="color:{_TEXT_MUTED};font-size:12.5px;"> · {g["label"]}</span></p>'
+    ) if tooltip else ""
     header = (
-        f'<p style="color:#94A3B8;font-size:12.5px;margin:4px 0 14px;line-height:1.5;">{desc}</p>'
+        f'{titulo}'
+        f'<p style="color:{_TEXT_MUTED};font-size:12.5px;margin:4px 0 14px;line-height:1.5;">{g["desc"]}</p>'
     )
     cards_html = ""
     for clave in claves:
@@ -192,19 +245,20 @@ def _alert_summary(df: pd.DataFrame) -> str:
             f'padding:10px 22px;background:{am["bg"]};border-radius:10px;'
             f'border:1px solid {am["color"]}33;">'
             f'<span style="font-size:28px;font-weight:800;color:{am["color"]};line-height:1;">{c}</span>'
-            f'<span style="font-size:10px;color:#94A3B8;margin-top:3px;white-space:nowrap;">'
+            f'<span style="font-size:10px;color:{_TEXT_MUTED};margin-top:3px;white-space:nowrap;">'
             f'{nivel}</span></div>'
         )
     note = (
         f'<div style="flex:1;display:flex;align-items:center;padding-left:16px;">'
-        f'<span style="font-size:11.5px;color:#475569;line-height:1.6;">'
+        f'<span style="font-size:11.5px;color:{_TEXT_MUTED};line-height:1.6;">'
         f'Sistema de alertas Z-score · ventana 24 meses<br>'
-        f'<span style="color:#374151;">Crítico |z|&gt;2.5 · Alto |z|&gt;1.5 · Moderado |z|&gt;1.0</span>'
+        f'<span style="color:{_TEXT_BODY};">Crítico |z|&gt;2.5 · Alto |z|&gt;1.5 · Moderado |z|&gt;1.0</span>'
         f'</span></div>'
     )
     return (
         f'<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;'
-        f'padding:14px 16px;background:{_SURFACE};border-radius:14px;margin-bottom:2px;">'
+        f'padding:14px 16px;background:{_SURFACE};border:1px solid {_BORDER};border-radius:14px;'
+        f'margin-bottom:2px;box-shadow:0 1px 3px rgba(15,23,42,0.05);">'
         f'{items}{note}</div>'
     )
 
@@ -222,13 +276,13 @@ def _make_chart(df_serie: pd.DataFrame, label: str, color: str) -> go.Figure:
         hovertemplate="%{x|%Y-%m}: %{y:,.2f}<extra></extra>",
     ))
     fig.update_layout(
-        paper_bgcolor="#0F1923", plot_bgcolor="#1A2535",
-        font=dict(color="#94A3B8", size=11),
+        paper_bgcolor=_CHART_BG, plot_bgcolor=_CHART_BG,
+        font=dict(color=_TEXT_MUTED, size=11),
         xaxis=dict(
-            gridcolor="#2A3A52", showgrid=True, title=None, tickformat="%b %Y",
-            rangeslider=dict(visible=True, bgcolor="#0F1923", bordercolor="#2A3A52", thickness=0.06),
+            gridcolor=_GRID, showgrid=True, title=None, tickformat="%b %Y",
+            rangeslider=dict(visible=True, bgcolor="#F8FAFC", bordercolor=_GRID, thickness=0.06),
         ),
-        yaxis=dict(gridcolor="#2A3A52", showgrid=True, title=None),
+        yaxis=dict(gridcolor=_GRID, showgrid=True, title=None),
         margin=dict(l=50, r=20, t=20, b=20),
         height=320, showlegend=False, hovermode="x unified",
     )
@@ -255,10 +309,10 @@ def _make_yoy_chart(comp: dict, label: str, color: str) -> go.Figure:
         hovertemplate="%{x} " + str(anio_actual) + ": %{y:,.2f}<extra></extra>",
     ))
     fig.update_layout(
-        paper_bgcolor="#0F1923", plot_bgcolor="#1A2535",
-        font=dict(color="#94A3B8", size=11),
-        xaxis=dict(gridcolor="#2A3A52", showgrid=False, title=None),
-        yaxis=dict(gridcolor="#2A3A52", showgrid=True, title=None),
+        paper_bgcolor=_CHART_BG, plot_bgcolor=_CHART_BG,
+        font=dict(color=_TEXT_MUTED, size=11),
+        xaxis=dict(gridcolor=_GRID, showgrid=False, title=None),
+        yaxis=dict(gridcolor=_GRID, showgrid=True, title=None),
         margin=dict(l=50, r=20, t=10, b=30),
         height=300, hovermode="x unified",
         legend=dict(orientation="h", yanchor="bottom", y=1.01, x=0, bgcolor="rgba(0,0,0,0)"),
@@ -330,19 +384,19 @@ def _stats_card(row, df_serie: pd.DataFrame, color: str, comp: dict | None = Non
     def arrow(v):
         try:
             f = float(v)
-            c = "#66BB6A" if f >= 0 else "#EF5350"
+            c = _POS if f >= 0 else _NEG
             return c, f"{'▲' if f >= 0 else '▼'} {abs(f):.1f}%"
         except Exception:
-            return "#64748B", "—"
+            return _TEXT_MUTED, "—"
 
     mom_c, mom_s = arrow(row.get("var_mom"))
-    yoy_c, yoy_s = arrow(var_yoy) if var_yoy is not None else ("#64748B", "—")
+    yoy_c, yoy_s = arrow(var_yoy) if var_yoy is not None else (_TEXT_MUTED, "—")
 
-    def row_html(lbl, val, vc="#E2E8F0"):
+    def row_html(lbl, val, vc=_TEXT_DARK):
         return (
             f'<div style="display:flex;justify-content:space-between;'
-            f'padding:7px 0;border-bottom:1px solid #2A3A52;">'
-            f'<span style="color:#94A3B8;font-size:11.5px;">{lbl}</span>'
+            f'padding:7px 0;border-bottom:1px solid {_GRID};">'
+            f'<span style="color:{_TEXT_MUTED};font-size:11.5px;">{lbl}</span>'
             f'<span style="color:{vc};font-size:12px;font-weight:600;">{val}</span></div>'
         )
 
@@ -353,7 +407,7 @@ def _stats_card(row, df_serie: pd.DataFrame, color: str, comp: dict | None = Non
         f'color:{am["color"]};">{_ALERTA_FRASE.get(alerta, _ALERTA_FRASE["Normal"])}</div>'
     )
     resumen_html = (
-        f'<div style="margin:10px 0 14px;font-size:12.5px;color:#CBD5E1;line-height:1.55;">'
+        f'<div style="margin:10px 0 14px;font-size:12.5px;color:{_TEXT_BODY};line-height:1.55;">'
         f'{_frase_resumen(row.get("var_mom"), var_yoy, alerta)}</div>'
     )
     rows = (
@@ -374,13 +428,13 @@ def _stats_card(row, df_serie: pd.DataFrame, color: str, comp: dict | None = Non
         tendencia = _tendencia_reciente(comp)
         if tendencia:
             ytd_html = (
-                f'<div style="margin-top:10px;padding:8px 10px;background:rgba(255,255,255,0.03);'
-                f'border-radius:8px;font-size:11px;color:#94A3B8;">{tendencia}</div>'
+                f'<div style="margin-top:10px;padding:8px 10px;background:#F8FAFC;border:1px solid {_GRID};'
+                f'border-radius:8px;font-size:11px;color:{_TEXT_MUTED};">{tendencia}</div>'
             )
 
     return (
-        f'<div style="background:{_SURFACE};border-radius:12px;padding:16px 18px;'
-        f'border-left:4px solid {color};">'
+        f'<div style="background:{_SURFACE};border:1px solid {_BORDER};border-radius:12px;padding:16px 18px;'
+        f'border-left:4px solid {color};box-shadow:0 1px 3px rgba(15,23,42,0.05);">'
         f'<div>{badge}</div>'
         f'{resumen_html}'
         f'{rows}{ytd_html}</div>'
@@ -391,30 +445,30 @@ def _stats_card(row, df_serie: pd.DataFrame, color: str, comp: dict | None = Non
 def _render_ai_result(result: dict | None) -> str:
     if not result:
         return (
-            f'<div style="color:#475569;font-size:12px;padding:12px;text-align:center;'
-            f'background:{_SURFACE};border-radius:10px;">'
+            f'<div style="color:{_TEXT_MUTED};font-size:12px;padding:12px;text-align:center;'
+            f'background:{_SURFACE};border:1px solid {_BORDER};border-radius:10px;">'
             f'Haz clic en "Analizar" para generar el análisis de impacto en TYASA.</div>'
         )
     error   = result.get("_error")
     analisis = result.get("analisis", "")
     if error and not analisis:
         return (
-            f'<div style="color:#EF5350;padding:12px;font-size:12px;border-radius:8px;'
-            f'background:rgba(239,83,80,0.08);">{error}</div>'
+            f'<div style="color:{_NEG};padding:12px;font-size:12px;border-radius:8px;'
+            f'background:rgba(198,40,40,0.08);">{error}</div>'
         )
     cached_badge = (
-        ' <span style="font-size:9px;color:#475569;">caché</span>'
+        f' <span style="font-size:9px;color:{_TEXT_MUTED};">caché</span>'
         if result.get("_cached") else ""
     )
     p_html = "".join(
-        f'<p style="margin:0 0 12px;color:#CBD5E1;font-size:13px;line-height:1.7;">{p}</p>'
+        f'<p style="margin:0 0 12px;color:{_TEXT_BODY};font-size:13px;line-height:1.7;">{p}</p>'
         for p in analisis.strip().split("\n\n") if p.strip()
-    ) or f'<p style="color:#CBD5E1;font-size:13px;">{analisis.strip()}</p>'
+    ) or f'<p style="color:{_TEXT_BODY};font-size:13px;">{analisis.strip()}</p>'
 
     return (
-        f'<div style="background:{_SURFACE};border-radius:12px;padding:18px 20px;'
-        f'border-left:4px solid #4A7BA7;margin-top:4px;">'
-        f'<div style="font-size:10px;color:#64748B;font-weight:700;text-transform:uppercase;'
+        f'<div style="background:{_SURFACE};border:1px solid {_BORDER};border-radius:12px;padding:18px 20px;'
+        f'border-left:4px solid #4A7BA7;margin-top:4px;box-shadow:0 1px 3px rgba(15,23,42,0.05);">'
+        f'<div style="font-size:10px;color:{_TEXT_MUTED};font-weight:700;text-transform:uppercase;'
         f'letter-spacing:0.06em;margin-bottom:12px;">ANÁLISIS IA · IMPACTO TYASA{cached_badge}</div>'
         f'{p_html}</div>'
     )
@@ -429,8 +483,8 @@ def _noticias_indicador_cached(clave: str, grupo: str, max_r: int = 8) -> list:
 def _noticias_html(noticias: list) -> str:
     if not noticias:
         return (
-            f'<div style="color:#475569;font-size:12px;padding:12px;text-align:center;'
-            f'background:{_SURFACE};border-radius:10px;">Sin noticias relacionadas recientes.</div>'
+            f'<div style="color:{_TEXT_MUTED};font-size:12px;padding:12px;text-align:center;'
+            f'background:{_SURFACE};border:1px solid {_BORDER};border-radius:10px;">Sin noticias relacionadas recientes.</div>'
         )
     items = ""
     for n in noticias[:8]:
@@ -441,12 +495,12 @@ def _noticias_html(noticias: list) -> str:
         meta = "  ·  ".join(x for x in [fuente, fecha] if x)
         items += (
             f'<a href="{url}" target="_blank" style="text-decoration:none;">'
-            f'<div style="padding:10px 12px;border-bottom:1px solid #2A3A52;">'
-            f'<div style="color:#CBD5E1;font-size:12.5px;font-weight:500;line-height:1.4;">{titulo}</div>'
-            f'<div style="color:#64748B;font-size:10.5px;margin-top:3px;">{meta}</div>'
+            f'<div style="padding:10px 12px;border-bottom:1px solid {_GRID};">'
+            f'<div style="color:{_TEXT_BODY};font-size:12.5px;font-weight:500;line-height:1.4;">{titulo}</div>'
+            f'<div style="color:{_TEXT_MUTED};font-size:10.5px;margin-top:3px;">{meta}</div>'
             f'</div></a>'
         )
-    return f'<div style="background:{_SURFACE};border-radius:12px;overflow:hidden;">{items}</div>'
+    return f'<div style="background:{_SURFACE};border:1px solid {_BORDER};border-radius:12px;overflow:hidden;">{items}</div>'
 
 
 # ── Sección de generación de reportes ────────────────────────────────────────
@@ -461,7 +515,7 @@ def _render_reporte_section(clave: str, tab_key: str, g: dict, periodos: int,
         "Configura GEMINI_API_KEY para agregar el análisis con proyección e implicaciones para TYASA."
     )
     st.markdown(
-        f"<p style='color:#94A3B8;font-size:12px;margin:8px 0 10px;'>{nota_ia}</p>",
+        f"<p style='color:{_TEXT_MUTED};font-size:12px;margin:8px 0 10px;'>{nota_ia}</p>",
         unsafe_allow_html=True,
     )
     col_w, col_p = st.columns(2)
@@ -548,7 +602,7 @@ def _render_detail(clave: str, tab_key: str, g: dict,
     col_lbl, col_btn, col_frz = st.columns([4, 1.5, 1])
     with col_lbl:
         st.markdown(
-            "<p style='color:#94A3B8;font-size:12px;margin:8px 0 0;'>"
+            f"<p style='color:{_TEXT_MUTED};font-size:12px;margin:8px 0 0;'>"
             "Análisis de impacto con Gemini · contexto TYASA y la industria siderúrgica mexicana</p>",
             unsafe_allow_html=True,
         )
@@ -589,7 +643,7 @@ def _render_detail(clave: str, tab_key: str, g: dict,
     # Noticias relacionadas
     st.divider()
     st.markdown(
-        "<p style='color:#94A3B8;font-size:12px;font-weight:600;text-transform:uppercase;"
+        f"<p style='color:{_TEXT_MUTED};font-size:12px;font-weight:600;text-transform:uppercase;"
         "letter-spacing:0.06em;margin:0 0 8px;'>Noticias relacionadas</p>",
         unsafe_allow_html=True,
     )
@@ -601,7 +655,7 @@ def _render_detail(clave: str, tab_key: str, g: dict,
     # Generación de reporte
     st.divider()
     st.markdown(
-        "<p style='color:#94A3B8;font-size:12px;font-weight:600;text-transform:uppercase;"
+        f"<p style='color:{_TEXT_MUTED};font-size:12px;font-weight:600;text-transform:uppercase;"
         "letter-spacing:0.06em;margin:0 0 4px;'>Generar reporte de este indicador</p>",
         unsafe_allow_html=True,
     )
@@ -621,9 +675,10 @@ def render():
     col_title, col_btn = st.columns([6, 1])
     with col_title:
         st.markdown(
-            "<h2 style='color:#E2E8F0;margin-bottom:2px;'>Indicadores INEGI</h2>"
-            "<p style='color:#64748B;margin:0;'>52 series macroeconómicas · 12 grupos · "
-            "alertas Z-score · comparación anual · noticias · reportes descargables</p>",
+            f"<h2 style='color:{_TEXT_DARK};margin-bottom:2px;'>Indicadores INEGI</h2>"
+            f"<p style='color:{_TEXT_MUTED};margin:0;'>52 series macroeconómicas · 12 grupos · "
+            "alertas Z-score · comparación anual · noticias · reportes descargables — "
+            "pasa el cursor sobre la sigla de cada grupo (ej. IMAI) para ver su significado</p>",
             unsafe_allow_html=True,
         )
     with col_btn:
@@ -673,6 +728,7 @@ def render():
     tabs = st.tabs(
         list(group_keys) + [mapa_label, alert_label]
     )
+    st.html(_tabs_tooltip_script(GRUPOS_TOOLTIP), unsafe_allow_javascript=True)
 
     # ── Group tabs ───────────────────────────────────────────────────────────
     for i, gkey in enumerate(group_keys):
@@ -680,7 +736,7 @@ def render():
         claves = g["claves"]
         with tabs[i]:
             # Overview compacto
-            st.html(_group_grid(claves, alerts_idx, sparklines, g["color"], g["desc"]))
+            st.html(_group_grid(gkey, g, alerts_idx, sparklines))
 
             with st.expander("Generar reporte de todo el grupo", expanded=False):
                 nota_grp = (
@@ -751,7 +807,7 @@ def render():
             df_sorted = df_sorted.sort_values("_ord")
 
             st.html(
-                f"<p style='color:#94A3B8;font-size:13px;margin:4px 0 12px;'>"
+                f"<p style='color:{_TEXT_MUTED};font-size:13px;margin:4px 0 12px;'>"
                 f"{len(df_sorted)} indicadores fuera de rango normal — ordenados por severidad.</p>"
             )
 

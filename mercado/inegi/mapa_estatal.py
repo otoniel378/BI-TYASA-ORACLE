@@ -28,25 +28,30 @@ from mercado.inegi.loaders import (
     load_serie_estado,
 )
 
-_BG      = "#0F1923"
-_SURFACE = "#1A2535"
-_GRID    = "#2A3A52"
-_TEXT    = "#94A3B8"
-_ACCENT  = "#81C784"
+# ── Paleta clara (consistente con config.py / assets/style.css) ─────────────
+_BG      = "#FFFFFF"   # fondo de gráficas/mapa
+_SURFACE = "#FFFFFF"   # fondo de tarjetas
+_BORDER  = "#DDE3EC"
+_GRID    = "#E2E8F0"
+_TEXT    = "#334155"   # texto de ejes/etiquetas de gráficas
+_MUTED   = "#64748B"   # texto secundario
+_ACCENT  = "#2E7D32"   # verde (líneas / acento por defecto)
+_HIGHLIGHT = "#1B3A5C" # navy — contorno del estado seleccionado
 
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 _GEOJSON_PATH = os.path.join(_ROOT, "assets", "mx_estados.geojson")
 
-# Sequential de un solo tono (verde, en línea con el grupo ENEC del dashboard
-# nacional) — oscuro/desaturado para valores bajos, brillante para altos, la
-# variante que mejor contrasta sobre fondo oscuro.
+# Sequential de un solo tono (verde) — claro para valores bajos, oscuro y
+# saturado para altos, calibrado para fondo blanco.
 _COLORSCALE = [
-    [0.0,  "#16281F"],
-    [0.25, "#245C43"],
-    [0.5,  "#3D8360"],
-    [0.75, "#5FA97E"],
-    [1.0,  "#8CD9A0"],
+    [0.0,  "#F1F8F4"],
+    [0.25, "#C8E6C9"],
+    [0.5,  "#81C784"],
+    [0.75, "#43A047"],
+    [1.0,  "#1B5E20"],
 ]
+
+_ESTADO_TODOS = "Todos los estados"
 
 
 @st.cache_data(show_spinner=False)
@@ -86,7 +91,7 @@ def _fmt_valor(v, unidad: str) -> str:
     return _fmt_pesos(v) if unidad == "mxn" else _fmt_personas(v)
 
 
-def _make_mapa(df: pd.DataFrame, geojson: dict, label: str, unidad: str) -> go.Figure:
+def _make_mapa(df: pd.DataFrame, geojson: dict, label: str, unidad: str, estado_iso_sel: str | None) -> go.Figure:
     vmax = df["valor"].quantile(0.90)
     val_fmt = "$%{customdata[1]:,.0f} MXN" if unidad == "mxn" else "%{customdata[1]:,.0f} personas"
     fig = px.choropleth(
@@ -97,9 +102,19 @@ def _make_mapa(df: pd.DataFrame, geojson: dict, label: str, unidad: str) -> go.F
         custom_data=["estado_nombre", "valor"],
     )
     fig.update_traces(
-        marker_line_color=_BG, marker_line_width=0.8,
+        marker_line_color="#FFFFFF", marker_line_width=0.8,
         hovertemplate="<b>%{customdata[0]}</b><br>" + label + ": " + val_fmt + "<extra></extra>",
     )
+    if estado_iso_sel:
+        # Contorno resaltado sobre el estado seleccionado — relleno transparente
+        # (no tapa el color real) y borde grueso navy, con transición animada.
+        fig.add_trace(go.Choropleth(
+            geojson=geojson, locations=[estado_iso_sel], z=[1],
+            featureidkey="properties.id",
+            colorscale=[[0, "rgba(0,0,0,0)"], [1, "rgba(0,0,0,0)"]],
+            showscale=False, marker_line_color=_HIGHLIGHT, marker_line_width=4,
+            hoverinfo="skip",
+        ))
     fig.update_geos(
         fitbounds="locations", visible=False,
         bgcolor=_BG, showframe=False, showcountries=False,
@@ -108,7 +123,8 @@ def _make_mapa(df: pd.DataFrame, geojson: dict, label: str, unidad: str) -> go.F
         paper_bgcolor=_BG, plot_bgcolor=_BG,
         font=dict(color=_TEXT, size=11),
         margin=dict(l=0, r=0, t=10, b=0),
-        height=480,
+        height=480, showlegend=False,
+        transition=dict(duration=450, easing="cubic-in-out"),
         coloraxis_colorbar=dict(
             title=dict(text="", font=dict(color=_TEXT)),
             tickfont=dict(color=_TEXT), thickness=14, len=0.65,
@@ -118,9 +134,14 @@ def _make_mapa(df: pd.DataFrame, geojson: dict, label: str, unidad: str) -> go.F
     return fig
 
 
-def _make_ranking(df: pd.DataFrame, label: str, unidad: str) -> go.Figure:
+def _make_ranking(df: pd.DataFrame, label: str, unidad: str, estado_sel: str | None) -> go.Figure:
     d = df.sort_values("valor", ascending=True)
-    colors = [_ACCENT if v == d["valor"].max() else "#4E7A63" for v in d["valor"]]
+    colors = ["#9CC7A1"] * len(d)
+    for i, nombre in enumerate(d["estado_nombre"]):
+        if estado_sel and nombre == estado_sel:
+            colors[i] = _HIGHLIGHT
+        elif d["valor"].iloc[i] == d["valor"].max():
+            colors[i] = _ACCENT
     val_fmt = "$%{x:,.0f} MXN" if unidad == "mxn" else "%{x:,.0f} personas"
     tick_fmt = "$,.2s" if unidad == "mxn" else ",.2s"
     fig = go.Figure(go.Bar(
@@ -135,20 +156,21 @@ def _make_ranking(df: pd.DataFrame, label: str, unidad: str) -> go.Figure:
         yaxis=dict(gridcolor=_GRID, showgrid=False, title=None, automargin=True),
         margin=dict(l=10, r=20, t=10, b=10),
         height=620, showlegend=False,
+        transition=dict(duration=450, easing="cubic-in-out"),
     )
     return fig
 
 
 def _make_serie_estado(df_serie: pd.DataFrame, df_nacional: pd.DataFrame, label: str, color: str, unidad: str) -> go.Figure:
     val_fmt = "$%{y:,.0f} MXN" if unidad == "mxn" else "%{y:,.0f} personas"
-    val_fmt_nac = "$%{y:,.0f} MXN" if unidad == "mxn" else "%{y:,.0f} personas"
+    val_fmt_nac = val_fmt
     tick_fmt = "$,.2s" if unidad == "mxn" else ",.2s"
     fig = go.Figure()
     if not df_nacional.empty:
         dn = df_nacional.sort_values("fecha")
         fig.add_trace(go.Scatter(
             x=dn["fecha"], y=dn["valor"], mode="lines", name="Nacional",
-            line=dict(color="#5B6B85", width=1.6, dash="dot"),
+            line=dict(color="#94A3B8", width=1.6, dash="dot"),
             hovertemplate="Nacional %{x|%b %Y}: " + val_fmt_nac + "<extra></extra>",
         ))
     ds = df_serie.sort_values("fecha")
@@ -170,13 +192,13 @@ def _make_serie_estado(df_serie: pd.DataFrame, df_nacional: pd.DataFrame, label:
 
 
 def _kpi_card(titulo: str, valor: str, sub: str = "", color: str = _ACCENT) -> str:
-    sub_html = f'<div style="margin-top:4px;font-size:11px;color:#64748B;">{sub}</div>' if sub else ""
+    sub_html = f'<div style="margin-top:4px;font-size:11px;color:{_MUTED};">{sub}</div>' if sub else ""
     return (
-        f'<div style="background:{_SURFACE};border-radius:12px;padding:14px 16px;'
-        f'border-left:4px solid {color};">'
-        f'<div style="font-size:10px;color:#94A3B8;font-weight:600;text-transform:uppercase;'
+        f'<div style="background:{_SURFACE};border:1px solid {_BORDER};border-radius:8px;'
+        f'padding:14px 16px;border-left:4px solid {color};box-shadow:0 1px 3px rgba(15,23,42,0.05);">'
+        f'<div style="font-size:10px;color:{_MUTED};font-weight:600;text-transform:uppercase;'
         f'letter-spacing:0.06em;">{titulo}</div>'
-        f'<div style="margin-top:6px;font-size:19px;font-weight:700;color:#E2E8F0;'
+        f'<div style="margin-top:6px;font-size:19px;font-weight:700;color:#0F172A;'
         f'font-family:\'Courier New\',monospace;">{valor}</div>'
         f'{sub_html}</div>'
     )
@@ -184,13 +206,13 @@ def _kpi_card(titulo: str, valor: str, sub: str = "", color: str = _ACCENT) -> s
 
 def render() -> None:
     st.markdown(
-        "<p style='color:#94A3B8;font-size:12.5px;margin:4px 0 14px;line-height:1.5;'>"
+        f"<p style='color:{_MUTED};font-size:12.5px;margin:4px 0 14px;line-height:1.5;'>"
         "Monitoreo mensual de indicadores INEGI desagregados por entidad federativa.</p>",
         unsafe_allow_html=True,
     )
 
     claves = list(INDICADORES_ESTADO_CONFIG.keys())
-    col_ind, col_mes = st.columns([2.5, 1.5])
+    col_ind, col_mes, col_estado = st.columns([2.3, 1.2, 1.8])
     with col_ind:
         clave = st.selectbox(
             "Indicador", options=claves,
@@ -217,6 +239,19 @@ def render() -> None:
         st.warning(f"Sin datos por estado para {mes_sel}.")
         return
 
+    nombres_estados = df_mapa.sort_values("estado_nombre")["estado_nombre"].tolist()
+    with col_estado:
+        estado_sel = st.selectbox(
+            "Estado", options=[_ESTADO_TODOS] + nombres_estados, key="mapa_estado_filtro",
+        )
+    estado_activo = None if estado_sel == _ESTADO_TODOS else estado_sel
+    estado_cve_sel = estado_iso_sel = None
+    if estado_activo:
+        for cve, (iso, nombre) in ESTADOS_INEGI.items():
+            if nombre == estado_activo:
+                estado_cve_sel, estado_iso_sel = cve, iso
+                break
+
     df_nac = load_serie_estado(clave, "00", periodos=1)
     valor_nac = float(df_nac.iloc[0]["valor"]) if not df_nac.empty else None
 
@@ -230,9 +265,13 @@ def render() -> None:
     with c2:
         st.html(_kpi_card("Suma 32 estados", _fmt_valor(suma_estados, unidad)))
     with c3:
-        st.html(_kpi_card("Estado líder", top_row["estado_nombre"], _fmt_valor(top_row["valor"], unidad), "#66BB6A"))
+        if estado_activo:
+            fila_sel = df_mapa[df_mapa["estado_nombre"] == estado_activo].iloc[0]
+            st.html(_kpi_card(f"{estado_activo}", _fmt_valor(fila_sel["valor"], unidad), "Estado seleccionado", _HIGHLIGHT))
+        else:
+            st.html(_kpi_card("Estado líder", top_row["estado_nombre"], _fmt_valor(top_row["valor"], unidad), _ACCENT))
     with c4:
-        st.html(_kpi_card("Estado menor", bottom_row["estado_nombre"], _fmt_valor(bottom_row["valor"], unidad), "#EF9A9A"))
+        st.html(_kpi_card("Estado menor", bottom_row["estado_nombre"], _fmt_valor(bottom_row["valor"], unidad), "#C62828"))
 
     st.markdown("<div style='margin:12px 0 4px;'></div>", unsafe_allow_html=True)
 
@@ -240,36 +279,37 @@ def render() -> None:
     col_mapa, col_rank = st.columns([2.4, 1.6])
     geojson = _load_geojson()
     with col_mapa:
-        st.plotly_chart(_make_mapa(df_mapa, geojson, label, unidad), width="stretch", key="plt_mapa_estado")
-        st.caption("Escala de color truncada al percentil 90 para mejor contraste — pasa el cursor para ver el valor exacto de cada estado.")
+        st.plotly_chart(
+            _make_mapa(df_mapa, geojson, label, unidad, estado_iso_sel),
+            width="stretch", key="plt_mapa_estado",
+        )
+        st.caption("Escala de color truncada al percentil 90 para mejor contraste — pasa el cursor para ver el valor exacto de cada estado. Usa el filtro \"Estado\" arriba para resaltarlo en el mapa.")
     with col_rank:
-        st.plotly_chart(_make_ranking(df_mapa, label, unidad), width="stretch", key="plt_rank_estado")
+        st.plotly_chart(
+            _make_ranking(df_mapa, label, unidad, estado_activo),
+            width="stretch", key="plt_rank_estado",
+        )
 
     st.divider()
 
-    # ── Drill-down por estado ────────────────────────────────────────────────
+    # ── Historial del estado seleccionado (o de todo el país) ───────────────
+    titulo_historial = f"Historial — {estado_activo}" if estado_activo else "Historial nacional"
     st.markdown(
-        "<p style='color:#94A3B8;font-size:12px;font-weight:600;text-transform:uppercase;"
-        "letter-spacing:0.06em;margin:0 0 8px;'>Historial de un estado</p>",
+        f"<p style='color:{_MUTED};font-size:12px;font-weight:600;text-transform:uppercase;"
+        f"letter-spacing:0.06em;margin:0 0 8px;'>{titulo_historial}</p>",
         unsafe_allow_html=True,
     )
-    nombres = df_mapa["estado_nombre"].tolist()
-    estado_nombre_sel = st.selectbox("Estado", options=nombres, key="mapa_estado_drill")
-    estado_cve_sel = None
-    for cve, (_iso, nombre) in ESTADOS_INEGI.items():
-        if nombre == estado_nombre_sel:
-            estado_cve_sel = cve
-            break
 
-    if estado_cve_sel:
-        df_serie_estado = load_serie_estado(clave, estado_cve_sel, periodos=60)
-        df_serie_nac = load_serie_estado(clave, "00", periodos=60)
-        if not df_serie_estado.empty:
-            st.plotly_chart(
-                _make_serie_estado(df_serie_estado, df_serie_nac, estado_nombre_sel, _ACCENT, unidad),
-                width="stretch", key="plt_serie_estado",
-            )
-        else:
-            st.info("Sin historial disponible para este estado.")
+    cve_serie = estado_cve_sel or "00"
+    nombre_serie = estado_activo or "Nacional"
+    df_serie_estado = load_serie_estado(clave, cve_serie, periodos=60)
+    df_serie_nac = load_serie_estado(clave, "00", periodos=60) if estado_activo else pd.DataFrame()
+    if not df_serie_estado.empty:
+        st.plotly_chart(
+            _make_serie_estado(df_serie_estado, df_serie_nac, nombre_serie, _HIGHLIGHT if estado_activo else _ACCENT, unidad),
+            width="stretch", key="plt_serie_estado",
+        )
+    else:
+        st.info("Sin historial disponible.")
 
     st.caption(f"Fuente: INEGI BIE · tabla gold_indicadores_inegi_estado · {len(claves)} indicador(es) con desagregación estatal")

@@ -253,6 +253,37 @@ GRUPOS_INEGI = {
 GRUPOS_MENSUALES = [k for k, v in GRUPOS_INEGI.items() if v.get("freq") == "mensual"]
 GRUPOS_ANUALES   = [k for k, v in GRUPOS_INEGI.items() if v.get("freq") == "anual"]
 
+# ── Glosario de siglas — qué significa cada nombre de grupo y para qué sirve ─
+# Se muestra como tooltip (hover) junto al nombre del grupo en el dashboard.
+GRUPOS_TOOLTIP = {
+    "IMAI": "Índice Mensual de la Actividad Industrial — mide mes a mes la producción de minería, "
+            "electricidad, construcción y manufactura. Es el termómetro industrial más directo de INEGI.",
+    "EMIM": "Encuesta Mensual de la Industria Manufacturera — volumen físico de producción manufacturera, "
+            "ya sin el efecto de estacionalidad (desestacionalizado).",
+    "ENEC": "Encuesta Nacional de Empresas Constructoras — valor de producción de la construcción por tipo "
+            "de obra, expresado como índice (2006=100).",
+    "ENEC_PESOS": "ENEC en pesos corrientes — el mismo programa que ENEC, pero en dinero real en vez de "
+                  "índice; permite sumar meses para obtener totales anuales.",
+    "EMEC": "Encuesta Mensual de Establecimientos Comerciales — ingresos del comercio al mayoreo y al "
+            "menudeo; el canal por el que TYASA llega al mercado.",
+    "IGAE": "Indicador Global de la Actividad Económica — un proxy mensual del PIB nacional; anticipa "
+            "tendencias del ciclo económico 1-2 meses antes que otros indicadores.",
+    "Balanza": "Balanza Comercial Siderúrgica — importaciones y exportaciones mexicanas de productos de "
+               "hierro y acero; importaciones altas presionan los precios domésticos a la baja.",
+    "INPP": "Índice Nacional de Precios Productor — inflación de los precios que reciben los productores, "
+            "antes de llegar al consumidor final.",
+    "INPC": "Índice Nacional de Precios al Consumidor — la inflación general que paga el consumidor; "
+            "contexto macroeconómico del país.",
+    "IFB": "Inversión Fija Bruta — gasto en maquinaria, equipo y construcción; anticipa la capacidad "
+           "productiva futura del país con 3-6 meses de antelación.",
+    "EMOE": "Encuesta Mensual de Opinión Empresarial — mide la confianza/expectativas de empresarios y "
+            "consumidores; suele adelantarse al ciclo real 1-3 meses.",
+    "ENEC_ANUAL": "ENEC anual — el mismo programa de construcción, pero con detalle estructural por "
+                  "subsector (edificación, obras de ingeniería civil, trabajos especializados) una vez al año.",
+    "AUTOMOTRIZ": "RAIAVL / RAIAVP — Registro Administrativo de la Industria Automotriz de Vehículos Ligeros "
+                  "y Pesados: producción, ventas y exportación de vehículos nuevos, reportadas por armadora.",
+}
+
 
 # ── Indicadores con desagregación por entidad federativa (mapa de calor) ────
 # A diferencia de INDICADORES_CONFIG (nacional), aquí la CLAVE no cambia por

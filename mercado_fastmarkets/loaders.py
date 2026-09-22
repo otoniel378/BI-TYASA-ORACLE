@@ -27,16 +27,25 @@ SIMBOLOS_INSUMOS_GLOBALES = {
 SIMBOLOS_POR_FAMILIA = {
     "LINGOTES, PALANQUILLAS, ETC.": {"MB-STE-0117": "Billete_Export_Turquia"},
     "PLANCHON":                     {"MB-STE-0117": "Billete_Export_Turquia"},
-    "LAMINA EN CALIENTE":           {"MB-STE-0184": "HRC_FobMillUS"},
-    "PLACA EN HOJA":                {"MB-STE-0172": "Placa_FobMillUS"},
-    "PLACA EN ROLLO":               {"MB-STE-0172": "Placa_FobMillUS"},
-    "LAMINA EN FRIO":               {"MB-STE-0185": "CRC_FobMillUS"},
-    "LAMINA GALVANIZADA":           {"MB-STE-0104": "HDG_Import_SurAmerica", "XL-ZS-FRC.O": "LME_Zinc_Cash"},
-    "PLANOS CON OTROS RECUBIERTOS Y TRABAJOS": {"MB-STE-0104": "HDG_Import_SurAmerica"},
+    "LAMINA EN CALIENTE":           {
+        "MB-STE-0184": "HRC_FobMillUS",
+        "MB-STE-0144": "HRC_Export_China",       # presión de sobreoferta/dumping china
+        "MB-STE-0934": "HRC_Entregado_Monterrey",  # precio doméstico real (pesos)
+        "MB-STE-0942": "HRC_Entregado_Bajio",      # precio doméstico real (pesos)
+    },
+    "PLACA EN HOJA":                {"MB-STE-0172": "Placa_FobMillUS", "MB-STE-0146": "Placa_Export_China"},
+    "PLACA EN ROLLO":               {"MB-STE-0172": "Placa_FobMillUS", "MB-STE-0146": "Placa_Export_China"},
+    "LAMINA EN FRIO":               {"MB-STE-0185": "CRC_FobMillUS", "MB-STE-0145": "CRC_Export_China"},
+    "LAMINA GALVANIZADA":           {
+        "MB-STE-0104": "HDG_Import_SurAmerica",
+        "MB-STE-0009": "HDG_Export_China",
+        "XL-ZS-FRC.O": "LME_Zinc_Cash",
+    },
+    "PLANOS CON OTROS RECUBIERTOS Y TRABAJOS": {"MB-STE-0104": "HDG_Import_SurAmerica", "MB-STE-0009": "HDG_Export_China"},
     "ALAMBRON AL CARBONO":          {"MB-STE-0192": "Alambron_FobMillUS"},
     "ALAMBRON ALEADO":              {"MB-STE-0192": "Alambron_FobMillUS"},
-    "BARRAS":                       {"MB-STE-0170": "Varilla_FobMillUS"},
-    "VARILLA CORRUGADA":            {"MB-STE-0170": "Varilla_FobMillUS"},
+    "BARRAS":                       {"MB-STE-0170": "Varilla_FobMillUS", "MB-STE-0933": "Varilla_Entregado_Monterrey"},
+    "VARILLA CORRUGADA":            {"MB-STE-0170": "Varilla_FobMillUS", "MB-STE-0933": "Varilla_Entregado_Monterrey"},
     "PERFILES ESTRUCTURALES FORMADOS EN FRIO": {"MB-STE-0209": "Viga_FobMillUS"},
     "ALAMBRE":              {"MB-STE-0192": "Alambron_FobMillUS"},  # proxy insumo, sin serie propia
     "DERIVADOS DE ALAMBRE": {"MB-STE-0192": "Alambron_FobMillUS"},
