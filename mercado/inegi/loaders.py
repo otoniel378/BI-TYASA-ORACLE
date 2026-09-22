@@ -81,6 +81,16 @@ INDICADORES_CONFIG = {
     "796428": "ENEC_Anual_ValorProd_Subsector237_ObrasIngCivil",
     "796429": "ENEC_Anual_ValorProd_Subsector238_TrabEspecializados",
     "5300000027": "ENEC_Anual_Remuneraciones_Sector23",
+    # ── INDUSTRIA AUTOMOTRIZ (RAIAVL/RAIAVP) ────────────────────────────────────
+    # Sin desagregación por estado (confirmado incluso en el microdato crudo:
+    # columna COBERTURA solo admite "Nacional") — se usan como referencia
+    # nacional del ciclo automotriz, relevante para Aceros Planos/SBQ.
+    "6207131345": "RAIAVL_UnidadesProducidas_Ligeros",
+    "6207131346": "RAIAVL_VentasTotales_Ligeros",
+    "6207131349": "RAIAVL_UnidadesExportadas_Ligeros",
+    "6207131351": "RAIAVP_VentasMenudeo_Pesados",
+    "6207131356": "RAIAVP_VentasMayoreo_Pesados",
+    "6207131357": "RAIAVP_UnidadesExportadas_Pesados",
 }
 
 # ── Etiquetas cortas legibles ────────────────────────────────────────────────
@@ -137,6 +147,12 @@ INDICADORES_LABEL = {
     "796428": "ENEC Anual Subsector 237 Obras Ing. Civil",
     "796429": "ENEC Anual Subsector 238 Trab. Especializados",
     "5300000027": "ENEC Anual Remuneraciones Sector 23",
+    "6207131345": "RAIAVL Producción Ligeros",
+    "6207131346": "RAIAVL Ventas Totales Ligeros",
+    "6207131349": "RAIAVL Exportación Ligeros",
+    "6207131351": "RAIAVP Ventas Menudeo Pesados",
+    "6207131356": "RAIAVP Ventas Mayoreo Pesados",
+    "6207131357": "RAIAVP Exportación Pesados",
 }
 
 # ── Grupos con metadatos ─────────────────────────────────────────────────────
@@ -225,10 +241,48 @@ GRUPOS_INEGI = {
         "color": "#A1887F",
         "freq": "anual",
     },
+    "AUTOMOTRIZ": {
+        "label": "Industria Automotriz",
+        "desc": "Ciclo de producción/ventas/exportación de vehículos (RAIAVL ligeros, RAIAVP pesados) — sin desagregación por estado (INEGI solo la publica a nivel nacional), pero señal directa de demanda de acero plano (autopartes) y largo/SBQ (camiones pesados)",
+        "claves": ["6207131345","6207131346","6207131349","6207131351","6207131356","6207131357"],
+        "color": "#4FC3F7",
+        "freq": "mensual",
+    },
 }
 
 GRUPOS_MENSUALES = [k for k, v in GRUPOS_INEGI.items() if v.get("freq") == "mensual"]
 GRUPOS_ANUALES   = [k for k, v in GRUPOS_INEGI.items() if v.get("freq") == "anual"]
+
+# ── Glosario de siglas — qué significa cada nombre de grupo y para qué sirve ─
+# Se muestra como tooltip (hover) junto al nombre del grupo en el dashboard.
+GRUPOS_TOOLTIP = {
+    "IMAI": "Índice Mensual de la Actividad Industrial — mide mes a mes la producción de minería, "
+            "electricidad, construcción y manufactura. Es el termómetro industrial más directo de INEGI.",
+    "EMIM": "Encuesta Mensual de la Industria Manufacturera — volumen físico de producción manufacturera, "
+            "ya sin el efecto de estacionalidad (desestacionalizado).",
+    "ENEC": "Encuesta Nacional de Empresas Constructoras — valor de producción de la construcción por tipo "
+            "de obra, expresado como índice (2006=100).",
+    "ENEC_PESOS": "ENEC en pesos corrientes — el mismo programa que ENEC, pero en dinero real en vez de "
+                  "índice; permite sumar meses para obtener totales anuales.",
+    "EMEC": "Encuesta Mensual de Establecimientos Comerciales — ingresos del comercio al mayoreo y al "
+            "menudeo; el canal por el que TYASA llega al mercado.",
+    "IGAE": "Indicador Global de la Actividad Económica — un proxy mensual del PIB nacional; anticipa "
+            "tendencias del ciclo económico 1-2 meses antes que otros indicadores.",
+    "Balanza": "Balanza Comercial Siderúrgica — importaciones y exportaciones mexicanas de productos de "
+               "hierro y acero; importaciones altas presionan los precios domésticos a la baja.",
+    "INPP": "Índice Nacional de Precios Productor — inflación de los precios que reciben los productores, "
+            "antes de llegar al consumidor final.",
+    "INPC": "Índice Nacional de Precios al Consumidor — la inflación general que paga el consumidor; "
+            "contexto macroeconómico del país.",
+    "IFB": "Inversión Fija Bruta — gasto en maquinaria, equipo y construcción; anticipa la capacidad "
+           "productiva futura del país con 3-6 meses de antelación.",
+    "EMOE": "Encuesta Mensual de Opinión Empresarial — mide la confianza/expectativas de empresarios y "
+            "consumidores; suele adelantarse al ciclo real 1-3 meses.",
+    "ENEC_ANUAL": "ENEC anual — el mismo programa de construcción, pero con detalle estructural por "
+                  "subsector (edificación, obras de ingeniería civil, trabajos especializados) una vez al año.",
+    "AUTOMOTRIZ": "RAIAVL / RAIAVP — Registro Administrativo de la Industria Automotriz de Vehículos Ligeros "
+                  "y Pesados: producción, ventas y exportación de vehículos nuevos, reportadas por armadora.",
+}
 
 
 # ── Indicadores con desagregación por entidad federativa (mapa de calor) ────
@@ -239,10 +293,28 @@ GRUPOS_ANUALES   = [k for k, v in GRUPOS_INEGI.items() if v.get("freq") == "anua
 # tienen (ver scripts/update_inegi_estado_data.py).
 INDICADORES_ESTADO_CONFIG = {
     "723135": "ENEC_ValorProdPesos_Sector23_Total",
+    "720504": "ENEC_PersonalOcupado_Sector23_Total",
 }
 
 INDICADORES_ESTADO_LABEL = {
     "723135": "ENEC · Valor de Producción Sector 23 Construcción ($)",
+    "720504": "ENEC · Personal Ocupado Sector 23 Construcción (personas)",
+}
+
+# Tipo de unidad por clave — determina cómo se formatea en el mapa/ranking
+# ("mxn" = pesos corrientes, "personas" = número de personas).
+INDICADORES_ESTADO_UNIDAD = {
+    "723135": "mxn",
+    "720504": "personas",
+}
+
+# Multiplicador real de cada clave (ver "Unidad multiplicadora" en el panel de
+# detalle del Banco de Indicadores de INEGI — varía por indicador, no asumir).
+# 723135: "pesos corrientes" x "Miles" -> el VALOR crudo de la API viene en
+# miles de pesos; se multiplica aquí para dejarlo en pesos reales.
+# 720504: "Número de personas", sin multiplicador (queda en 1 por default).
+INDICADORES_ESTADO_UNIT_MULT = {
+    "723135": 1000,
 }
 
 # cve INEGI (01-32, + "00" nacional) -> (ISO 3166-2 usado en assets/mx_estados.geojson, nombre)
@@ -516,7 +588,11 @@ def load_mapa_estado(clave: str, fecha: str) -> pd.DataFrame:
         WHERE CLAVE = '{clave}' AND FECHA = '{fecha}' AND ESTADO_CVE != '00'
         ORDER BY VALOR DESC
     """
-    return _lc(run_query(sql))
+    df = _lc(run_query(sql))
+    if not df.empty:
+        mult = INDICADORES_ESTADO_UNIT_MULT.get(clave, 1)
+        df["valor"] = pd.to_numeric(df["valor"], errors="coerce") * mult
+    return df
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -533,6 +609,8 @@ def load_serie_estado(clave: str, estado_cve: str, periodos: int = 24) -> pd.Dat
     if not df.empty and "fecha" in df.columns:
         df["fecha"] = pd.to_datetime(df["fecha"], format="%Y-%m", errors="coerce")
         df = df.sort_values("fecha")
+        mult = INDICADORES_ESTADO_UNIT_MULT.get(clave, 1)
+        df["valor"] = pd.to_numeric(df["valor"], errors="coerce") * mult
     return df
 
 
@@ -563,7 +641,10 @@ def load_ranking_yoy_estado(clave: str) -> pd.DataFrame:
     df = _lc(run_query(sql))
     if df.empty:
         return df
+    mult = INDICADORES_ESTADO_UNIT_MULT.get(clave, 1)
     ult = pd.to_numeric(df["ult_valor"], errors="coerce")
     ant = pd.to_numeric(df["ant_valor"], errors="coerce")
     df["var_yoy"] = (ult - ant).div(ant.abs()).mul(100).round(1)
+    df["ult_valor"] = ult * mult
+    df["ant_valor"] = ant * mult
     return df

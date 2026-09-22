@@ -86,6 +86,14 @@ INDICADORES = {
     "796428": "ENEC_Anual_ValorProd_Subsector237_ObrasIngCivil",
     "796429": "ENEC_Anual_ValorProd_Subsector238_TrabEspecializados",
     "5300000027": "ENEC_Anual_Remuneraciones_Sector23",
+    # ── INDUSTRIA AUTOMOTRIZ (RAIAVL/RAIAVP) — sin desglose estatal, referencia
+    #    nacional; viven en banco "BISE" (no "BIE-BISE"), ver BANCO_ESPECIAL ──
+    "6207131345": "RAIAVL_UnidadesProducidas_Ligeros",
+    "6207131346": "RAIAVL_VentasTotales_Ligeros",
+    "6207131349": "RAIAVL_UnidadesExportadas_Ligeros",
+    "6207131351": "RAIAVP_VentasMenudeo_Pesados",
+    "6207131356": "RAIAVP_VentasMayoreo_Pesados",
+    "6207131357": "RAIAVP_UnidadesExportadas_Pesados",
 }
 
 BIE_BASE   = "https://www.inegi.org.mx/app/api/indicadores/desarrolladores/jsonxml"
@@ -126,6 +134,12 @@ def _parse_periodo(periodo: str) -> str | None:
 # devuelve 401 en vez del 400 individual, por eso se separan aquí).
 BANCO_ESPECIAL: dict[str, str] = {
     "5300000027": "BISE",
+    "6207131345": "BISE",
+    "6207131346": "BISE",
+    "6207131349": "BISE",
+    "6207131351": "BISE",
+    "6207131356": "BISE",
+    "6207131357": "BISE",
 }
 
 

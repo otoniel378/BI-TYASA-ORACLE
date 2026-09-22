@@ -38,6 +38,7 @@ INEGI_TOKEN = os.environ.get("INEGI_TOKEN", "")
 # ── Indicadores con desagregación por entidad federativa ─────────────────────
 INDICADORES_ESTADO = {
     "723135": "ENEC_ValorProdPesos_Sector23_Total",
+    "720504": "ENEC_PersonalOcupado_Sector23_Total",
 }
 
 # ── Catálogo de 32 estados: cve INEGI (01-32) -> (ISO 3166-2, nombre oficial) ─
