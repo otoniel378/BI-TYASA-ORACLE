@@ -14,3 +14,9 @@ python-dotenv>=1.0.0
 python-docx>=1.1.0
 reportlab>=4.1.0
 kaleido>=0.2.1
+
+# Clasificador de categorías de noticias (ml/categoria_noticias/) — solo para
+# entrenar/evaluar localmente. NO se instala en el workflow de GitHub Actions
+# de update_sentimiento.yml (ese job solo usa Gemini vía REST/SDK).
+tensorflow>=2.16.0
+sentence-transformers>=3.0.0

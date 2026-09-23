@@ -77,7 +77,7 @@ def _upsert_oracle(conn: oracledb.Connection, df: pd.DataFrame) -> int:
             "url": r["url"], "grupo_tematico": r["grupo_tematico"],
             "variable_principal": r["variable_principal"], "alcance": r["alcance"],
             "sentimiento": r["sentimiento"], "score": r["score"], "senal": r["señal"],
-            "razon": r["razon"], "confianza": r["confianza"],
+            "razon": r["razon"], "confianza": r["confianza"], "categoria": r["categoria"],
         }
         for r in df.to_dict(orient="records")
     ]
@@ -98,13 +98,14 @@ def _upsert_oracle(conn: oracledb.Connection, df: pd.DataFrame) -> int:
             SENAL              = :senal,
             ALCANCE            = :alcance,
             RAZON              = :razon,
-            CONFIANZA          = :confianza
+            CONFIANZA          = :confianza,
+            CATEGORIA          = :categoria
         WHEN NOT MATCHED THEN INSERT
             (ID, FECHA_PUB, FECHA_ANALISIS, TITULO, FUENTE, URL, GRUPO_TEMATICO,
-             VARIABLE_PRINCIPAL, ALCANCE, SENTIMIENTO, SCORE, SENAL, RAZON, CONFIANZA)
+             VARIABLE_PRINCIPAL, ALCANCE, SENTIMIENTO, SCORE, SENAL, RAZON, CONFIANZA, CATEGORIA)
         VALUES
             (:id, :fecha_pub, :fecha_analisis, :titulo, :fuente, :url, :grupo_tematico,
-             :variable_principal, :alcance, :sentimiento, :score, :senal, :razon, :confianza)
+             :variable_principal, :alcance, :sentimiento, :score, :senal, :razon, :confianza, :categoria)
     """
     cursor = conn.cursor()
     try:
@@ -137,6 +138,7 @@ def run():
     from mercado_noticias.analytics.sentimiento import (
         clasificar_lote, resultados_a_dataframe,
     )
+    from ml.categoria_noticias.inferencia import clasificar_categoria_lote_local
 
     # Recopilar noticias de todos los grupos
     todos_grupos = {
@@ -184,6 +186,14 @@ def run():
     print(f"  DataFrame: {len(df_sent)} filas")
 
     df_sent["fecha_analisis"] = datetime.utcnow()
+
+    # Clasificar categoría temática — modelo local (embeddings + LogisticRegression,
+    # F1 macro 0.74 en gold set), NO usa Gemini ni cuota de API.
+    print(f"\n  Clasificando categoría temática (modelo local)...")
+    resultados_cat = clasificar_categoria_lote_local(todas_noticias)
+    categoria_por_url = {r["url"]: r["categoria"] for r in resultados_cat}
+    df_sent["categoria"] = df_sent["url"].map(categoria_por_url)
+    print(f"  Categorizadas: {len(resultados_cat)} noticias")
 
     # Guardar en Oracle ADW
     print("\n  Guardando en Oracle ADW...")

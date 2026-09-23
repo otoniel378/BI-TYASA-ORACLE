@@ -118,7 +118,8 @@ TABLES_DDL = {
             GRUPO_TEMATICO      VARCHAR2(50),
             SENAL               VARCHAR2(60),
             RAZON               VARCHAR2(300),
-            CONFIANZA           VARCHAR2(20)
+            CONFIANZA           VARCHAR2(20),
+            CATEGORIA           VARCHAR2(50)
         )
     """,
     "GOLD_INDICADORES_INEGI": """
