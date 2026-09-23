@@ -19,6 +19,7 @@ import plotly.express as px
 from config import COLORS
 from core.components.filters import sidebar_header
 from core.components.kpi_cards import seccion_titulo
+from mercado_noticias.analytics.categorias import CATEGORIAS_TODAS
 
 # ── Gemini key ────────────────────────────────────────────────────────────────
 try:
@@ -60,6 +61,11 @@ alcance_filtro = st.sidebar.radio(
     "Alcance", ["Todos", "nacional", "internacional", "ambos"],
     key="sent_alcance",
 )
+categoria_filtro = st.sidebar.selectbox(
+    "Filtrar por categoría",
+    ["Todas"] + CATEGORIAS_TODAS,
+    key="sent_categoria",
+)
 
 # ── Título ────────────────────────────────────────────────────────────────────
 st.html(f"""
@@ -92,6 +98,8 @@ if _bq_ok and not df_sent.empty:
         df_sent = df_sent[df_sent["grupo_tematico"] == grupo_filtro]
     if alcance_filtro != "Todos" and "alcance" in df_sent.columns:
         df_sent = df_sent[df_sent["alcance"] == alcance_filtro]
+    if categoria_filtro != "Todas" and "categoria" in df_sent.columns:
+        df_sent = df_sent[df_sent["categoria"] == categoria_filtro]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ANÁLISIS EN TIEMPO REAL — botón para clasificar noticias frescas
@@ -117,6 +125,7 @@ with col_info:
 if run_rt and _GEMINI_KEY:
     from mercado_noticias.analytics.noticias import buscar_noticias_sector, GRUPOS_INDUSTRIA, GRUPOS_NACIONAL, GRUPOS_INTERNACIONAL
     from mercado_noticias.analytics.sentimiento import clasificar_lote, calcular_indice_sentimiento, resultados_a_dataframe
+    from mercado_noticias.analytics.categorias import clasificar_categoria_lote
 
     grupos_buscar = {}
     if grupo_filtro == "Todos":
@@ -137,6 +146,10 @@ if run_rt and _GEMINI_KEY:
                 noticias_frescas.append(n)
 
     resultados_rt = clasificar_lote(noticias_frescas, _GEMINI_KEY, max_noticias=40)
+    resultados_cat_rt = clasificar_categoria_lote(noticias_frescas, _GEMINI_KEY, max_noticias=40)
+    categoria_por_url_rt = {r["url"]: r.get("categoria", "") for r in resultados_cat_rt}
+    for r in resultados_rt:
+        r["categoria"] = categoria_por_url_rt.get(r.get("url", ""), "")
     indice_rt = calcular_indice_sentimiento(resultados_rt)
     st.session_state[_RT_KEY] = {"resultados": resultados_rt, "indice": indice_rt}
 
@@ -306,6 +319,36 @@ if _bq_ok and not df_hist.empty and "variable_principal" in df_hist.columns:
     )
     st.plotly_chart(fig_var, width="stretch", config={"displayModeBar": False})
 
+# ── SECCIÓN: Noticias por categoría ───────────────────────────────────────────
+if _bq_ok and not df_hist.empty and "categoria" in df_hist.columns:
+    st.divider()
+    seccion_titulo("Noticias por Categoría", "Cobertura temática — perspectiva de negocio TYASA")
+
+    cat_counts = (
+        df_hist.dropna(subset=["categoria"])
+        .groupby("categoria")["n_noticias"]
+        .sum()
+        .reset_index()
+        .sort_values("n_noticias")
+    )
+
+    if not cat_counts.empty:
+        fig_cat = go.Figure(go.Bar(
+            x=cat_counts["n_noticias"], y=cat_counts["categoria"], orientation="h",
+            marker_color=_P,
+            text=cat_counts["n_noticias"], textposition="outside", textfont=dict(size=9),
+            hovertemplate="%{y}<br>Noticias: %{x}<extra></extra>",
+        ))
+        fig_cat.update_layout(
+            height=max(280, len(cat_counts) * 26 + 60),
+            margin=dict(t=10, b=10, l=10, r=60),
+            paper_bgcolor="white", plot_bgcolor="#F8FAFC", showlegend=False,
+            xaxis=dict(title="Noticias clasificadas", gridcolor="#EEF2FF"),
+            yaxis=dict(tickfont=dict(size=10)),
+            font=dict(family="Segoe UI, sans-serif", size=11),
+        )
+        st.plotly_chart(fig_cat, width="stretch", config={"displayModeBar": False})
+
 st.divider()
 
 # ── SECCIÓN: Alertas de cambio de sentimiento ─────────────────────────────────
@@ -399,6 +442,7 @@ else:
         url     = n.get("url", "#")
         alcance = n.get("alcance", "")
         grupo   = n.get("grupo_tematico") or n.get("grupo", "")
+        categoria = n.get("categoria", "")
 
         alcance_badge = (
             f'<span class="sm-badge" style="background:#EFF6FF;color:#1E40AF;">{alcance}</span>'
@@ -407,6 +451,10 @@ else:
         grupo_badge = (
             f'<span class="sm-badge" style="background:#F3F4F6;color:#374151;">{grupo}</span>'
             if grupo else ""
+        )
+        categoria_badge = (
+            f'<span class="sm-badge" style="background:#FDF4FF;color:#86198F;">{categoria}</span>'
+            if categoria else ""
         )
 
         st.html(f"""<div class="sm-news" style="border-left-color:{color};background:{bg};">
@@ -417,7 +465,7 @@ else:
                    color:{_P};text-decoration:none;">{titulo}</a>
               </div>
               <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
-                {alcance_badge}{grupo_badge}
+                {alcance_badge}{grupo_badge}{categoria_badge}
                 <span class="sm-badge" style="background:white;color:{color};
                       border:1.5px solid {color};">{sent} {score:+.2f}</span>
                 {"<span class='sm-badge' style='background:#F0FDF4;color:#166534;'>" + señal + "</span>" if señal else ""}

@@ -9,7 +9,7 @@ on:
 jobs:
   update-sentimiento:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout repositorio
@@ -20,8 +20,17 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Caché de modelo de embeddings (HuggingFace)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-multilingual-minilm-v1
+
       - name: Instalar dependencias
-        run: pip install oracledb pandas python-dotenv requests
+        # scikit-learn + sentence-transformers (clasificador local de categoría,
+        # ver ml/categoria_noticias/inferencia.py) — sentence-transformers trae
+        # torch como dependencia, por eso el timeout y la caché de arriba.
+        run: pip install oracledb pandas python-dotenv requests scikit-learn sentence-transformers
 
       - name: Extraer wallet de Oracle
         run: |

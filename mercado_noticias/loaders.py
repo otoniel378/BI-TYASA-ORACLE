@@ -108,12 +108,13 @@ def load_sentimiento_historico(dias: int = 90) -> pd.DataFrame:
             VARIABLE_PRINCIPAL,
             ALCANCE,
             GRUPO_TEMATICO,
+            CATEGORIA,
             AVG(SCORE)  AS SCORE_AVG,
             COUNT(*)    AS N_NOTICIAS
         FROM {T_SENTIMIENTO}
         WHERE FECHA_PUB >= SYSDATE - {dias}
           AND FECHA_PUB IS NOT NULL
-        GROUP BY FECHA_PUB, SENTIMIENTO, VARIABLE_PRINCIPAL, ALCANCE, GRUPO_TEMATICO
+        GROUP BY FECHA_PUB, SENTIMIENTO, VARIABLE_PRINCIPAL, ALCANCE, GRUPO_TEMATICO, CATEGORIA
         ORDER BY FECHA_PUB DESC
     """
     df = _lc(run_query(sql))

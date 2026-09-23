@@ -63,3 +63,7 @@ oracle/Wallet_TYASAADW/
 
 # Archivos temporales del editor
 *.tmp.*
+
+# Experimento LSTM de categorías (abandonado, F1 0.42 < umbral 0.65 — ver
+# ml/categoria_noticias/train_lstm.py). No se usa en producción, pesado (15MB+).
+ml/categoria_noticias/artifacts/
