@@ -139,6 +139,7 @@ def run():
         clasificar_lote, resultados_a_dataframe,
     )
     from ml.categoria_noticias.inferencia import clasificar_categoria_lote_local
+    from mercado_noticias.analytics.categorias import CATEGORIA_DEFAULT
 
     # Recopilar noticias de todos los grupos
     todos_grupos = {
@@ -191,8 +192,11 @@ def run():
     # F1 macro 0.74 en gold set), NO usa Gemini ni cuota de API.
     print(f"\n  Clasificando categoría temática (modelo local)...")
     resultados_cat = clasificar_categoria_lote_local(todas_noticias)
-    categoria_por_url = {r["url"]: r["categoria"] for r in resultados_cat}
-    df_sent["categoria"] = df_sent["url"].map(categoria_por_url)
+    # resultados_a_dataframe() trunca la URL a 500 chars (las de Google News RSS
+    # suelen pasar de eso) — hay que truncar igual aquí o el cruce por URL falla
+    # silenciosamente y deja NaN (float) en una columna VARCHAR2 de Oracle.
+    categoria_por_url = {r["url"][:500]: r["categoria"] for r in resultados_cat}
+    df_sent["categoria"] = df_sent["url"].map(categoria_por_url).fillna(CATEGORIA_DEFAULT)
     print(f"  Categorizadas: {len(resultados_cat)} noticias")
 
     # Guardar en Oracle ADW

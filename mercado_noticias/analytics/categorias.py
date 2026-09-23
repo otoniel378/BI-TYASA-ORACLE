@@ -51,7 +51,7 @@ CATEGORIAS_TODAS = [
 ]
 
 # Fallback cuando Gemini no responde o no se puede parsear su respuesta.
-_CATEGORIA_DEFAULT = "Mercado Global y Precios"
+CATEGORIA_DEFAULT = "Mercado Global y Precios"
 
 # ── System prompt específico para TYASA EAF ───────────────────────────────────
 _SYSTEM_CATEGORIA = """Eres analista senior de mercados para TYASA, acería mexicana que produce \
@@ -119,7 +119,7 @@ def _normalizar_categoria(cat: str) -> str:
     """Ajusta la categoría devuelta por Gemini a la etiqueta exacta de la taxonomía
     (Gemini a veces devuelve variantes de mayúsculas/acentos)."""
     if not cat:
-        return _CATEGORIA_DEFAULT
+        return CATEGORIA_DEFAULT
     cat = cat.strip()
     for c in CATEGORIAS_TODAS:
         if c.lower() == cat.lower():
@@ -128,7 +128,7 @@ def _normalizar_categoria(cat: str) -> str:
     for c in CATEGORIAS_TODAS:
         if c.lower() in cat.lower() or cat.lower() in c.lower():
             return c
-    return _CATEGORIA_DEFAULT
+    return CATEGORIA_DEFAULT
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -160,7 +160,7 @@ def clasificar_categoria_noticia(
     resultado = _llamar_gemini(prompt, gemini_key, model)
     fallo = resultado is None
     if fallo:
-        resultado = {"categoria": _CATEGORIA_DEFAULT, "confianza": "Baja"}
+        resultado = {"categoria": CATEGORIA_DEFAULT, "confianza": "Baja"}
 
     resultado["categoria"] = _normalizar_categoria(resultado.get("categoria", ""))
     resultado["_cached"]   = False
@@ -261,7 +261,7 @@ def resultados_a_dataframe(resultados: list[dict]) -> pd.DataFrame:
             "url":         (r.get("url", "") or "")[:500],
             "fecha_pub":   r.get("fecha_pub", "")[:10] or None,
             "grupo":       (r.get("grupo", "") or "")[:100],
-            "categoria_gemini": r.get("categoria", _CATEGORIA_DEFAULT),
+            "categoria_gemini": r.get("categoria", CATEGORIA_DEFAULT),
             "confianza":   (r.get("confianza", "Baja") or "Baja")[:20],
         })
     return pd.DataFrame(rows)
