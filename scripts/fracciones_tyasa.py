@@ -87,6 +87,12 @@ FRACCIONES_TYASA_PREFIJO = {
     "732619",  # 7326.19 — ídem
 }
 
+# RAZON_SOCIAL con la que TYASA aparece como empresa importadora en los avisos
+# SNICE/CANACERO (confirmado con el usuario 2026-09-28). Sirve para aislar,
+# dentro del ranking de empresas que importan las fracciones de TYASA, cuál de
+# esas filas es la propia TYASA (vs. la competencia/otros importadores).
+RAZON_SOCIAL_TYASA_SNICE = "T A 2000 SA DE CV"
+
 
 def es_fraccion_tyasa(fraccion_arancelaria: str) -> bool:
     """
