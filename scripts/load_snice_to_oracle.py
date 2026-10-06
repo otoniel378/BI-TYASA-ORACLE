@@ -34,8 +34,19 @@ load_dotenv()
 
 HOJA = "AVISOS_AUTORIZADOS"
 FILA_ENCABEZADO = 7  # 1-indexed: la fila 8 en adelante ya es data
-PERIODOS_A_CONSERVAR = 2
+PERIODOS_A_CONSERVAR = 6  # los avisos duran 123 días (~4 meses) de vigencia; 6 da margen para
+# poder darles seguimiento hasta el final de su vigencia sin que BRONZE los purgue antes
 INSERT_BATCH = 2000
+
+# El aviso más grande visto en meses limpios de BRONZE es ~12.5M Kg (durmientes de
+# ferrocarril). Este límite deja margen de sobra (4x) y existe solo para atrapar un
+# error real ya visto en un Excel oficial de SNICE: en el periodo 2023-02, folio
+# 0201300101820239901005262, alguien capturó la FRACCIÓN ARANCELARIA (7217100293)
+# en la columna de VOLUMEN en vez del volumen real (799.6 Kg, según la descripción
+# de la mercancía) — infló el total de esa fracción ~9,800x y el total nacional del
+# mes ~6x. Cualquier volumen por encima de esto es casi seguro un error de captura
+# del SNICE, no un aviso real, así que se descarta (queda NULL) en vez de sumarse.
+VOLUMEN_AVISO_MAX_PLAUSIBLE_KG = 50_000_000
 
 
 def get_conn() -> oracledb.Connection:
@@ -118,11 +129,18 @@ def _leer_avisos(xlsx_path: Path, periodo: str) -> list:
                 print(f"  ADVERTENCIA: fracción {fraccion_str} (folio {folio}) no está en Kg "
                       f"(es 'Pza') — su VOLUMEN_AVISO no es comparable con el resto, revisar antes de sumar.")
 
+            volumen_kg = float(volumen) if isinstance(volumen, (int, float)) else None
+            if volumen_kg is not None and volumen_kg > VOLUMEN_AVISO_MAX_PLAUSIBLE_KG:
+                print(f"  ADVERTENCIA: VOLUMEN_AVISO implausible ({volumen_kg:,.0f} Kg, folio {folio}, "
+                      f"fracción {fraccion_str}) — probable error de captura del SNICE (parece un número "
+                      f"de fracción/NICO metido en la columna de volumen). Se descarta (NULL) y no suma.")
+                volumen_kg = None
+
             rows.append((
                 str(folio)[:50] if folio else None,
                 str(razon_social)[:300] if razon_social else None,
                 _parse_fecha(fecha_tramite, con_hora=True),
-                float(volumen) if isinstance(volumen, (int, float)) else None,
+                volumen_kg,
                 fraccion_str[:20] if fraccion_str else None,
                 _truncar_bytes(str(descripcion)) if descripcion else None,
                 str(pais_origen)[:150] if pais_origen else None,
@@ -140,11 +158,14 @@ def _leer_avisos(xlsx_path: Path, periodo: str) -> list:
         wb.close()
 
 
-def cargar_bronze(rows: list, periodo: str, aplicar_retencion: bool = True):
-    """Reemplaza el detalle de <periodo> en BRONZE. Si <aplicar_retencion> es
-    False, no purga periodos viejos todavía (para no insertar-y-borrar en
-    cada iteración de un backfill masivo) — llamar aplicar_retencion_bronze()
-    una sola vez al final en ese caso."""
+def cargar_bronze(rows: list, periodo: str):
+    """Reemplaza el detalle de <periodo> en BRONZE. NO purga periodos viejos —
+    eso es responsabilidad de quien llama, y debe pasar SIEMPRE después de
+    recalcular_gold(), nunca antes: si <periodo> ya queda fuera de la ventana
+    de retención (ej. al recargar un mes viejo para corregir un error), purgar
+    antes de recalcular_gold() borraría el detalle que esa función necesita
+    leer, dejando las tablas GOLD vacías para ese periodo en vez de corregidas
+    (bug real que pasó una vez — ver historial de este archivo)."""
     conn = get_conn()
     cursor = conn.cursor()
     try:
@@ -167,9 +188,6 @@ def cargar_bronze(rows: list, periodo: str, aplicar_retencion: bool = True):
     finally:
         cursor.close()
         conn.close()
-
-    if aplicar_retencion:
-        aplicar_retencion_bronze()
 
 
 def aplicar_retencion_bronze():
@@ -268,8 +286,11 @@ def _cargar_un_archivo(xlsx_path: Path, aplicar_retencion: bool) -> str:
         print("  Sin filas para cargar, se omite.")
         return periodo
     print(f"  {len(rows):,} avisos leídos")
-    cargar_bronze(rows, periodo, aplicar_retencion=aplicar_retencion)
+    cargar_bronze(rows, periodo)
     recalcular_gold(periodo)
+    # La retención SIEMPRE después de recalcular_gold (ver docstring de cargar_bronze).
+    if aplicar_retencion:
+        aplicar_retencion_bronze()
     return periodo
 
 

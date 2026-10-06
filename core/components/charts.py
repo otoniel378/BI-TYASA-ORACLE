@@ -44,10 +44,11 @@ def _title(text):
     return dict(text=text, font=dict(size=12, color="#1E293B", family="Segoe UI, sans-serif"), x=0, xanchor="left", pad=dict(b=4))
 
 
-def linea_temporal(df, x, y, color=None, titulo="", y_label="Ton", show_area=False):
+def linea_temporal(df, x, y, color=None, titulo="", y_label="Ton", show_area=False, height=None):
     if df.empty:
         return _empty_fig(titulo)
-    if color and color in df.columns:
+    es_multi_serie = bool(color and color in df.columns)
+    if es_multi_serie:
         fig = px.line(df, x=x, y=y, color=color, color_discrete_sequence=_COLOR_SEQ)
     else:
         if show_area:
@@ -59,7 +60,16 @@ def linea_temporal(df, x, y, color=None, titulo="", y_label="Ton", show_area=Fal
     fig.update_traces(mode="lines+markers", marker=dict(size=3.5, symbol="circle"))
     xax = dict(_XAX, title="")
     yax = dict(_YAX, title=y_label)
-    fig.update_layout(**_LAYOUT_BASE, height=_H+20, title=_title(titulo), xaxis=xax, yaxis=yax, hovermode="x unified")
+    layout = dict(_LAYOUT_BASE)
+    if es_multi_serie:
+        # Con leyenda de varias series el renglón de abajo necesita más aire, si
+        # no el texto de la leyenda se encima con las etiquetas del eje X.
+        layout["margin"] = dict(_LAYOUT_BASE["margin"], b=80)
+        layout["legend"] = dict(_LAYOUT_BASE["legend"], y=-0.32)
+    fig.update_layout(
+        **layout, height=height or (_H + (130 if es_multi_serie else 20)),
+        title=_title(titulo), xaxis=xax, yaxis=yax, hovermode="x unified",
+    )
     return fig
 
 
