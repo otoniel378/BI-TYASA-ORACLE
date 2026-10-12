@@ -15,8 +15,11 @@ python-docx>=1.1.0
 reportlab>=4.1.0
 kaleido>=0.2.1
 
-# Clasificador de categorías de noticias (ml/categoria_noticias/) — solo para
-# entrenar/evaluar localmente. NO se instala en el workflow de GitHub Actions
-# de update_sentimiento.yml (ese job solo usa Gemini vía REST/SDK).
-tensorflow>=2.16.0
+# Clasificador de categorías de noticias en producción (ml/categoria_noticias/
+# inferencia.py): embeddings + LogisticRegression, no necesita TensorFlow.
 sentence-transformers>=3.0.0
+
+# NOTA: tensorflow NO está aquí a propósito — solo lo usa el experimento
+# descartado ml/categoria_noticias/train_lstm.py y el modelo de referencia de
+# train_embeddings.py (comparación, no producción). Para correr esos dos
+# scripts localmente: pip install tensorflow>=2.16.0
