@@ -95,6 +95,15 @@ PRECIO_MINIMO_PLAUSIBLE_USD_TON = 100
 # (99.9%) en un solo mes (marzo) a $612/ton; 2026 May-Ago no tuvo ningún mes así.
 UMBRAL_CONCENTRACION_MENSUAL = 0.75
 
+# Coeficiente de variación (std/mean) del precio mensual histórico. Por encima de
+# esto, el "precio" de la fracción se mueve tanto mes a mes (por tratarse de pocas
+# toneladas de especificaciones distintas bajo el mismo código arancelario) que
+# comparar dos puntos no dice nada confiable — hay que verlo como serie histórica
+# completa (sección de abajo), no como "subió/bajó X%". Calibrado contra datos
+# reales: fracciones de alto volumen como 72071291 (planchón) tienen CV≈0.03-0.05;
+# fracciones de bajo volumen como 72142001 (varillas) llegan a CV≈0.61-1.06.
+UMBRAL_VOLATILIDAD_HISTORICA = 0.25
+
 st.title("Comercio Exterior — Siderúrgico")
 st.caption(
     "Avisos automáticos de importación · Fuente: SNICE (Secretaría de Economía) · "
@@ -712,19 +721,51 @@ with tab_tyasa:
                     },
                 ])
 
-                neto_long = pd.concat([
-                    neto_df[["periodo_mes", "importacion"]].rename(columns={"importacion": "volumen_total"}).assign(serie="Importación"),
-                    neto_df[["periodo_mes", "exportacion"]].rename(columns={"exportacion": "volumen_total"}).assign(serie="Exportación"),
-                    neto_df[["periodo_mes", "neto"]].rename(columns={"neto": "volumen_total"}).assign(serie="Consumo aparente (neto)"),
-                ], ignore_index=True)
-                st.plotly_chart(
-                    linea_temporal(
-                        neto_long, x="periodo_mes", y="volumen_total", color="serie",
-                        titulo="Importación vs. Exportación vs. Consumo aparente — catálogo TYASA",
-                        y_label="Ton",
-                    ),
-                    width="stretch",
-                )
+                col_neto, col_top5_ie = st.columns([2, 1])
+                with col_neto:
+                    neto_long = pd.concat([
+                        neto_df[["periodo_mes", "importacion"]].rename(columns={"importacion": "volumen_total"}).assign(serie="Importación"),
+                        neto_df[["periodo_mes", "exportacion"]].rename(columns={"exportacion": "volumen_total"}).assign(serie="Exportación"),
+                        neto_df[["periodo_mes", "neto"]].rename(columns={"neto": "volumen_total"}).assign(serie="Consumo aparente (neto)"),
+                    ], ignore_index=True)
+                    st.plotly_chart(
+                        linea_temporal(
+                            neto_long, x="periodo_mes", y="volumen_total", color="serie",
+                            titulo="Importación vs. Exportación vs. Consumo aparente — catálogo TYASA",
+                            y_label="Ton", height=420,
+                        ),
+                        width="stretch",
+                    )
+
+                with col_top5_ie:
+                    st.markdown("###### Top 5 fracciones por movimiento")
+                    periodo_ie_sel = st.selectbox(
+                        "Periodo", periodos_con_ambos, index=len(periodos_con_ambos) - 1, key="snice_top5_ie_periodo",
+                    )
+
+                    st.caption(f"Importación — {periodo_ie_sel}")
+                    top5_imp = load_top_fracciones_tyasa(periodo_ie_sel, "IMPORTACION", limite=5, fracciones=fracciones_filtro)
+                    if top5_imp.empty:
+                        st.caption("Sin datos.")
+                    else:
+                        ti = top5_imp.copy()
+                        ti["Fracción"] = ti["fraccion"].map(
+                            lambda f: f"{f} — {FRACCIONES_TYASA_DESCRIPCION.get(f, 'sin descripción')}"
+                        )
+                        ti["Volumen (ton)"] = ti["volumen_total"].map(lambda v: f"{v:,.0f}")
+                        st.dataframe(ti[["Fracción", "Volumen (ton)"]], hide_index=True, width="stretch", height=210)
+
+                    st.caption(f"Exportación — {periodo_ie_sel}")
+                    top5_exp = load_top_fracciones_tyasa(periodo_ie_sel, "EXPORTACION", limite=5, fracciones=fracciones_filtro)
+                    if top5_exp.empty:
+                        st.caption("Sin datos.")
+                    else:
+                        te = top5_exp.copy()
+                        te["Fracción"] = te["fraccion"].map(
+                            lambda f: f"{f} — {FRACCIONES_TYASA_DESCRIPCION.get(f, 'sin descripción')}"
+                        )
+                        te["Volumen (ton)"] = te["volumen_total"].map(lambda v: f"{v:,.0f}")
+                        st.dataframe(te[["Fracción", "Volumen (ton)"]], hide_index=True, width="stretch", height=210)
 
         st.divider()
         st.markdown("##### Intención de importación (por vigencia del permiso)")
@@ -891,6 +932,22 @@ with tab_tyasa:
                 concentracion_actual = _concentracion_mensual(actual)
                 concentracion_anterior = _concentracion_mensual(anterior)
 
+                # Volatilidad histórica (coeficiente de variación = std/mean del precio
+                # mensual) usando TODO el histórico disponible, no solo los dos
+                # cuatrimestres comparados — para saber si una fracción es, en general,
+                # ruidosa (ej. 72142001: precio entre $423 y $4,762/ton en 66 meses,
+                # CV≈0.61) o estable (ej. 72071291: $545-$615/ton, CV≈0.03) ANTES de
+                # ver si esta comparación en particular dio una variación grande.
+                precio_hist = series_frac[
+                    (series_frac["volumen_total"] >= VOLUMEN_MINIMO_PARA_PRECIO)
+                ].copy()
+                precio_hist["precio_usd_ton"] = precio_hist["valor_total"] / precio_hist["volumen_total"]
+                precio_hist = precio_hist[precio_hist["precio_usd_ton"] >= PRECIO_MINIMO_PLAUSIBLE_USD_TON]
+                volatilidad_historica = (
+                    precio_hist.groupby("fraccion")["precio_usd_ton"].agg(["mean", "std"])
+                    .assign(cv=lambda d: d["std"] / d["mean"])["cv"]
+                )
+
                 precio_actual_cuatri = actual.groupby("fraccion", as_index=False).agg(
                     volumen=("volumen_total", "sum"), valor=("valor_total", "sum"),
                 )
@@ -922,15 +979,27 @@ with tab_tyasa:
                             concentracion_actual.get(f, 0.0), concentracion_anterior.get(f, 0.0),
                         )
                     )
-                    precio_comp["confiable"] = precio_comp["concentracion_max"] <= UMBRAL_CONCENTRACION_MENSUAL
-                    precio_comp = precio_comp.reindex(precio_comp["delta_precio_pct"].abs().sort_values(ascending=False).index)
+                    precio_comp["volatilidad"] = precio_comp["fraccion"].map(
+                        lambda f: volatilidad_historica.get(f)
+                    )
+                    precio_comp["confiable"] = (
+                        (precio_comp["concentracion_max"] <= UMBRAL_CONCENTRACION_MENSUAL)
+                        & (precio_comp["volatilidad"].fillna(999) <= UMBRAL_VOLATILIDAD_HISTORICA)
+                    )
+                    # Primero las confiables (ordenadas por variación), luego las no
+                    # confiables — para no encabezar la tabla con ruido estadístico.
+                    precio_comp = precio_comp.sort_values(
+                        by=["confiable", "delta_precio_pct"],
+                        key=lambda s: s.abs() if s.name == "delta_precio_pct" else s,
+                        ascending=[False, False],
+                    )
 
                     top_precio_chart = precio_comp[precio_comp["confiable"]].head(10).copy()
                     if top_precio_chart.empty:
                         st.info(
-                            "Todas las fracciones con variación de precio en este periodo están "
-                            "marcadas como poco confiables (un solo mes concentra la mayoría del "
-                            "volumen) — ver la tabla de abajo para el detalle."
+                            "Ninguna fracción con variación de precio en este periodo pasó el filtro de "
+                            "confiabilidad (concentración en 1 mes y/o volatilidad histórica alta) — ver "
+                            "la tabla de abajo, o la gráfica de histórico mensual más abajo en la página."
                         )
                     else:
                         top_precio_chart["delta_abs_pct"] = top_precio_chart["delta_precio_pct"].abs()
@@ -942,16 +1011,33 @@ with tab_tyasa:
                             ),
                             width="stretch",
                         )
+                    st.caption(
+                        "¿Una fracción te preocupa (confiable o no)? Mejor que confiar en estos dos "
+                        "puntos, revisa su historial mensual completo en '📈 Precio unitario CANACERO "
+                        "(USD/ton)' más abajo — ahí se ve si es una tendencia real o ruido mes a mes."
+                    )
+
+                    def _motivo_no_confiable(row) -> str:
+                        motivos = []
+                        if row["concentracion_max"] > UMBRAL_CONCENTRACION_MENSUAL:
+                            motivos.append("concentrado en 1 mes")
+                        if pd.isna(row["volatilidad"]) or row["volatilidad"] > UMBRAL_VOLATILIDAD_HISTORICA:
+                            motivos.append("histórico muy volátil")
+                        return "⚠ " + " + ".join(motivos) if motivos else ""
+
                     tabla_precio = precio_comp[
-                        ["etiqueta", "precio_anterior", "precio_actual", "delta_precio_pct", "confiable"]
+                        ["etiqueta", "precio_anterior", "precio_actual", "delta_precio_pct", "volatilidad", "confiable"]
                     ].copy()
+                    tabla_precio["confiable"] = precio_comp.apply(_motivo_no_confiable, axis=1)
                     tabla_precio["precio_anterior"] = tabla_precio["precio_anterior"].map(lambda v: f"${v:,.0f}")
                     tabla_precio["precio_actual"] = tabla_precio["precio_actual"].map(lambda v: f"${v:,.0f}")
                     tabla_precio["delta_precio_pct"] = tabla_precio["delta_precio_pct"].map(lambda v: f"{v:+.1f}%")
-                    tabla_precio["confiable"] = tabla_precio["confiable"].map(lambda b: "" if b else "⚠ concentrado en 1 mes")
+                    tabla_precio["volatilidad"] = tabla_precio["volatilidad"].map(
+                        lambda v: f"{v:.2f}" if pd.notna(v) else "N/D"
+                    )
                     tabla_precio.columns = [
                         "Fracción", f"{cuatri_anterior} (USD/ton)", f"{cuatri_sel} (USD/ton)",
-                        "Variación precio (%)", "Confiabilidad",
+                        "Variación precio (%)", "Volatilidad histórica (CV)", "Confiabilidad",
                     ]
                     st.dataframe(tabla_precio, hide_index=True, width="stretch", height=320)
 

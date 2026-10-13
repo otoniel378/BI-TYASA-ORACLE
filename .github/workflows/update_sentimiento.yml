@@ -4,6 +4,8 @@ on:
   schedule:
     # Lunes a viernes a las 9:00 AM México (15:00 UTC) — después de update_market
     - cron: "0 15 * * 1-5"
+    # Lunes a viernes a las 3:00 PM México (21:00 UTC) — segunda pasada del día
+    - cron: "0 21 * * 1-5"
   workflow_dispatch:  # permite correrlo manualmente desde GitHub
 
 jobs:
@@ -30,7 +32,11 @@ jobs:
         # scikit-learn + sentence-transformers (clasificador local de categoría,
         # ver ml/categoria_noticias/inferencia.py) — sentence-transformers trae
         # torch como dependencia, por eso el timeout y la caché de arriba.
-        run: pip install oracledb pandas python-dotenv requests scikit-learn sentence-transformers
+        # googlenewsdecoder (+ selectolax<1.0, pin por compatibilidad) resuelve
+        # las URLs de Google News RSS a la URL real del artículo para el correo.
+        run: |
+          pip install oracledb pandas python-dotenv requests scikit-learn sentence-transformers
+          pip install googlenewsdecoder "selectolax<1.0"
 
       - name: Extraer wallet de Oracle
         run: |
@@ -48,6 +54,9 @@ jobs:
           ORACLE_WALLET_DIR:      /tmp/oracle_wallet
           ORACLE_WALLET_PASSWORD: ${{ secrets.ORACLE_WALLET_PASSWORD }}
           GEMINI_API_KEY:         ${{ secrets.GEMINI_API_KEY }}
+          GMAIL_USER:             ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD:     ${{ secrets.GMAIL_APP_PASSWORD }}
+          DIGEST_EMAIL_TO:        ${{ secrets.DIGEST_EMAIL_TO }}
         run: python scripts/update_sentimiento_noticias.py
 
       - name: Cruzar quiebres activos con noticias clasificadas

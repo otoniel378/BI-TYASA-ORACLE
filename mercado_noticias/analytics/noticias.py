@@ -114,14 +114,20 @@ _BROWSER_HEADERS = {
 
 
 def _resolve_gnews_url(url: str) -> str:
-    """Sigue el redirect de una Google News RSS URL para obtener la URL real del artículo."""
+    """Resuelve una URL de Google News RSS a la URL real del artículo.
+
+    Google ya no hace esto con un redirect HTTP normal (requests.get ya no
+    sirve, solo rebota a otra URL de news.google.com) — el link real viene
+    codificado dentro del HTML de la página y hay que decodificarlo. Se usa
+    la librería googlenewsdecoder, que replica la llamada interna que hace
+    el propio sitio de Google News para resolverlo."""
     if not url or "news.google.com/rss/articles/" not in url:
         return url
     try:
-        resp = requests.get(url, timeout=6, allow_redirects=True, headers=_BROWSER_HEADERS)
-        final = resp.url
-        if final and "news.google.com" not in final and final.startswith("http"):
-            return final
+        from googlenewsdecoder import gnewsdecoder
+        res = gnewsdecoder(url, interval=1)
+        if res.get("success") and res.get("decoded_url", "").startswith("http"):
+            return res["decoded_url"]
     except Exception:
         pass
     return url
@@ -137,12 +143,13 @@ def _resolve_gnews_batch(articulos: list[dict]) -> list[dict]:
     if not targets:
         return articulos
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(targets), 6)) as ex:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(targets), 8)) as ex:
             future_to_idx = {ex.submit(_resolve_gnews_url, url): i for i, url in targets}
-            # Sin timeout global: cada request ya tiene timeout=6s individual
+            # gnewsdecoder baja la página completa (varios cientos de KB) + hace
+            # una llamada interna adicional, por eso el margen más amplio que antes.
             done, _ = concurrent.futures.wait(
                 future_to_idx.keys(),
-                timeout=12,
+                timeout=30,
                 return_when=concurrent.futures.ALL_COMPLETED,
             )
             for fut in done:
