@@ -23,3 +23,10 @@ sentence-transformers>=3.0.0
 # descartado ml/categoria_noticias/train_lstm.py y el modelo de referencia de
 # train_embeddings.py (comparación, no producción). Para correr esos dos
 # scripts localmente: pip install tensorflow>=2.16.0
+
+# Resuelve las URLs de redirect de Google News RSS a la URL real del
+# artículo (requests.get con allow_redirects ya no funciona, Google lo
+# resuelve con JS). selectolax se fija <1.0 porque googlenewsdecoder todavía
+# usa el backend "Modest", removido en selectolax 1.0.
+googlenewsdecoder>=0.1.7
+selectolax<1.0

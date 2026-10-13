@@ -17,7 +17,7 @@ sys.path.insert(0, str(_root))
 
 import pandas as pd
 import oracledb
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -119,6 +119,74 @@ def _upsert_oracle(conn: oracledb.Connection, df: pd.DataFrame) -> int:
     return len(rows)
 
 
+def _ids_existentes(conn: oracledb.Connection, ids: list[str]) -> set[str]:
+    """IDs que YA estaban en Oracle antes de esta corrida — para que el correo
+    de noticias nuevas no repita algo que ya se reportó en una corrida anterior
+    del mismo día (ej. la de las 9am vs. la de las 3pm)."""
+    if not ids:
+        return set()
+    cursor = conn.cursor()
+    try:
+        placeholders = ", ".join(f"'{i}'" for i in ids)  # IDs son hashes hex, sin riesgo de inyección
+        cursor.execute(f"SELECT ID FROM ADMIN.GOLD_SENTIMIENTO_NOTICIAS WHERE ID IN ({placeholders})")
+        return {row[0] for row in cursor.fetchall()}
+    finally:
+        cursor.close()
+
+
+def _indicadores_html_para_email(conn: oracledb.Connection) -> str:
+    """Trae GOLD_VARIABLES_MERCADO directo (sin pasar por el loader de Streamlit,
+    este script corre fuera de un servidor de Streamlit) y arma el HTML de
+    indicadores reusando el mismo componente que usa el dashboard."""
+    try:
+        from core.components.market_summary import build_indicadores_html
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT NOMBRE, FECHA, VALOR FROM ADMIN.GOLD_VARIABLES_MERCADO
+                WHERE FECHA >= SYSDATE - 10 ORDER BY NOMBRE, FECHA
+            """)
+            rows = cursor.fetchall()
+        finally:
+            cursor.close()
+        df_vars = pd.DataFrame(rows, columns=["nombre", "fecha", "valor"])
+        return build_indicadores_html(df_vars)
+    except Exception as e:
+        print(f"  [WARN] No se pudo armar la sección de indicadores para el correo: {e}")
+        return ""
+
+
+def _enviar_alerta_noticias(conn: oracledb.Connection, df_sent: pd.DataFrame, ids_previos: set[str]):
+    """Si hay noticias genuinamente nuevas desde la última corrida, arma y
+    manda el correo estilo 'periódico virtual' (destacada + resto + indicadores)."""
+    from mercado_noticias.analytics.correo_noticias import (
+        seleccionar_noticia_destacada, construir_email_noticias_html, enviar_email_noticias,
+    )
+    from mercado_noticias.analytics.noticias import _resolve_gnews_batch
+
+    df_nuevas = df_sent[~df_sent["hash_url"].isin(ids_previos)]
+    if df_nuevas.empty:
+        print("\n  Sin noticias nuevas desde la corrida anterior — no se manda correo.")
+        return
+
+    nuevas = df_nuevas.to_dict(orient="records")
+    # Las URLs de Google News RSS son redirects internos que a veces dan error
+    # 400 si se abren directo en el navegador — se resuelven a la URL real del
+    # artículo antes de mandarlas por correo (mismo fix que ya usa 03_industria.py).
+    nuevas = _resolve_gnews_batch(nuevas)
+    destacada = seleccionar_noticia_destacada(nuevas)
+    if not destacada:
+        return
+
+    hora_mx = (datetime.utcnow() - timedelta(hours=6)).strftime("%H:%M")
+    indicadores_html = _indicadores_html_para_email(conn)
+    html = construir_email_noticias_html(nuevas, destacada, indicadores_html, hora_corrida=f"{hora_mx} hrs")
+    subject = f"TYASA BI · {destacada.get('titulo', '')[:70]}"
+
+    ok, msg = enviar_email_noticias(html, subject)
+    print(f"\n  Correo de noticias: {'OK' if ok else 'FALLÓ'} — {msg}")
+
+
 def run():
     print("=" * 60)
     print(f"TYASA BI — Sentimiento Noticias — {date.today()}")
@@ -203,10 +271,12 @@ def run():
     print("\n  Guardando en Oracle ADW...")
     conn = get_conn()
     try:
+        ids_previos = _ids_existentes(conn, df_sent["hash_url"].tolist())
         n_guardadas = _upsert_oracle(conn, df_sent)
+        print(f"  Guardadas/actualizadas: {n_guardadas} noticias")
+        _enviar_alerta_noticias(conn, df_sent, ids_previos)
     finally:
         conn.close()
-    print(f"  Guardadas/actualizadas: {n_guardadas} noticias")
 
     # Resumen de sentimiento
     n_pos = (df_sent["sentimiento"] == "positivo").sum()
