@@ -164,9 +164,20 @@ def _enviar_alerta_noticias(conn: oracledb.Connection, df_sent: pd.DataFrame, id
     )
     from mercado_noticias.analytics.noticias import _resolve_gnews_batch
 
-    df_nuevas = df_sent[~df_sent["hash_url"].isin(ids_previos)]
+    hoy_mx = (datetime.utcnow() - timedelta(hours=6)).strftime("%Y-%m-%d")
+
+    # "Nueva" para el correo = (a) no estaba antes en Oracle, (b) se publicó
+    # HOY (Google News a veces resurge artículos viejos en una búsqueda nueva
+    # — eso no es noticia nueva, aunque sea la primera vez que la vemos) y
+    # (c) sí se logró clasificar (si Gemini falló, no sabemos su impacto real,
+    # mejor no reportarla que reportarla mal).
+    df_nuevas = df_sent[
+        (~df_sent["hash_url"].isin(ids_previos))
+        & (df_sent["fecha_pub"].astype(str).str[:10] == hoy_mx)
+        & (df_sent["razon"] != "No se pudo clasificar")
+    ]
     if df_nuevas.empty:
-        print("\n  Sin noticias nuevas desde la corrida anterior — no se manda correo.")
+        print(f"\n  Sin noticias nuevas de hoy ({hoy_mx}) — no se manda correo.")
         return
 
     nuevas = df_nuevas.to_dict(orient="records")
@@ -178,7 +189,7 @@ def _enviar_alerta_noticias(conn: oracledb.Connection, df_sent: pd.DataFrame, id
     if not destacada:
         return
 
-    hora_mx = (datetime.utcnow() - timedelta(hours=6)).strftime("%H:%M")
+    hora_mx = (datetime.utcnow() - timedelta(hours=6)).strftime("%H:%M")  # solo hora, hoy_mx ya se calculó arriba
     indicadores_html = _indicadores_html_para_email(conn)
     html = construir_email_noticias_html(nuevas, destacada, indicadores_html, hora_corrida=f"{hora_mx} hrs")
     subject = f"TYASA BI · {destacada.get('titulo', '')[:70]}"
