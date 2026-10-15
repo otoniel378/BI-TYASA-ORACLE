@@ -1,12 +1,13 @@
 name: Actualización Diaria de Sentimiento de Noticias
 
 on:
-  schedule:
-    # Lunes a viernes a las 9:00 AM México (15:00 UTC) — después de update_market
-    - cron: "0 15 * * 1-5"
-    # Lunes a viernes a las 3:00 PM México (21:00 UTC) — segunda pasada del día
-    - cron: "0 21 * * 1-5"
-  workflow_dispatch:  # permite correrlo manualmente desde GitHub
+  # El cron nativo de GitHub Actions se quitó a propósito: llega puntualmente
+  # 4-7 horas tarde en cuentas gratuitas (patrón confirmado durante semanas),
+  # y haberlo dejado como "respaldo" junto al disparador externo preciso
+  # (cron-job.org -> workflow_dispatch) causó corridas casi simultáneas que
+  # saturaron el rate limit de Gemini el 14-oct-2026. El horario real ahora
+  # vive en cron-job.org: 9:00 AM y 3:00 PM México, lunes a viernes.
+  workflow_dispatch:  # permite correrlo manualmente desde GitHub, y es lo que usa cron-job.org
 
 jobs:
   update-sentimiento:
