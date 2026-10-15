@@ -624,14 +624,10 @@ with tab_tyasa:
         st.divider()
         st.markdown("##### CANACERO vs. SNICE vs. TYASA (siempre Importación)")
         st.caption(
-            "Las dos primeras series son el mismo universo — TODO México, pero SOLO en las "
-            "fracciones del catálogo de TYASA (no todo el acero del país, y no el volumen propio "
-            "de TYASA) — reportado por dos fuentes distintas: CANACERO (estadística oficial de "
-            "comercio exterior) y SNICE (avisos automáticos de importación). La tercera es el "
-            "volumen que TYASA reportó a su propio nombre en SNICE. Esta comparación siempre usa "
-            "CANACERO-Importación, sin importar el radio 'Movimiento a analizar' de arriba — SNICE "
-            "no tiene un equivalente de exportación, así que comparar contra exportación no "
-            "tendría sentido. Para ver exportación CANACERO, usa las secciones más abajo."
+            "CANACERO = lo que de verdad se importó (dato oficial de aduanas). SNICE = los "
+            "permisos que las empresas tramitaron para importar (una intención, no lo que ya "
+            "pasó). TYASA es su propio dato dentro de SNICE. Esta gráfica siempre es de "
+            "Importación, sin importar el filtro de arriba."
         )
 
         serie_canacero = load_serie_tiempo_tyasa("IMPORTACION", fracciones=fracciones_filtro)[["periodo_mes", "volumen_total"]]
