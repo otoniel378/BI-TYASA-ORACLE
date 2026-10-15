@@ -210,7 +210,12 @@ def _llamar_gemini(prompt: str, api_key: str, model: str) -> dict | None:
         body = {
             "system_instruction": {"parts": [{"text": _SYSTEM_CATEGORIA}]},
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.1, "maxOutputTokens": 256},
+            # Ver comentario equivalente en sentimiento.py — sin esto el modelo
+            # "piensa" antes de responder y se queda sin tokens para el JSON.
+            "generationConfig": {
+                "temperature": 0.1, "maxOutputTokens": 256,
+                "thinkingConfig": {"thinkingBudget": 0},
+            },
         }
         resp = requests.post(url, json=body, timeout=25)
         if resp.status_code != 200:
