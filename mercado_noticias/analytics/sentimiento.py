@@ -189,7 +189,22 @@ def _llamar_gemini(prompt: str, api_key: str, model: str) -> dict | None:
             ),
         )
         raw = (resp.text or "").strip()
-        return _parse_json(raw) if raw else None
+        if not raw:
+            # Antes esto fallaba en silencio (caía al default sin avisar por qué).
+            # Se loguea el finish_reason para poder diagnosticar la próxima vez
+            # (ej. MAX_TOKENS = el "thinking" se comió el budget, SAFETY = bloqueo
+            # de contenido, etc.) en vez de adivinar.
+            motivo = "desconocido"
+            try:
+                motivo = resp.candidates[0].finish_reason
+            except Exception:
+                pass
+            print(f"[sentimiento] SDK devolvió texto vacío (finish_reason={motivo})")
+            return None
+        resultado = _parse_json(raw)
+        if resultado is None:
+            print(f"[sentimiento] SDK respondió pero no se pudo parsear como JSON: {raw[:200]!r}")
+        return resultado
     except ImportError:
         pass
     except Exception as e:
@@ -210,8 +225,17 @@ def _llamar_gemini(prompt: str, api_key: str, model: str) -> dict | None:
         if resp.status_code != 200:
             print(f"[sentimiento] REST HTTP {resp.status_code}: {resp.text[:300]}")
             return None
-        raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-        return _parse_json(raw)
+        data = resp.json()
+        try:
+            raw = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        except (KeyError, IndexError):
+            motivo = data.get("candidates", [{}])[0].get("finishReason", "desconocido") if data.get("candidates") else "sin candidates"
+            print(f"[sentimiento] REST respondió 200 pero sin texto usable (finishReason={motivo}): {str(data)[:300]}")
+            return None
+        resultado = _parse_json(raw)
+        if resultado is None:
+            print(f"[sentimiento] REST respondió pero no se pudo parsear como JSON: {raw[:200]!r}")
+        return resultado
     except Exception as e:
         print(f"[sentimiento] REST error: {e}")
         return None
