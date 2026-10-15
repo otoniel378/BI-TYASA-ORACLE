@@ -43,6 +43,14 @@ jobs:
           INEGI_TOKEN:            ${{ secrets.INEGI_TOKEN }}
         run: python scripts/update_inegi_data.py
 
+      - name: Avisar por correo si falló
+        if: failure()
+        env:
+          GMAIL_USER:         ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          DIGEST_EMAIL_TO:    ${{ secrets.DIGEST_EMAIL_TO }}
+        run: python scripts/notify_failure.py
+
       - name: Resultado
         if: always()
         run: echo "Actualización INEGI completada - $(date)"
