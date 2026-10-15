@@ -248,12 +248,19 @@ def _call_gemini(prompt: str, api_key: str, model: str = _DEFAULT_MODEL) -> dict
                 f"https://generativelanguage.googleapis.com/v1beta/models/"
                 f"{m}:generateContent?key={api_key}"
             )
+            base_cfg = {"temperature": 0.3, "maxOutputTokens": 2048}
             body = {
                 "system_instruction": {"parts": [{"text": _SYSTEM_PROMPT}]},
                 "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.3, "maxOutputTokens": 2048},
+                # Ver _generate_content_sdk — mismo motivo: sin esto el modelo
+                # gasta maxOutputTokens "pensando" antes de escribir el JSON.
+                "generationConfig": {**base_cfg, "thinkingConfig": {"thinkingBudget": 0}},
             }
             resp = requests.post(url, json=body, timeout=30)
+            if resp.status_code == 400:
+                # Variantes "-lite" rechazan thinkingConfig — reintenta sin él.
+                body["generationConfig"] = base_cfg
+                resp = requests.post(url, json=body, timeout=30)
             if resp.status_code == 200:
                 data = resp.json()
                 raw  = data["candidates"][0]["content"]["parts"][0]["text"].strip()
@@ -419,15 +426,16 @@ def _call_gemini_text(
                 f"https://generativelanguage.googleapis.com/v1beta/models/"
                 f"{m}:generateContent?key={api_key}"
             )
+            base_cfg = {"temperature": temperature, "maxOutputTokens": max_output_tokens}
             body = {
                 "system_instruction": {"parts": [{"text": system}]},
                 "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": temperature,
-                    "maxOutputTokens": max_output_tokens,
-                },
+                "generationConfig": {**base_cfg, "thinkingConfig": {"thinkingBudget": 0}},
             }
             resp = requests.post(url, json=body, timeout=60)
+            if resp.status_code == 400:
+                body["generationConfig"] = base_cfg
+                resp = requests.post(url, json=body, timeout=60)
             if resp.status_code == 200:
                 data = resp.json()
                 return data["candidates"][0]["content"]["parts"][0]["text"].strip()

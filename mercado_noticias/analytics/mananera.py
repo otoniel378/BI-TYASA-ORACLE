@@ -459,12 +459,16 @@ def _call_gemini(prompt: str, api_key: str) -> dict | None:
                 f"https://generativelanguage.googleapis.com/v1beta/models/"
                 f"{model}:generateContent?key={api_key}"
             )
+            base_cfg = {"temperature": 0.2, "maxOutputTokens": 3000}
             body = {
                 "system_instruction": {"parts": [{"text": _SYSTEM}]},
                 "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.2, "maxOutputTokens": 3000},
+                "generationConfig": {**base_cfg, "thinkingConfig": {"thinkingBudget": 0}},
             }
             resp = requests.post(url, json=body, timeout=60)
+            if resp.status_code == 400:
+                body["generationConfig"] = base_cfg
+                resp = requests.post(url, json=body, timeout=60)
             if resp.status_code == 200:
                 data = resp.json()
                 raw  = data["candidates"][0]["content"]["parts"][0]["text"].strip()
