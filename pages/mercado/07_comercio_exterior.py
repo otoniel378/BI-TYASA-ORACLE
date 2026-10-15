@@ -510,12 +510,7 @@ with tab_detalle:
 
 # ── PARTICIPACIÓN TYASA (CANACERO × SNICE) ──────────────────────────────────
 with tab_tyasa:
-    st.caption(
-        "CANACERO = comercio exterior TOTAL de México (fuente: SICEP), filtrado a las fracciones "
-        "del catálogo de TYASA. SNICE = detalle por empresa de los avisos automáticos de importación "
-        "en esas mismas fracciones. Esto todavía NO son los volúmenes propios de TYASA — ese cruce se "
-        "agrega cuando se integren los datos internos de TYASA."
-    )
+    st.caption("Comercio exterior nacional (CANACERO) y detalle por empresa (SNICE).")
 
     with st.expander("Cargar nuevo periodo de CANACERO (CSV de 'Base de datos tradicional')"):
         c_up1, c_up2 = st.columns([2, 1])
@@ -599,11 +594,6 @@ with tab_tyasa:
                 {"label": "Cobertura SNICE / CANACERO", "value": round(cobertura_pct, 1), "suffix": " %"},
                 {"label": "Empresa líder (SNICE)", "value": empresa_top},
             ])
-            st.caption(
-                "\"Volumen nacional CANACERO\" es la suma de TODO México en las fracciones del catálogo "
-                "TYASA (no el volumen propio de TYASA). El periodo de CANACERO y el de SNICE (filtro de "
-                "arriba de la página) pueden no coincidir exactamente — cada fuente publica en fechas distintas."
-            )
         else:
             # SNICE son avisos automáticos de IMPORTACIÓN únicamente — no existe un
             # equivalente de exportación en esa fuente. Comparar "cobertura" contra
@@ -614,21 +604,10 @@ with tab_tyasa:
             render_kpi_row([
                 {"label": f"Volumen nacional CANACERO — Exportación ({periodo_canacero_sel})", "value": round(vol_nacional_ton), "suffix": " ton"},
             ])
-            st.info(
-                "SNICE solo cubre avisos de IMPORTACIÓN — no hay un \"SNICE de exportación\" con el "
-                "que comparar, así que aquí no se muestran cobertura ni empresa líder de SNICE. Las "
-                "secciones de abajo (cuatrimestres, precio unitario, fracciones, consulta puntual) sí "
-                "muestran exportación CANACERO completa."
-            )
+            st.caption("SNICE no tiene datos de exportación.")
 
         st.divider()
         st.markdown("##### CANACERO vs. SNICE vs. TYASA (siempre Importación)")
-        st.caption(
-            "CANACERO = lo que de verdad se importó (dato oficial de aduanas). SNICE = los "
-            "permisos que las empresas tramitaron para importar (una intención, no lo que ya "
-            "pasó). TYASA es su propio dato dentro de SNICE. Esta gráfica siempre es de "
-            "Importación, sin importar el filtro de arriba."
-        )
 
         serie_canacero = load_serie_tiempo_tyasa("IMPORTACION", fracciones=fracciones_filtro)[["periodo_mes", "volumen_total"]]
         serie_canacero["serie"] = "CANACERO — nacional, catálogo TYASA (Importación)"
@@ -655,13 +634,6 @@ with tab_tyasa:
                 ),
                 width="stretch",
             )
-            st.caption(
-                "La serie de TYASA sale de GOLD_SNICE_TOP_EMPRESAS (histórico completo desde 2019, "
-                "sin poder acotarse por fracción); en los meses donde sí se pudo comparar contra el "
-                "detalle exacto del catálogo TYASA (los que siguen en BRONZE) el total coincidió "
-                "exacto, así que no parece incluir nada fuera de su propio catálogo."
-            )
-
         with col_top5:
             st.markdown("###### Top 5 fracciones por periodo")
             periodo_top5_sel = st.selectbox(
@@ -712,13 +684,7 @@ with tab_tyasa:
                 serie_exp_neto.rename(columns={"volumen_total": "exportacion"}), on="periodo_mes", how="inner",
             ).sort_values("periodo_mes")
             periodos_con_ambos = sorted(neto_df["periodo_mes"].unique().tolist())
-            st.caption(
-                "Importación menos exportación, para estimar qué tanto de lo que entra a México "
-                "realmente se queda (vs. se reexporta) — mismo catálogo de fracciones TYASA. Solo "
-                "cubre los meses donde CANACERO tiene AMBOS movimientos cargados: hoy, "
-                f"{', '.join(periodos_con_ambos) if periodos_con_ambos else 'ninguno'} "
-                "(exportación tiene mucho menos historial subido que importación)."
-            )
+            st.caption("Importación menos exportación — lo que se queda en México.")
             if neto_df.empty:
                 st.info("Sin meses con importación y exportación cargadas a la vez todavía.")
             else:
@@ -787,12 +753,7 @@ with tab_tyasa:
 
         st.divider()
         st.markdown("##### Intención de importación (por vigencia del permiso)")
-        st.caption(
-            "A diferencia de las gráficas de arriba (agrupadas por el PERIODO en que se tramitó "
-            "el aviso), aquí se agrupa por la VIGENCIA del permiso: qué avisos siguen habilitando "
-            "la importación durante el mes que elijas, sin importar cuándo se hayan tramitado. Solo "
-            "cubre los periodos que siguen en BRONZE (un aviso dura 123 días de vigencia)."
-        )
+        st.caption("Qué avisos siguen vigentes ese mes, aunque se hayan tramitado antes.")
 
         mes_min, mes_max = load_rango_vigencia_disponible(fracciones_exactas_snice, fracciones_prefijo_snice)
         if not mes_min:
@@ -847,11 +808,7 @@ with tab_tyasa:
 
         st.divider()
         st.markdown(f"##### Comparación por cuatrimestre (CANACERO — {movimiento_dash_label})")
-        st.caption(
-            "Agrupa el histórico nacional CANACERO en cuatrimestres (Ene-Abr / May-Ago / Sep-Dic) "
-            "y compara el cuatrimestre elegido contra el inmediato anterior, fracción por fracción, "
-            "para ver qué subió, qué bajó, y en qué porcentaje."
-        )
+        st.caption("Compara el cuatrimestre elegido contra el anterior, por fracción.")
 
         series_frac = load_series_fracciones_tyasa(movimiento_dash)
         if fracciones_filtro:
@@ -929,16 +886,7 @@ with tab_tyasa:
                 st.dataframe(tabla_comp, hide_index=True, width="stretch", height=360)
 
                 st.markdown(f"###### Precio unitario — mismos cuatrimestres ({movimiento_dash_label})")
-                st.caption(
-                    "Precio implícito (valor USD / volumen ton) por fracción, promedio ponderado de "
-                    "cada cuatrimestre. Solo incluye fracciones con al menos "
-                    f"{VOLUMEN_MINIMO_PARA_PRECIO} ton en AMBOS cuatrimestres — con menos volumen, el "
-                    "precio implícito se vuelve ruido estadístico (dividir entre casi-cero dispara el "
-                    "resultado), no una señal real de mercado. Las marcadas ⚠ tienen más del "
-                    f"{UMBRAL_CONCENTRACION_MENSUAL:.0%} de su volumen concentrado en UN solo mes de ese "
-                    "cuatrimestre — su 'precio promedio' es en realidad casi solo el de ese mes, así que "
-                    "una variación grande puede ser un cambio en la mezcla de embarques, no en el precio."
-                )
+                st.caption("Precio promedio por fracción en cada cuatrimestre.")
 
                 def _concentracion_mensual(df_cuatri: pd.DataFrame) -> pd.Series:
                     """Para cada fracción: qué fracción de su volumen del cuatrimestre
@@ -1029,11 +977,7 @@ with tab_tyasa:
                             ),
                             width="stretch",
                         )
-                    st.caption(
-                        "¿Una fracción te preocupa (confiable o no)? Mejor que confiar en estos dos "
-                        "puntos, revisa su historial mensual completo en '📈 Precio unitario CANACERO "
-                        "(USD/ton)' más abajo — ahí se ve si es una tendencia real o ruido mes a mes."
-                    )
+                    st.caption("Ver histórico completo de una fracción en 'Precio unitario CANACERO' más abajo.")
 
                     def _motivo_no_confiable(row) -> str:
                         motivos = []
@@ -1061,16 +1005,7 @@ with tab_tyasa:
 
         st.divider()
         st.markdown(f"##### Precio unitario CANACERO (USD/ton) — {movimiento_dash_label}")
-        st.caption(
-            "Precio implícito = valor en dólares reportado / volumen en toneladas, por fracción y "
-            "mes. Solo CANACERO trae valor en dólares limpio; SNICE no tiene un campo de precio "
-            "estructurado por aviso (solo aparece, a veces, en texto libre dentro de la descripción). "
-            f"Se excluyen meses con menos de {VOLUMEN_MINIMO_PARA_PRECIO} ton en esa fracción (con "
-            "volumen casi cero el precio implícito se dispara — sin este filtro había meses con "
-            "precios de hasta $5.7 millones USD/ton, de dividir entre 0.00006 toneladas) y precios "
-            f"por debajo de ${PRECIO_MINIMO_PLAUSIBLE_USD_TON} USD/ton (2 filas aisladas en todo el "
-            "histórico con un valor en dólares claramente mal capturado en el CSV de CANACERO)."
-        )
+        st.caption("Precio por tonelada, mes a mes, por fracción.")
 
         precio_frac = (
             series_frac[series_frac["volumen_total"] >= VOLUMEN_MINIMO_PARA_PRECIO].copy()
@@ -1124,10 +1059,7 @@ with tab_tyasa:
 
         st.divider()
         st.markdown(f"###### Fracciones CANACERO por volumen nacional ({movimiento_dash_label})")
-        st.caption(
-            "Estas son las fracciones del catálogo TYASA, pero el volumen que se ve aquí es el "
-            "total nacional reportado por CANACERO (no el volumen propio de TYASA)."
-        )
+        st.caption("Volumen total nacional, no el de TYASA.")
         fracciones_top_full = load_top_fracciones_tyasa(
             periodo_canacero_sel, movimiento_dash, limite=100, fracciones=fracciones_filtro,
         )
