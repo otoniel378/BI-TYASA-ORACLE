@@ -30,3 +30,9 @@ sentence-transformers>=3.0.0
 # usa el backend "Modest", removido en selectolax 1.0.
 googlenewsdecoder>=0.1.7
 selectolax<1.0
+
+# SDK oficial de Gemini — preferido sobre el fallback REST porque permite
+# deshabilitar "thinking" de forma nativa (thinking_config). Sin este paquete
+# instalado, GH Actions/Streamlit Cloud caían al REST fallback, que hasta
+# ahora no deshabilitaba thinking y producía respuestas truncadas/sin JSON.
+google-genai>=0.3.0

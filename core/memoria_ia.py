@@ -181,11 +181,15 @@ Solo incluye información que sería útil recordar en sesiones futuras sobre da
                 f"https://generativelanguage.googleapis.com/v1beta/models/"
                 f"{model}:generateContent?key={gemini_key}"
             )
+            base_cfg = {"temperature": 0.1, "maxOutputTokens": 1024}
             body = {
                 "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.1, "maxOutputTokens": 1024},
+                "generationConfig": {**base_cfg, "thinkingConfig": {"thinkingBudget": 0}},
             }
             r = requests.post(url, json=body, timeout=30)
+            if r.status_code == 400:
+                body["generationConfig"] = base_cfg
+                r = requests.post(url, json=body, timeout=30)
             raw = r.json()["candidates"][0]["content"]["parts"][0]["text"].strip() if r.ok else ""
         except Exception:
             return []

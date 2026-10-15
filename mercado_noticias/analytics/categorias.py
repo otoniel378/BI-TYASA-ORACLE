@@ -207,17 +207,19 @@ def _llamar_gemini(prompt: str, api_key: str, model: str) -> dict | None:
             f"https://generativelanguage.googleapis.com/v1beta/models/"
             f"{model}:generateContent?key={api_key}"
         )
+        base_cfg = {"temperature": 0.1, "maxOutputTokens": 256}
         body = {
             "system_instruction": {"parts": [{"text": _SYSTEM_CATEGORIA}]},
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             # Ver comentario equivalente en sentimiento.py — sin esto el modelo
             # "piensa" antes de responder y se queda sin tokens para el JSON.
-            "generationConfig": {
-                "temperature": 0.1, "maxOutputTokens": 256,
-                "thinkingConfig": {"thinkingBudget": 0},
-            },
+            "generationConfig": {**base_cfg, "thinkingConfig": {"thinkingBudget": 0}},
         }
         resp = requests.post(url, json=body, timeout=25)
+        if resp.status_code == 400:
+            # Algunos modelos rechazan thinkingConfig con 400 — reintenta sin él.
+            body["generationConfig"] = base_cfg
+            resp = requests.post(url, json=body, timeout=25)
         if resp.status_code != 200:
             print(f"[categorias] REST HTTP {resp.status_code}: {resp.text[:300]}")
             return None

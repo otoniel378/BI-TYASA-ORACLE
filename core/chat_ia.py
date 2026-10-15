@@ -499,13 +499,19 @@ def _chat_turno_rest(historial, gemini_key, model, contexto_previo="") -> dict:
         for p in m.get("parts", [])
         if isinstance(p, str)
     ]
+    base_cfg = {"temperature": 0.15, "maxOutputTokens": 2048}
     body = {
         "system_instruction": {"parts": [{"text": system_txt}]},
         "contents": messages,
-        "generationConfig": {"temperature": 0.15, "maxOutputTokens": 2048},
+        # Sin thinkingBudget:0 el modelo gasta maxOutputTokens "pensando" antes
+        # de responder y el texto visible sale vacío o truncado (ver sentimiento.py).
+        "generationConfig": {**base_cfg, "thinkingConfig": {"thinkingBudget": 0}},
     }
     try:
         r = requests.post(url, json=body, timeout=90)
+        if r.status_code == 400:
+            body["generationConfig"] = base_cfg
+            r = requests.post(url, json=body, timeout=90)
         if r.status_code == 200:
             text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
             return {"respuesta": text.strip(), "herramientas": [], "error": None}

@@ -38,6 +38,7 @@ jobs:
         run: |
           pip install oracledb pandas python-dotenv requests scikit-learn sentence-transformers
           pip install googlenewsdecoder "selectolax<1.0"
+          pip install google-genai
 
       - name: Extraer wallet de Oracle
         run: |
