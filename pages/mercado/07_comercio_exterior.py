@@ -583,37 +583,59 @@ with tab_tyasa:
         resumen_nac = load_resumen_tyasa(periodo_canacero_sel, movimiento_dash, fracciones=fracciones_filtro)
         vol_nacional_ton = resumen_nac.get("volumen_total") or 0
 
-        empresas_tyasa = load_empresas_fracciones(
-            periodo_sel, fracciones_exactas_snice, fracciones_prefijo_snice,
-        )
-        vol_snice_ton = (empresas_tyasa["volumen_total"].sum() / 1000) if not empresas_tyasa.empty else 0
-        cobertura_pct = (vol_snice_ton / vol_nacional_ton * 100) if vol_nacional_ton else 0
-        empresa_top = empresas_tyasa.iloc[0]["razon_social"] if not empresas_tyasa.empty else "—"
+        es_importacion = movimiento_dash == "IMPORTACION"
 
-        render_kpi_row([
-            {"label": f"Volumen nacional CANACERO ({periodo_canacero_sel})", "value": round(vol_nacional_ton), "suffix": " ton"},
-            {"label": f"Reportado en avisos SNICE ({periodo_sel})", "value": round(vol_snice_ton), "suffix": " ton"},
-            {"label": "Cobertura SNICE / CANACERO", "value": round(cobertura_pct, 1), "suffix": " %"},
-            {"label": "Empresa líder (SNICE)", "value": empresa_top},
-        ])
-        st.caption(
-            "\"Volumen nacional CANACERO\" es la suma de TODO México en las fracciones del catálogo "
-            "TYASA (no el volumen propio de TYASA). El periodo de CANACERO y el de SNICE (filtro de "
-            "arriba de la página) pueden no coincidir exactamente — cada fuente publica en fechas distintas."
-        )
+        if es_importacion:
+            empresas_tyasa = load_empresas_fracciones(
+                periodo_sel, fracciones_exactas_snice, fracciones_prefijo_snice,
+            )
+            vol_snice_ton = (empresas_tyasa["volumen_total"].sum() / 1000) if not empresas_tyasa.empty else 0
+            cobertura_pct = (vol_snice_ton / vol_nacional_ton * 100) if vol_nacional_ton else 0
+            empresa_top = empresas_tyasa.iloc[0]["razon_social"] if not empresas_tyasa.empty else "—"
+
+            render_kpi_row([
+                {"label": f"Volumen nacional CANACERO — Importación ({periodo_canacero_sel})", "value": round(vol_nacional_ton), "suffix": " ton"},
+                {"label": f"Reportado en avisos SNICE ({periodo_sel})", "value": round(vol_snice_ton), "suffix": " ton"},
+                {"label": "Cobertura SNICE / CANACERO", "value": round(cobertura_pct, 1), "suffix": " %"},
+                {"label": "Empresa líder (SNICE)", "value": empresa_top},
+            ])
+            st.caption(
+                "\"Volumen nacional CANACERO\" es la suma de TODO México en las fracciones del catálogo "
+                "TYASA (no el volumen propio de TYASA). El periodo de CANACERO y el de SNICE (filtro de "
+                "arriba de la página) pueden no coincidir exactamente — cada fuente publica en fechas distintas."
+            )
+        else:
+            # SNICE son avisos automáticos de IMPORTACIÓN únicamente — no existe un
+            # equivalente de exportación en esa fuente. Comparar "cobertura" contra
+            # un volumen de exportación de CANACERO no tendría sentido (compararía
+            # cosas distintas), así que con Exportación seleccionada solo mostramos
+            # el dato que sí es válido por sí solo: el total nacional CANACERO.
+            empresas_tyasa = pd.DataFrame()
+            render_kpi_row([
+                {"label": f"Volumen nacional CANACERO — Exportación ({periodo_canacero_sel})", "value": round(vol_nacional_ton), "suffix": " ton"},
+            ])
+            st.info(
+                "SNICE solo cubre avisos de IMPORTACIÓN — no hay un \"SNICE de exportación\" con el "
+                "que comparar, así que aquí no se muestran cobertura ni empresa líder de SNICE. Las "
+                "secciones de abajo (cuatrimestres, precio unitario, fracciones, consulta puntual) sí "
+                "muestran exportación CANACERO completa."
+            )
 
         st.divider()
-        st.markdown("##### CANACERO vs. SNICE vs. TYASA")
+        st.markdown("##### CANACERO vs. SNICE vs. TYASA (siempre Importación)")
         st.caption(
             "Las dos primeras series son el mismo universo — TODO México, pero SOLO en las "
             "fracciones del catálogo de TYASA (no todo el acero del país, y no el volumen propio "
             "de TYASA) — reportado por dos fuentes distintas: CANACERO (estadística oficial de "
             "comercio exterior) y SNICE (avisos automáticos de importación). La tercera es el "
-            "volumen que TYASA reportó a su propio nombre en SNICE."
+            "volumen que TYASA reportó a su propio nombre en SNICE. Esta comparación siempre usa "
+            "CANACERO-Importación, sin importar el radio 'Movimiento a analizar' de arriba — SNICE "
+            "no tiene un equivalente de exportación, así que comparar contra exportación no "
+            "tendría sentido. Para ver exportación CANACERO, usa las secciones más abajo."
         )
 
-        serie_canacero = load_serie_tiempo_tyasa(movimiento_dash, fracciones=fracciones_filtro)[["periodo_mes", "volumen_total"]]
-        serie_canacero["serie"] = "CANACERO — nacional, catálogo TYASA"
+        serie_canacero = load_serie_tiempo_tyasa("IMPORTACION", fracciones=fracciones_filtro)[["periodo_mes", "volumen_total"]]
+        serie_canacero["serie"] = "CANACERO — nacional, catálogo TYASA (Importación)"
 
         serie_snice_total = load_serie_tyasa_gold(fracciones_exactas_snice, fracciones_prefijo_snice)
         serie_snice_total = serie_snice_total.rename(columns={"periodo": "periodo_mes"})[["periodo_mes", "volumen_total"]]
@@ -632,7 +654,7 @@ with tab_tyasa:
             st.plotly_chart(
                 linea_temporal(
                     serie_comparativa, x="periodo_mes", y="volumen_total", color="serie",
-                    titulo="Volumen mensual — nacional (catálogo TYASA) vs. TYASA",
+                    titulo="Volumen mensual — nacional (catálogo TYASA, Importación) vs. TYASA",
                     y_label="Ton", height=480,
                 ),
                 width="stretch",
@@ -650,9 +672,9 @@ with tab_tyasa:
                 "Periodo a comparar", periodos_canacero, index=0, key="snice_top5_periodo",
             )
 
-            st.caption(f"CANACERO (nacional) — {periodo_top5_sel}")
+            st.caption(f"CANACERO (nacional, Importación) — {periodo_top5_sel}")
             top5_canacero = load_top_fracciones_tyasa(
-                periodo_top5_sel, movimiento_dash, limite=5, fracciones=fracciones_filtro,
+                periodo_top5_sel, "IMPORTACION", limite=5, fracciones=fracciones_filtro,
             )
             if top5_canacero.empty:
                 st.caption("Sin datos para este periodo.")
@@ -828,7 +850,7 @@ with tab_tyasa:
                     )
 
         st.divider()
-        st.markdown("##### Comparación por cuatrimestre (CANACERO)")
+        st.markdown(f"##### Comparación por cuatrimestre (CANACERO — {movimiento_dash_label})")
         st.caption(
             "Agrupa el histórico nacional CANACERO en cuatrimestres (Ene-Abr / May-Ago / Sep-Dic) "
             "y compara el cuatrimestre elegido contra el inmediato anterior, fracción por fracción, "
@@ -894,7 +916,7 @@ with tab_tyasa:
                 st.plotly_chart(
                     barras_horizontales(
                         comp_chart, x="delta_abs_ton", y="etiqueta",
-                        titulo=f"Mayores variaciones: {cuatri_sel} vs. {cuatri_anterior}",
+                        titulo=f"Mayores variaciones ({movimiento_dash_label}): {cuatri_sel} vs. {cuatri_anterior}",
                         x_label="Ton (variación absoluta)", max_items=15,
                     ),
                     width="stretch",
@@ -910,7 +932,7 @@ with tab_tyasa:
                 ]
                 st.dataframe(tabla_comp, hide_index=True, width="stretch", height=360)
 
-                st.markdown("###### Precio unitario — mismos cuatrimestres")
+                st.markdown(f"###### Precio unitario — mismos cuatrimestres ({movimiento_dash_label})")
                 st.caption(
                     "Precio implícito (valor USD / volumen ton) por fracción, promedio ponderado de "
                     "cada cuatrimestre. Solo incluye fracciones con al menos "
@@ -1006,7 +1028,7 @@ with tab_tyasa:
                         st.plotly_chart(
                             barras_horizontales(
                                 top_precio_chart, x="delta_abs_pct", y="etiqueta",
-                                titulo=f"Mayor variación de precio unitario: {cuatri_sel} vs. {cuatri_anterior}",
+                                titulo=f"Mayor variación de precio unitario ({movimiento_dash_label}): {cuatri_sel} vs. {cuatri_anterior}",
                                 x_label="% variación absoluta", max_items=10,
                             ),
                             width="stretch",
@@ -1042,7 +1064,7 @@ with tab_tyasa:
                     st.dataframe(tabla_precio, hide_index=True, width="stretch", height=320)
 
         st.divider()
-        st.markdown("##### Precio unitario CANACERO (USD/ton)")
+        st.markdown(f"##### Precio unitario CANACERO (USD/ton) — {movimiento_dash_label}")
         st.caption(
             "Precio implícito = valor en dólares reportado / volumen en toneladas, por fracción y "
             "mes. Solo CANACERO trae valor en dólares limpio; SNICE no tiene un campo de precio "
@@ -1075,7 +1097,7 @@ with tab_tyasa:
                 st.plotly_chart(
                     linea_temporal(
                         serie_precio, x="periodo_mes", y="precio_usd_ton",
-                        titulo=f"Precio unitario mensual — {etiquetas_fraccion.get(fraccion_precio_sel, fraccion_precio_sel)}",
+                        titulo=f"Precio unitario mensual ({movimiento_dash_label}) — {etiquetas_fraccion.get(fraccion_precio_sel, fraccion_precio_sel)}",
                         y_label="USD/ton", show_area=True,
                     ),
                     width="stretch",
@@ -1094,7 +1116,7 @@ with tab_tyasa:
                     st.plotly_chart(
                         scatter(
                             scatter_df, x="volumen_total", y="precio_usd_ton", hover_name="etiqueta",
-                            titulo=f"Volumen vs. precio unitario — {periodo_scatter_sel}",
+                            titulo=f"Volumen vs. precio unitario ({movimiento_dash_label}) — {periodo_scatter_sel}",
                             x_label="Ton", y_label="USD/ton",
                         ),
                         width="stretch",
@@ -1105,7 +1127,7 @@ with tab_tyasa:
                     )
 
         st.divider()
-        st.markdown("###### Fracciones CANACERO por volumen nacional")
+        st.markdown(f"###### Fracciones CANACERO por volumen nacional ({movimiento_dash_label})")
         st.caption(
             "Estas son las fracciones del catálogo TYASA, pero el volumen que se ve aquí es el "
             "total nacional reportado por CANACERO (no el volumen propio de TYASA)."
@@ -1141,14 +1163,14 @@ with tab_tyasa:
                 st.plotly_chart(
                     barras_horizontales(
                         fracciones_top_chart, x="volumen_total", y="etiqueta",
-                        titulo="Fracciones CANACERO por volumen nacional", x_label="Ton",
+                        titulo=f"Fracciones CANACERO por volumen nacional ({movimiento_dash_label})", x_label="Ton",
                         max_items=len(seleccion_chart),
                     ),
                     width="stretch",
                 )
 
         st.divider()
-        st.markdown("##### Consulta por fracción específica")
+        st.markdown(f"##### Consulta por fracción específica ({movimiento_dash_label})")
         st.caption(
             "Elige una sola fracción para ver su volumen nacional (CANACERO) y, al lado, "
             "qué empresas la están importando según SNICE."
@@ -1165,7 +1187,7 @@ with tab_tyasa:
             st.plotly_chart(
                 linea_temporal(
                     serie_fraccion, x="periodo_mes", y="volumen_total",
-                    titulo=f"Volumen nacional mensual — {etiquetas_fraccion[fraccion_sel]}",
+                    titulo=f"Volumen nacional mensual ({movimiento_dash_label}) — {etiquetas_fraccion[fraccion_sel]}",
                     y_label="Ton", show_area=True,
                 ),
                 width="stretch",
