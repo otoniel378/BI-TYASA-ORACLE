@@ -192,6 +192,34 @@ def load_noticias_en_rango(fecha_inicio, fecha_fin, categorias: tuple) -> pd.Dat
     return df
 
 
+# Palabras que identifican noticias de ferroaleaciones aunque se hayan clasificado
+# con otra VARIABLE_PRINCIPAL (antes de que existiera "ferroaleaciones").
+PATRON_FERROALEACIONES = "ferro|mangan|silic|vanad|chrom|cromo|molyb|molib|titan|niob|nickel|n[ií]quel|aleaci|alloy"
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_noticias_ferroaleaciones(fecha_inicio, fecha_fin) -> pd.DataFrame:
+    """Noticias de ferroaleaciones (VARIABLE_PRINCIPAL = 'ferroaleaciones' o título
+    con PATRON_FERROALEACIONES) en [<fecha_inicio>, <fecha_fin>], deduplicadas."""
+    sql = f"""
+        SELECT FECHA_PUB, TITULO, FUENTE, URL, VARIABLE_PRINCIPAL, SENTIMIENTO, SENAL, RAZON
+        FROM {T_SENTIMIENTO}
+        WHERE FECHA_PUB BETWEEN :fecha_inicio AND :fecha_fin
+          AND (VARIABLE_PRINCIPAL = 'ferroaleaciones' OR REGEXP_LIKE(TITULO, :patron, 'i'))
+        ORDER BY FECHA_PUB DESC
+    """
+    params = {
+        "fecha_inicio": pd.Timestamp(fecha_inicio).to_pydatetime(),
+        "fecha_fin": pd.Timestamp(fecha_fin).to_pydatetime(),
+        "patron": PATRON_FERROALEACIONES,
+    }
+    df = _lc(run_query_params(sql, params))
+    if not df.empty:
+        df["fecha_pub"] = pd.to_datetime(df["fecha_pub"], errors="coerce")
+        df = df.drop_duplicates(subset="titulo")
+    return df
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_eventos_en_rango(fecha_inicio, fecha_fin) -> pd.DataFrame:
     """Eventos curados cuyo rango [FECHA_INICIO, FECHA_FIN] se traslapa con

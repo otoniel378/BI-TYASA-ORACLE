@@ -10,7 +10,7 @@ Ajustable a futuro si algún benchmark no resulta representativo.
 
 import pandas as pd
 import streamlit as st
-from core.db_connector import run_query_params, table_ref
+from core.db_connector import run_query, run_query_params, table_ref
 
 T_PRECIOS = table_ref("bronze_fastmarkets_precios")
 
@@ -129,6 +129,22 @@ def load_ferroaleaciones(medida: str = "Mid") -> pd.DataFrame:
     df["valor"] = pd.to_numeric(df["valor"], errors="coerce")
     df["serie"] = df["symbol"].map(lambda s: FERROALEACIONES[s][0])
     return df[["fecha", "serie", "valor"]]
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_semaforo_ferros() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(probabilidades, métricas) del semáforo de alzas que escribe
+    scripts/update_semaforo_ferros.py. probabilidades: serie, fecha, tipo
+    ('backtest' | 'actual'), prob, semaforo, alza_fut, y."""
+    prob = run_query(f"SELECT SERIE, FECHA, TIPO, PROB, SEMAFORO, ALZA_FUT, Y FROM {table_ref('gold_semaforo_ferros')}")
+    met = run_query(f"SELECT * FROM {table_ref('gold_semaforo_metricas')}")
+    for df in (prob, met):
+        df.columns = [c.lower() for c in df.columns]
+    if not prob.empty:
+        prob["fecha"] = pd.to_datetime(prob["fecha"])
+        for c in ("prob", "alza_fut", "y"):
+            prob[c] = pd.to_numeric(prob[c], errors="coerce")
+    return prob, met
 
 
 def load_precios_familia(familia: str | None) -> pd.DataFrame:

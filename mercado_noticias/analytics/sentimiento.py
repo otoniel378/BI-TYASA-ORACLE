@@ -44,6 +44,7 @@ VARIABLES_ACERO = [
     "competidores_ternium_arcelor",
     "china_sobrecapacidad",
     "demanda_general",
+    "ferroaleaciones",
     "otro",
 ]
 
@@ -60,7 +61,10 @@ acero plano (HRC, CRC, galvanizado) mediante horno eléctrico de arco (EAF).
 
 CONTEXTO TYASA:
 - Vende: acero plano (lámina HR, CR, galvanizada) al mercado mexicano
-- Insumos principales: chatarra ferrosa (mayor costo), electricidad, zinc para galvanizado
+- Insumos principales: chatarra ferrosa (mayor costo), electricidad, zinc para galvanizado,
+  ferroaleaciones (ferromanganeso, silicomanganeso, ferrosilicio, ferrovanadio, ferrocromo) y níquel
+  — usa variable_principal "ferroaleaciones" para noticias de estas aleaciones o de sus minerales
+  (manganeso, vanadio, cromo, molibdeno, níquel)
 - Competencia: Ternium MX, importaciones de China/Asia (dumping)
 - Clientes: automotriz, construcción, electrodomésticos, manufactura general
 - Riesgo principal: sobrecapacidad china, aranceles cambiantes, alza en chatarra

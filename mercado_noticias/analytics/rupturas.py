@@ -231,6 +231,48 @@ def rupturas_a_dataframe(rupturas: list[Ruptura]) -> pd.DataFrame:
     return pd.DataFrame([vars(x) for x in rupturas]).sort_values("fecha", ascending=False).reset_index(drop=True)
 
 
+# ── Casos parecidos: qué hizo el precio después ──────────────────────────────
+HORIZONTES_MESES = (3, 6, 12)
+
+
+def agregar_desempeno_posterior(rupturas: pd.DataFrame, precios: pd.DataFrame) -> pd.DataFrame:
+    """Agrega a cada quiebre el cambio % del precio desde que el quiebre se
+    CONFIRMA (fecha + MIN_SEGMENTO meses: antes no hay datos suficientes para
+    saber el régimen nuevo) hasta +3, +6 y +12 meses después (columnas
+    despues_3m, ...). Medir desde el mes del quiebre usaría información que en
+    ese momento no se tenía. NaN si aún no pasa ese tiempo. <precios>: salida
+    de normalizar_mensual (una columna por serie)."""
+    out = rupturas.copy()
+    out["confirmado"] = out["fecha"] + pd.DateOffset(months=MIN_SEGMENTO)
+    for h in HORIZONTES_MESES:
+        col = []
+        for _, q in out.iterrows():
+            s = precios[q["serie"]]
+            base, fut = s.get(q["confirmado"]), s.get(q["confirmado"] + pd.DateOffset(months=h))
+            col.append((fut / base - 1) * 100 if pd.notna(base) and pd.notna(fut) and base else np.nan)
+        out[f"despues_{h}m"] = col
+    return out
+
+
+def resumen_casos_parecidos(rupturas: pd.DataFrame, regimen: str, excluir: tuple | None = None) -> pd.DataFrame:
+    """Para quiebres del mismo <regimen> en todas las series (salida de
+    agregar_desempeno_posterior), resumen por horizonte: casos, mediana,
+    cuartiles y cuántos subieron. <excluir> = (serie, fecha) del propio quiebre."""
+    casos = rupturas[rupturas["regimen"] == regimen]
+    if excluir is not None:
+        casos = casos[~((casos["serie"] == excluir[0]) & (casos["fecha"] == excluir[1]))]
+    filas = []
+    for h in HORIZONTES_MESES:
+        v = casos[f"despues_{h}m"].dropna()
+        if v.empty:
+            continue
+        filas.append({
+            "horizonte": h, "casos": len(v), "mediana": v.median(),
+            "p25": v.quantile(0.25), "p75": v.quantile(0.75), "subieron": int((v > 0).sum()),
+        })
+    return pd.DataFrame(filas)
+
+
 # ── Vinculación con eventos ──────────────────────────────────────────────────
 # El precio mensual reacciona con rezago (cotizaciones escalonadas, contratos):
 # un quiebre se vincula a un evento si su fecha cae entre 2 meses antes del

@@ -639,6 +639,27 @@ GRUPOS_NACIONAL: dict[str, list[str]] = {
 }
 
 # ════════════════════════════════════════════════════════════════════════════
+# FERROALEACIONES — grupo dedicado (pages/mercado/09_quiebres_ferroaleaciones.py)
+# Va aparte de los demás grupos porque update_sentimiento_noticias.py le da
+# cupo propio al inicio del lote: al final de la lista nunca entraba al límite
+# de noticias que clasifica Gemini.
+# ════════════════════════════════════════════════════════════════════════════
+
+GRUPO_FERROALEACIONES: dict[str, list[str]] = {
+    "Ferroaleaciones": [
+        "ferroalloy prices ferromanganese silicomanganese",
+        "ferrosilicon price market",
+        "ferrochrome price South Africa smelter",
+        "ferrovanadium vanadium price",
+        "ferromolybdenum molybdenum price",
+        "manganese ore price",
+        "LME nickel price",
+        "ferroaleaciones precio acero",
+    ],
+}
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # NOTICIAS INTERNACIONALES — 5 categorías estratégicas globales
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -750,7 +771,7 @@ def buscar_noticias_sector(grupo: str, max_resultados: int = 40) -> list[dict]:
     Usa todas las queries del grupo (no solo 3) y 10 resultados por query.
     Complementa con NewsAPI si hay pocos resultados.
     """
-    all_groups = {**GRUPOS_NACIONAL, **GRUPOS_INTERNACIONAL, **GRUPOS_INDUSTRIA}
+    all_groups = {**GRUPOS_NACIONAL, **GRUPOS_INTERNACIONAL, **GRUPOS_INDUSTRIA, **GRUPO_FERROALEACIONES}
     queries = all_groups.get(grupo)
     if not queries:
         queries = [grupo]

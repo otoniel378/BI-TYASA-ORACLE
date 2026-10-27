@@ -24,6 +24,9 @@ load_dotenv()
 
 MAX_POR_GRUPO = 8   # noticias a buscar por grupo temático
 MAX_TOTAL     = 60  # límite total para no exceder tokens de Gemini
+# Cupo propio de ferroaleaciones, al inicio del lote y por encima de MAX_TOTAL:
+# como clasificar_lote() corta en orden, un grupo al final nunca se clasificaba.
+MAX_FERROALEACIONES = 6
 
 
 def _get_gemini_key() -> str:
@@ -212,7 +215,7 @@ def run():
     # Importar módulos del proyecto
     from mercado_noticias.analytics.noticias import (
         buscar_noticias_sector,
-        GRUPOS_INDUSTRIA, GRUPOS_NACIONAL, GRUPOS_INTERNACIONAL,
+        GRUPOS_INDUSTRIA, GRUPOS_NACIONAL, GRUPOS_INTERNACIONAL, GRUPO_FERROALEACIONES,
     )
     from mercado_noticias.analytics.sentimiento import (
         clasificar_lote, resultados_a_dataframe,
@@ -229,6 +232,20 @@ def run():
 
     todas_noticias: list[dict] = []
     seen_urls: set[str] = set()
+
+    n_ferros = 0
+    for grupo in GRUPO_FERROALEACIONES:
+        try:
+            for n in buscar_noticias_sector(grupo, max_resultados=MAX_FERROALEACIONES):
+                url = n.get("url", "")
+                if url and url not in seen_urls:
+                    seen_urls.add(url)
+                    n["grupo"] = grupo
+                    todas_noticias.append(n)
+                    n_ferros += 1
+        except Exception as e:
+            print(f"    [WARN] {grupo}: {e}")
+    print(f"\n  Ferroaleaciones: {n_ferros} noticias (cupo propio)")
 
     print(f"\n  Buscando noticias en {len(todos_grupos)} grupos temáticos...")
     for grupo in todos_grupos:
@@ -250,8 +267,8 @@ def run():
         return
 
     # Clasificar sentimiento con Gemini
-    print(f"\n  Clasificando sentimiento (máx {MAX_TOTAL} noticias)...")
-    resultados = clasificar_lote(todas_noticias, gemini_key, max_noticias=MAX_TOTAL)
+    print(f"\n  Clasificando sentimiento (máx {MAX_TOTAL + n_ferros} noticias)...")
+    resultados = clasificar_lote(todas_noticias, gemini_key, max_noticias=MAX_TOTAL + n_ferros)
 
     cached  = sum(1 for r in resultados if r.get("_cached"))
     nuevas  = len(resultados) - cached

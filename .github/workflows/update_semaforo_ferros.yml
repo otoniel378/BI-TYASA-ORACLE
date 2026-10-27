@@ -1,0 +1,58 @@
+name: Semáforo Mensual de Ferroaleaciones
+
+on:
+  schedule:
+    # Día 5 de cada mes, 9:00 AM México (15:00 UTC). Los precios de Fastmarkets
+    # se cargan a mano (scripts/backfill_fastmarkets_historico.py); después de
+    # cargar conviene correrlo manualmente con "Run workflow".
+    - cron: "0 15 5 * *"
+  workflow_dispatch:  # permite correrlo manualmente desde GitHub
+
+jobs:
+  update-semaforo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        # streamlit: lo importan los loaders compartidos con la app (mercado_fastmarkets/loaders.py)
+        run: |
+          pip install oracledb yfinance pandas numpy python-dotenv scipy scikit-learn xgboost streamlit requests
+          pip install google-genai
+
+      - name: Extraer wallet de Oracle
+        run: |
+          mkdir -p /tmp/oracle_wallet
+          echo "${{ secrets.ORACLE_WALLET_B64 }}" | base64 -d > /tmp/oracle_wallet.zip
+          unzip -o /tmp/oracle_wallet.zip -d /tmp/oracle_wallet
+          ls /tmp/oracle_wallet
+
+      - name: Recalcular semáforo y registrar eventos automáticos
+        env:
+          ORACLE_USER:            ${{ secrets.ORACLE_USER }}
+          ORACLE_PASSWORD:        ${{ secrets.ORACLE_PASSWORD }}
+          ORACLE_DSN:             ${{ secrets.ORACLE_DSN }}
+          ORACLE_WALLET_DIR:      /tmp/oracle_wallet
+          ORACLE_WALLET_PASSWORD: ${{ secrets.ORACLE_WALLET_PASSWORD }}
+          GEMINI_API_KEY:         ${{ secrets.GEMINI_API_KEY }}
+        run: python scripts/update_semaforo_ferros.py
+
+      - name: Avisar por correo si falló
+        if: failure()
+        env:
+          GMAIL_USER:         ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          DIGEST_EMAIL_TO:    ${{ secrets.DIGEST_EMAIL_TO }}
+        run: python scripts/notify_failure.py
+
+      - name: Resultado
+        if: always()
+        run: echo "Semáforo actualizado - $(date)"

@@ -23,10 +23,11 @@ import plotly.graph_objects as go
 import streamlit as st
 from config import COLORS, COLOR_SEQUENCE
 
-from mercado_fastmarkets.loaders import FERROALEACIONES, load_ferroaleaciones
-from mercado_noticias.loaders import load_eventos_todos, load_noticias_en_rango
+from mercado_fastmarkets.loaders import FERROALEACIONES, load_ferroaleaciones, load_semaforo_ferros
+from mercado_noticias.loaders import load_eventos_todos, load_noticias_en_rango, load_noticias_ferroaleaciones
 from mercado_noticias.analytics.rupturas import (
-    bandas_normales, detectar_rupturas, normalizar_mensual, rupturas_a_dataframe, vincular_eventos,
+    MIN_SEGMENTO, agregar_desempeno_posterior, bandas_normales, detectar_rupturas, normalizar_mensual,
+    resumen_casos_parecidos, rupturas_a_dataframe, vincular_eventos,
 )
 from core.components.kpi_cards import render_kpi_row, seccion_titulo
 
@@ -41,6 +42,14 @@ TERMINO_GOOGLE = {
     "FerroMolibdeno": "ferromolybdenum", "FerroTitanio": "ferrotitanium", "FerroNiobio": "ferroniobium",
     "Niquel": "LME nickel",
 }
+# Palabras en el título que ligan una noticia de ferroaleaciones con una serie en particular
+PATRON_SERIE = {
+    "FerroManganeso": r"mangan", "SilicoManganeso": r"silico|mangan", "FerroSilicio": r"silic",
+    "FerroCromo": r"chrom|cromo", "FerroVanadio": r"vanad", "FerroMolibdeno": r"molyb|molib",
+    "FerroTitanio": r"titan", "FerroNiobio": r"niob", "Niquel": r"nickel|n[ií]quel",
+}
+PATRON_GENERAL = r"ferroalloy|ferro-alloy|ferroaleac"
+DIAS_NOTICIAS_RECIENTES = 60
 COLOR_SERIE = {nombre: COLOR_SEQUENCE[i] for i, (nombre, _) in enumerate(FERROALEACIONES.values())}
 DESCRIPCION_SERIE = dict(FERROALEACIONES.values())
 EVIDENCIAS = ["Fuerte", "Moderada", "Débil"]
@@ -63,18 +72,64 @@ def _hex_rgba(hex_color: str, alpha: float) -> str:
 
 
 @st.cache_data(ttl=3600, show_spinner="Detectando quiebres...")
-def _calcular(serie: str, desde_anio: int) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """(bandas del régimen por mes, quiebres con evento vinculado) de una serie."""
+def _calcular_todo(desde_anio: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(precios mensuales de todas las series, quiebres de todas las series con
+    evento vinculado y desempeño posterior). Se calculan todas a la vez porque
+    los "casos parecidos" comparan contra las demás ferroaleaciones."""
     crudo = load_ferroaleaciones()
-    crudo = crudo[crudo["serie"] == serie]
     if crudo.empty:
         return pd.DataFrame(), pd.DataFrame()
-    precio = normalizar_mensual(crudo)[serie]
     desde = pd.Timestamp(f"{desde_anio}-01-01")
-    precio = precio[precio.index >= desde].dropna()
-    rupturas = rupturas_a_dataframe(detectar_rupturas(precio, serie))
-    rupturas = vincular_eventos(rupturas, load_eventos_todos())
-    return bandas_normales(precio), rupturas
+    ancho = normalizar_mensual(crudo)
+    ancho = ancho[ancho.index >= desde]
+    todas = []
+    for s in ancho.columns:
+        todas += detectar_rupturas(ancho[s], s)
+    rupturas = vincular_eventos(rupturas_a_dataframe(todas), load_eventos_todos())
+    return ancho, agregar_desempeno_posterior(rupturas, ancho)
+
+
+def _noticias_de_serie(serie: str, desde, hasta) -> pd.DataFrame:
+    noticias = load_noticias_ferroaleaciones(desde, hasta)
+    if noticias.empty:
+        return noticias
+    patron = f"{PATRON_SERIE.get(serie, serie)}|{PATRON_GENERAL}"
+    return noticias[noticias["titulo"].str.contains(patron, case=False, regex=True, na=False)]
+
+
+def _tabla_noticias(noticias: pd.DataFrame, n: int = 12) -> None:
+    st.dataframe(
+        noticias.head(n).assign(Fecha=lambda d: d["fecha_pub"].dt.strftime("%Y-%m-%d"))[
+            ["Fecha", "titulo", "razon", "fuente", "url"]],
+        hide_index=True, width="stretch",
+        column_config={
+            "titulo": "Noticia", "razon": "Impacto para TYASA", "fuente": "Fuente",
+            "url": st.column_config.LinkColumn("Liga", display_text="Abrir"),
+        },
+    )
+
+
+def _html_casos_parecidos(resumen: pd.DataFrame, regimen: str, desde_cuando: str) -> str:
+    """Tarjeta: qué hizo el precio en quiebres del mismo tipo en las demás series."""
+    if resumen.empty:
+        return (f"<div style='font-size:13px;color:{COLORS['text_light']};'>"
+                f"Sin casos parecidos ({regimen}) con historia suficiente.</div>")
+    filas = "".join(
+        f"<tr><td style='padding:3px 10px 3px 0;'>{int(r.horizonte)} meses</td>"
+        f"<td style='padding:3px 10px;font-weight:700;color:{COLORS['danger'] if r.mediana > 0 else COLORS['success']};'>"
+        f"{r.mediana:+.0f}%</td>"
+        f"<td style='padding:3px 10px;color:{COLORS['text_light']};'>{r.p25:+.0f}% a {r.p75:+.0f}%</td>"
+        f"<td style='padding:3px 0 3px 10px;'>subió en {r.subieron} de {r.casos}</td></tr>"
+        for r in resumen.itertuples()
+    )
+    return (
+        f"<div style='font-size:13px;line-height:1.5;color:{COLORS['text']};background:{COLORS['surface']};"
+        f"border:1px solid #E5E7EB;border-radius:8px;padding:12px 14px;'>"
+        f"<div style='font-weight:700;color:{COLORS['primary']};'>Qué pasó en casos parecidos ({regimen})</div>"
+        f"<div style='font-size:11px;color:{COLORS['text_light']};margin-bottom:6px;'>"
+        f"Cambio del precio {desde_cuando}, en las 9 series desde {desde_anio}. Mediana y rango de la mitad central.</div>"
+        f"<table style='font-size:13px;border-collapse:collapse;'>{filas}</table></div>"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -91,10 +146,13 @@ with c2:
 with c3:
     evid_sel = st.multiselect("Evidencia estadística", EVIDENCIAS, default=["Fuerte", "Moderada"], key="qf_evid")
 
-bandas, rupturas = _calcular(serie, desde_anio)
-if bandas.empty:
+precios, rupturas_todas = _calcular_todo(desde_anio)
+if precios.empty or serie not in precios.columns or precios[serie].dropna().empty:
     st.warning("Sin precios de esta ferroaleación en Oracle.")
     st.stop()
+bandas = bandas_normales(precios[serie].dropna())
+rupturas = (rupturas_todas[rupturas_todas["serie"] == serie].reset_index(drop=True)
+            if not rupturas_todas.empty else rupturas_todas)
 
 vista = (rupturas[rupturas["evidencia"].isin(evid_sel)].sort_values("fecha", ascending=False).reset_index(drop=True)
          if not rupturas.empty else rupturas)
@@ -110,6 +168,41 @@ render_kpi_row([
     {"label": "Meses fuera de lo normal", "value": f"{fuera_12m} de 12",
      "help_text": "Últimos 12 meses con el precio fuera de la banda sombreada"},
 ])
+
+# ---------------------------------------------------------------------------
+# Semáforo de alza (scripts/update_semaforo_ferros.py)
+# ---------------------------------------------------------------------------
+sem_prob, sem_met = load_semaforo_ferros()
+COLOR_SEMAFORO = {"Verde": COLORS["success"], "Amarillo": COLORS["warning"], "Rojo": COLORS["danger"]}
+confiable = (dict(zip(sem_met["serie"], sem_met["confiable"].astype(int).astype(bool)))
+             if not sem_met.empty else {})
+if not sem_prob.empty:
+    sem_actual = sem_prob[sem_prob["tipo"] == "actual"].set_index("serie")
+    seccion_titulo("Semáforo de alza", f"Probabilidad de subir más de 20% en los próximos 3 meses · "
+                                       f"datos al {_mes(sem_actual['fecha'].max())}")
+    chips = []
+    for nombre in nombres:
+        if nombre not in sem_actual.index:
+            continue
+        r = sem_actual.loc[nombre]
+        c = COLOR_SEMAFORO.get(r["semaforo"], COLORS["neutral"])
+        debil = not confiable.get(nombre, False)
+        borde = f"2px solid {COLORS['primary']}" if nombre == serie else "1px solid #E5E7EB"
+        nota_debil = (f"<div style='font-size:10px;color:{COLORS['text_light']};'>señal débil</div>"
+                      if debil else "")
+        chips.append(
+            f"<div style='border:{borde};border-radius:8px;padding:8px 10px;background:{COLORS['surface']};"
+            f"min-width:120px;opacity:{0.6 if debil else 1};'>"
+            f"<div style='font-size:11px;color:{COLORS['text_light']};'>{nombre}</div>"
+            f"<div style='display:flex;align-items:center;gap:6px;margin-top:2px;'>"
+            f"<span style='width:12px;height:12px;border-radius:50%;background:{c};display:inline-block;'></span>"
+            f"<span style='font-size:15px;font-weight:700;color:{COLORS['text']};'>{r['prob']:.0%}</span>"
+            f"<span style='font-size:11px;color:{c};font-weight:600;'>{r['semaforo']}</span></div>"
+            f"{nota_debil}</div>"
+        )
+    st.html(f"<div style='display:flex;flex-wrap:wrap;gap:8px;'>{''.join(chips)}</div>")
+    st.caption("Verde < 20% · Amarillo 20–40% · Rojo ≥ 40% · Señal débil: el modelo no ha demostrado acierto "
+               "en esa serie, tómalo solo como referencia")
 
 # ---------------------------------------------------------------------------
 # Gráfica interactiva
@@ -169,6 +262,75 @@ evento_grafica = st.plotly_chart(fig, width="stretch", key="qf_chart", on_select
 st.caption("Sombra: rango normal según el año anterior · Naranja: fuera de lo normal · "
            "Rombo/estrella: quiebre (estrella = explicado por un evento) · Clic en un quiebre para ver su detalle")
 
+# ---------------------------------------------------------------------------
+# Situación actual
+# ---------------------------------------------------------------------------
+seccion_titulo("Situación actual", f"Datos al {_mes(bandas.index[-1])}")
+col_s, col_c = st.columns([1, 1])
+if not rupturas.empty:
+    actual = rupturas.sort_values("fecha").iloc[-1]
+    confirmado = actual["fecha"] + pd.DateOffset(months=MIN_SEGMENTO) <= bandas.index[-1]
+    estado_mes = ("fuera de lo normal" if bandas["fuera"].iloc[-1] else "dentro de lo normal")
+    with col_s:
+        st.html(
+            f"<div style='font-size:13px;line-height:1.7;color:{COLORS['text']};background:{COLORS['surface']};"
+            f"border:1px solid #E5E7EB;border-radius:8px;padding:12px 14px;'>"
+            f"<div><b>Régimen actual:</b> {actual['regimen'].split(' → ')[-1]} "
+            f"({actual['tendencia_post_anual']:+.0f}% anual), desde {_mes(actual['fecha'])}</div>"
+            f"<div><b>Último quiebre:</b> {actual['regimen']} · evidencia {actual['evidencia'].lower()} · "
+            f"{'confirmado' if confirmado else 'aún en confirmación (menos de 6 meses de datos)'}</div>"
+            f"<div><b>Último mes:</b> {estado_mes}</div>"
+            f"<div><b>Causa:</b> {actual['evento_nombre'] or 'sin evento verificado'}</div></div>"
+        )
+    with col_c:
+        st.html(_html_casos_parecidos(
+            resumen_casos_parecidos(rupturas_todas, actual["regimen"], excluir=(serie, actual["fecha"])),
+            actual["regimen"], "desde que el quiebre se confirma (6 meses después)"))
+else:
+    st.info("Sin quiebres detectados en este periodo.")
+
+hist = sem_prob[(sem_prob["serie"] == serie) & (sem_prob["tipo"] == "backtest")].sort_values("fecha") \
+    if not sem_prob.empty else pd.DataFrame()
+if not hist.empty:
+    with st.expander(f"Cómo le ha ido al semáforo con {serie}"):
+        m = sem_met[sem_met["serie"] == serie]
+        if not m.empty:
+            m = m.iloc[0]
+            st.html(
+                f"<div style='font-size:13px;line-height:1.6;color:{COLORS['text']};'>"
+                f"Desde 2008 hubo <b>{int(m['episodios'])}</b> alzas de más de 20% en 3 meses; el semáforo avisó "
+                f"(amarillo o rojo) a tiempo en <b>{int(m['detectados'])}</b>. Da en promedio "
+                f"<b>{float(m['falsas_por_anio']):.1f}</b> falsas alarmas al año. Cuando avisa, acierta "
+                f"{float(m['aciertan']) if pd.notna(m['aciertan']) else 0:.0%} de las veces, contra "
+                f"{float(m['prob_base']):.0%} si no hubiera aviso. Cada año se calculó solo con información anterior."
+                f"</div>"
+            )
+        fh = go.Figure()
+        alzas = hist[hist["y"] == 1]
+        for f in alzas["fecha"]:
+            fh.add_vrect(x0=f, x1=f + pd.DateOffset(months=1), fillcolor=COLORS["danger"], opacity=0.15, line_width=0)
+        fh.add_trace(go.Scatter(x=hist["fecha"], y=hist["prob"], mode="lines", name="Probabilidad de alza",
+                                line=dict(color=COLORS["primary"], width=1.8),
+                                hovertemplate="%{x|%b %Y}: %{y:.0%}<extra></extra>"))
+        fh.add_hline(y=0.20, line=dict(color=COLORS["warning"], dash="dash", width=1))
+        fh.add_hline(y=0.40, line=dict(color=COLORS["danger"], dash="dash", width=1))
+        fh.update_layout(
+            paper_bgcolor=COLORS["surface"], plot_bgcolor=COLORS["background"],
+            font=dict(family="Inter, Arial, sans-serif", color=COLORS["text"]),
+            margin=dict(l=40, r=20, t=20, b=30), height=280, showlegend=False,
+            xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#E5E7EB", tickformat=".0%", range=[0, 1]),
+        )
+        st.plotly_chart(fh, width="stretch", key="qf_chart_semaforo")
+        st.caption("Línea: probabilidad que daba el modelo cada mes · Franjas rojas: meses en que el precio "
+                   "sí subió más de 20% en los 3 meses siguientes · Punteadas: umbrales amarillo y rojo")
+
+seccion_titulo(f"Noticias recientes de {serie}", f"Últimos {DIAS_NOTICIAS_RECIENTES} días")
+recientes = _noticias_de_serie(serie, pd.Timestamp.now() - pd.Timedelta(days=DIAS_NOTICIAS_RECIENTES), pd.Timestamp.now())
+if recientes.empty:
+    st.caption("Sin noticias todavía; el proceso diario ya busca noticias de ferroaleaciones.")
+else:
+    _tabla_noticias(recientes, n=8)
+
 if vista.empty:
     st.info("No hay quiebres con la evidencia seleccionada.")
     st.stop()
@@ -187,6 +349,7 @@ if st.session_state.get("qf_quiebre") not in vista.index:
 # ---------------------------------------------------------------------------
 # Detalle del quiebre
 # ---------------------------------------------------------------------------
+seccion_titulo("Detalle del quiebre", "Elige uno aquí o haz clic en la gráfica")
 etiquetas = {i: f"{_mes(r.fecha)} · {r.regimen} · evidencia {r.evidencia.lower()}" + (" · ★" if r.evento_id else "")
              for i, r in vista.iterrows()}
 i_sel = st.selectbox("Quiebre", list(etiquetas), format_func=etiquetas.get, key="qf_quiebre")
@@ -210,6 +373,9 @@ with col_d:
         f"<div><b>Evidencia:</b> {q['evidencia']} · régimen anterior {q['meses_pre']} meses, nuevo {q['meses_post']}</div>"
         f"</div>"
     )
+    st.html("<div style='height:10px'></div>" + _html_casos_parecidos(
+        resumen_casos_parecidos(rupturas_todas, q["regimen"], excluir=(serie, q["fecha"])),
+        q["regimen"], "desde que el quiebre se confirma (6 meses después)"))
 with col_e:
     if q["evento_id"]:
         url = _url_en(q["evento_fuente"])
@@ -238,21 +404,18 @@ with col_e:
             f"Buscar noticias de ese periodo</a></div>")
 
 if q["fecha"] >= INICIO_NOTICIAS:
-    seccion_titulo("Noticias del periodo", f"±{DIAS_CONTEXTO} días · contexto, no necesariamente la causa")
-    noticias = load_noticias_en_rango(q["fecha"] - pd.Timedelta(days=DIAS_CONTEXTO),
-                                      q["fecha"] + pd.Timedelta(days=DIAS_CONTEXTO), CATEGORIAS_CONTEXTO)
-    if noticias.empty:
-        st.info("Sin noticias clasificadas en ese periodo.")
+    desde_n, hasta_n = q["fecha"] - pd.Timedelta(days=DIAS_CONTEXTO), q["fecha"] + pd.Timedelta(days=DIAS_CONTEXTO)
+    propias = _noticias_de_serie(serie, desde_n, hasta_n)
+    if not propias.empty:
+        seccion_titulo(f"Noticias de {serie} en ese periodo", f"±{DIAS_CONTEXTO} días del quiebre")
+        _tabla_noticias(propias)
     else:
-        st.dataframe(
-            noticias.head(12).assign(Fecha=lambda d: d["fecha_pub"].dt.strftime("%Y-%m-%d"))[
-                ["Fecha", "titulo", "variable_principal", "fuente", "url"]],
-            hide_index=True, width="stretch",
-            column_config={
-                "titulo": "Noticia", "variable_principal": "Tema", "fuente": "Fuente",
-                "url": st.column_config.LinkColumn("Liga", display_text="Abrir"),
-            },
-        )
+        seccion_titulo("Noticias del periodo", f"±{DIAS_CONTEXTO} días · contexto general, no necesariamente la causa")
+        generales = load_noticias_en_rango(desde_n, hasta_n, CATEGORIAS_CONTEXTO)
+        if generales.empty:
+            st.info("Sin noticias clasificadas en ese periodo.")
+        else:
+            _tabla_noticias(generales)
 
 # ---------------------------------------------------------------------------
 # Todos los quiebres de la serie

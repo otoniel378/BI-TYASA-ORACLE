@@ -8,7 +8,8 @@ import pandas as pd
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from mercado_noticias.analytics.rupturas import (  # noqa: E402
-    bandas_normales, detectar_rupturas, normalizar_mensual, rupturas_a_dataframe, vincular_eventos,
+    MIN_SEGMENTO, agregar_desempeno_posterior, bandas_normales, detectar_rupturas, normalizar_mensual,
+    resumen_casos_parecidos, rupturas_a_dataframe, vincular_eventos,
 )
 
 
@@ -51,6 +52,16 @@ def test_banda_marca_salto_brusco_y_no_un_escalon_chico():
     b = bandas_normales(pd.Series(valores, index=idx))
     assert not b.loc["2016-07-01", "fuera"]
     assert b.loc["2017-01-01", "fuera"]
+
+
+def test_casos_parecidos_miden_desde_la_confirmacion():
+    idx = pd.date_range("2010-01-01", periods=40, freq="MS")
+    precios = pd.DataFrame({"X": np.arange(100.0, 140.0)}, index=idx)
+    rupt = pd.DataFrame({"serie": ["X"], "fecha": [idx[0]], "regimen": ["Estable → Alza"]})
+    out = agregar_desempeno_posterior(rupt, precios)
+    base = precios["X"].iloc[MIN_SEGMENTO]
+    assert np.isclose(out["despues_3m"].iloc[0], (precios["X"].iloc[MIN_SEGMENTO + 3] / base - 1) * 100)
+    assert resumen_casos_parecidos(out, "Estable → Alza", excluir=("X", idx[0])).empty
 
 
 def test_vincula_solo_eventos_de_la_misma_serie_y_ventana():
