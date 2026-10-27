@@ -151,6 +151,48 @@ def load_eventos_cerca_de(fecha, dias_tolerancia: int = 15) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
+def load_eventos_todos() -> pd.DataFrame:
+    """Catálogo completo de eventos curados — para vincular en memoria muchos
+    quiebres a la vez sin una consulta por quiebre."""
+    sql = f"""
+        SELECT ID, FECHA_INICIO, FECHA_FIN, NOMBRE, DESCRIPCION, VARIABLES_RELACIONADAS, FUENTE
+        FROM {T_EVENTOS}
+        ORDER BY FECHA_INICIO
+    """
+    df = _lc(run_query(sql))
+    if not df.empty:
+        df["fecha_inicio"] = pd.to_datetime(df["fecha_inicio"])
+        df["fecha_fin"] = pd.to_datetime(df["fecha_fin"])
+    return df
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_noticias_en_rango(fecha_inicio, fecha_fin, categorias: tuple) -> pd.DataFrame:
+    """Noticias clasificadas (GOLD_SENTIMIENTO_NOTICIAS) de <categorias> publicadas
+    en [<fecha_inicio>, <fecha_fin>], deduplicadas por título."""
+    if not categorias:
+        return pd.DataFrame()
+    placeholders = ",".join(f":c{i}" for i in range(len(categorias)))
+    sql = f"""
+        SELECT FECHA_PUB, TITULO, FUENTE, URL, VARIABLE_PRINCIPAL, SENTIMIENTO, RAZON
+        FROM {T_SENTIMIENTO}
+        WHERE FECHA_PUB BETWEEN :fecha_inicio AND :fecha_fin
+          AND VARIABLE_PRINCIPAL IN ({placeholders})
+        ORDER BY FECHA_PUB DESC
+    """
+    params = {
+        "fecha_inicio": pd.Timestamp(fecha_inicio).to_pydatetime(),
+        "fecha_fin": pd.Timestamp(fecha_fin).to_pydatetime(),
+        **{f"c{i}": c for i, c in enumerate(categorias)},
+    }
+    df = _lc(run_query_params(sql, params))
+    if not df.empty:
+        df["fecha_pub"] = pd.to_datetime(df["fecha_pub"], errors="coerce")
+        df = df.drop_duplicates(subset="titulo")
+    return df
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
 def load_eventos_en_rango(fecha_inicio, fecha_fin) -> pd.DataFrame:
     """Eventos curados cuyo rango [FECHA_INICIO, FECHA_FIN] se traslapa con
     [<fecha_inicio>, <fecha_fin>] — para vistas de resumen anual/por rango,

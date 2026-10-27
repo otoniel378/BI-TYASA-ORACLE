@@ -51,6 +51,23 @@ SIMBOLOS_POR_FAMILIA = {
     "DERIVADOS DE ALAMBRE": {"MB-STE-0192": "Alambron_FobMillUS"},
 }
 
+# Ferroaleaciones para el monitor de quiebres (pages/mercado/09_quiebres_ferroaleaciones.py).
+# Los nombres deben coincidir con VARIABLES_RELACIONADAS de GOLD_EVENTOS_HISTORICOS
+# (scripts/seed_eventos_historicos.py::FERROS_TODOS) para vincular quiebre y evento.
+FERROALEACIONES = {
+    "MB-FEM-0003": ("FerroManganeso", "Ferromanganeso medio carbono 80% Mn, Pittsburgh, ¢/lb"),
+    "MB-SIM-0003": ("SilicoManganeso", "Silicomanganeso 65% Mn, Pittsburgh, ¢/lb"),
+    "MB-FES-0002": ("FerroSilicio", "Ferrosilicio 75% Si, Pittsburgh, ¢/lb"),
+    "MB-FEC-0010": ("FerroCromo", "Ferrocromo bajo carbono 60% Cr, Pittsburgh"),
+    "MB-FEV-0002": ("FerroVanadio", "Ferrovanadio 70-80% V, Pittsburgh, $/lb"),
+    "MB-FEO-0002": ("FerroMolibdeno", "Ferromolibdeno 65-70% Mo, Pittsburgh, $/lb"),
+    "MB-FET-0002": ("FerroTitanio", "Ferrotitanio 68-72% Ti, EE.UU., $/lb"),
+    "MB-FN-0001":  ("FerroNiobio", "Ferroniobio 63-67% Nb, Europa"),
+    # No es ferroaleación, pero entra al acero SBQ como elemento de aleación y
+    # viene en el mismo paquete de AMM.
+    "XL-NI-FRC.O": ("Niquel", "Níquel LME al contado, USD/t"),
+}
+
 NOMBRES_FASTMARKETS = {v for m in SIMBOLOS_POR_FAMILIA.values() for v in m.values()} | set(
     SIMBOLOS_INSUMOS_GLOBALES.values()
 )
@@ -88,6 +105,30 @@ def load_precios_wide(symbols: tuple, medida: str = "Mid") -> pd.DataFrame:
         df.sort_values("fecha").groupby(["fecha", "symbol"])["valor"].last()
         .unstack("symbol").reset_index()
     )
+
+
+@st.cache_data(ttl=3600, show_spinner="Cargando ferroaleaciones...")
+def load_ferroaleaciones(medida: str = "Mid") -> pd.DataFrame:
+    """fecha, serie, valor — solo HISTORICO (sin pronósticos), crudo con la
+    frecuencia original; la normalización mensual la hace
+    mercado_noticias/analytics/rupturas.py::normalizar_mensual."""
+    symbols = tuple(FERROALEACIONES)
+    placeholders = ",".join(f":s{i}" for i in range(len(symbols)))
+    sql = f"""
+        SELECT SYMBOL, FECHA, VALOR
+        FROM {T_PRECIOS}
+        WHERE MEDIDA = :medida AND TIPO = 'HISTORICO' AND SYMBOL IN ({placeholders})
+        ORDER BY FECHA
+    """
+    params = {"medida": medida, **{f"s{i}": s for i, s in enumerate(symbols)}}
+    df = run_query_params(sql, params)
+    if df.empty:
+        return df
+    df.columns = [c.lower() for c in df.columns]
+    df["fecha"] = pd.to_datetime(df["fecha"])
+    df["valor"] = pd.to_numeric(df["valor"], errors="coerce")
+    df["serie"] = df["symbol"].map(lambda s: FERROALEACIONES[s][0])
+    return df[["fecha", "serie", "valor"]]
 
 
 def load_precios_familia(familia: str | None) -> pd.DataFrame:
