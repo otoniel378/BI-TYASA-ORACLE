@@ -201,6 +201,30 @@ def detectar_rupturas(precio: pd.Series, nombre: str, desde: pd.Timestamp | None
     return resultado
 
 
+def bandas_normales(precio: pd.Series, ventana: int = 12, k: float = 2.5, sd_min: float = 0.05) -> pd.DataFrame:
+    """Banda de control móvil para graficar "lo normal": para cada mes, el
+    promedio del log del precio en los <ventana> meses ANTERIORES ± k
+    desviaciones de ese mismo periodo (mínimo <sd_min>, ~5%, para que un
+    tramo plano sin cotizaciones nuevas no deje una banda de ancho cero).
+    Con k=2.5 y piso 5% queda fuera ~8% de los meses en las 9 series
+    (2000-2026); con k=2 era ~14%, demasiado ruido en escalones normales.
+    Un mes está "fuera" si el precio sale de la banda que el año previo
+    marcaba como normal. Columnas: precio, centro, banda_inf, banda_sup, fuera."""
+    p = precio.dropna()
+    log_p = np.log(p)
+    previo = log_p.shift(1).rolling(ventana, min_periods=ventana // 2)
+    centro = previo.mean()
+    sd = previo.std().clip(lower=sd_min)
+    out = pd.DataFrame({
+        "precio": p,
+        "centro": np.exp(centro),
+        "banda_inf": np.exp(centro - k * sd),
+        "banda_sup": np.exp(centro + k * sd),
+    })
+    out["fuera"] = (out["precio"] < out["banda_inf"]) | (out["precio"] > out["banda_sup"])
+    return out
+
+
 def rupturas_a_dataframe(rupturas: list[Ruptura]) -> pd.DataFrame:
     if not rupturas:
         return pd.DataFrame()

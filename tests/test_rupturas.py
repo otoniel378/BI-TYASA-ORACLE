@@ -8,7 +8,7 @@ import pandas as pd
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from mercado_noticias.analytics.rupturas import (  # noqa: E402
-    detectar_rupturas, normalizar_mensual, rupturas_a_dataframe, vincular_eventos,
+    bandas_normales, detectar_rupturas, normalizar_mensual, rupturas_a_dataframe, vincular_eventos,
 )
 
 
@@ -43,6 +43,14 @@ def test_serie_sin_cambio_no_da_quiebres_fuertes():
     idx = pd.date_range("2005-01-01", periods=160, freq="MS")
     s = pd.Series(100 * np.exp(np.cumsum(rng.normal(0.0, 0.03, 160))), index=idx)
     assert not [q for q in detectar_rupturas(s, "X") if q.evidencia == "Fuerte"]
+
+
+def test_banda_marca_salto_brusco_y_no_un_escalon_chico():
+    idx = pd.date_range("2015-01-01", periods=30, freq="MS")
+    valores = [100.0] * 18 + [104.0] * 6 + [160.0] * 6  # escalón de 4% (normal) y salto de ~54%
+    b = bandas_normales(pd.Series(valores, index=idx))
+    assert not b.loc["2016-07-01", "fuera"]
+    assert b.loc["2017-01-01", "fuera"]
 
 
 def test_vincula_solo_eventos_de_la_misma_serie_y_ventana():
