@@ -232,6 +232,28 @@ def load_noticias_ferroaleaciones(fecha_inicio, fecha_fin) -> pd.DataFrame:
     return df
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def load_noticias_periodo(fecha_inicio, fecha_fin) -> pd.DataFrame:
+    """Todas las noticias clasificadas publicadas en [<fecha_inicio>, <fecha_fin>],
+    con grupo temático — para separarlas por tipo de impacto
+    (rupturas.tipo_impacto_noticias)."""
+    sql = f"""
+        SELECT FECHA_PUB, TITULO, FUENTE, URL, VARIABLE_PRINCIPAL, GRUPO_TEMATICO, SENTIMIENTO, SENAL, RAZON
+        FROM {T_SENTIMIENTO}
+        WHERE FECHA_PUB BETWEEN :fecha_inicio AND :fecha_fin
+        ORDER BY FECHA_PUB DESC
+    """
+    params = {
+        "fecha_inicio": pd.Timestamp(fecha_inicio).to_pydatetime(),
+        "fecha_fin": pd.Timestamp(fecha_fin).to_pydatetime(),
+    }
+    df = _lc(run_query_params(sql, params))
+    if not df.empty:
+        df["fecha_pub"] = pd.to_datetime(df["fecha_pub"], errors="coerce")
+        df = df.drop_duplicates(subset="titulo")
+    return df
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_eventos_en_rango(fecha_inicio, fecha_fin) -> pd.DataFrame:
     """Eventos curados cuyo rango [FECHA_INICIO, FECHA_FIN] se traslapa con

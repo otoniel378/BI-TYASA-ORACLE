@@ -27,6 +27,7 @@ A diferencia de detector.py (una fecha de corte dada por el usuario o los
      p < 0.01, "Moderada" si p < 0.05. Con decenas de quiebres probados a
      la vez, algunos "Moderados" pueden ser azar; los "Fuertes" no.
 """
+import re
 from dataclasses import dataclass
 
 import numpy as np
@@ -402,4 +403,63 @@ def vincular_eventos(rupturas: pd.DataFrame, eventos: pd.DataFrame) -> pd.DataFr
         out.at[i, "evento_inicio"] = mejor["fecha_inicio"]
         tipo = mejor.get("tipo_impacto")
         out.at[i, "evento_tipo"] = tipo if isinstance(tipo, str) and tipo else None
+    return out
+
+
+# ── Tipo de impacto de las noticias ──────────────────────────────────────────
+# Las noticias casi nunca hablan de una ferroaleación en particular: se separan
+# por el tipo de impacto que pueden tener. Orden de prioridad: grupo de búsqueda
+# (noticias.GRUPOS_IMPACTO_GLOBAL ya busca por tipo), palabras del título (la
+# razón de Gemini menciona riesgos genéricos y metía ruido) y al final la
+# variable que asignó Gemini.
+PATRONES_TIPO_NOTICIA = {
+    "Geopolítico/conflicto": r"guerra|\bwar\b|sanci[oó]n|sanction|conflicto|conflict|ucrania|ukrain|israel|"
+                             r"\bir[aá]n\b|mar rojo|red sea|hut[ií]es|houthi|militar|military|export controls?|"
+                             r"controles? de exportaci",
+    "Política comercial": r"arancel|tariff|antidumping|anti-dumping|cuota|quota|t-mec|usmca|secci[oó]n 232|"
+                          r"section 232|salvaguarda|safeguard|export ban|prohibici[oó]n de export",
+    "Energía": r"petr[oó]leo|crude oil|\boil price|opep|opec|gas natural|natural gas|"
+               r"precios? de la (energ|electric|luz)|tarifas? el[eé]ctric|electricity price|energy price|"
+               r"apag[oó]n|blackout|racionamiento|power (rationing|shortage|cuts?)",
+    "Clima/desastre": r"hurac[aá]n|hurricane|tif[oó]n|typhoon|cicl[oó]n|cyclone|\bsismo|terremoto|earthquake|"
+                      r"inundaci|flood|sequ[ií]a|drought|wildfire",
+    "Logística": r"\bfletes?\b|freight|naviera|shipping|contenedor|container|ferrocarril|railway|transnet|"
+                 r"congesti[oó]n portuaria|port congestion|bloqueo",
+    "Macro/financiero": r"\bfed\b|reserva federal|federal reserve|tasas? de inter[eé]s|interest rates?|inflaci|"
+                        r"recesi[oó]n|recession|\bpib\b|\bgdp\b|tipo de cambio|peso mexicano|superpeso|"
+                        r"[ií]ndice del d[oó]lar|dollar index|banxico|\bpmi\b|est[ií]mulo|stimulus|"
+                        r"desplome|selloff|sell-off|crash",
+    "Oferta/producción": r"\bmina\b|\bminas\b|minera|\bmine\b|mining|producci[oó]n de|production cut|output|"
+                         r"fundici[oó]n|smelter|cierre de (planta|mina|horno)|shutdown|recorte de producci",
+}
+# energia_electricidad no se mapea: Gemini la usa también para notas de
+# sustentabilidad; las de precios de energía las atrapa el patrón.
+VARIABLE_A_TIPO = {
+    "aranceles_comercio": "Política comercial",
+    "tipo_cambio": "Macro/financiero", "demanda_general": "Macro/financiero",
+    "ferroaleaciones": "Oferta/producción", "mineral_hierro": "Oferta/producción",
+    "chatarra_scrap": "Oferta/producción", "carbon_coquizable": "Oferta/producción",
+    "china_sobrecapacidad": "Oferta/producción", "zinc_galvanizado": "Oferta/producción",
+}
+# Grupos de búsqueda anteriores (noticias.GRUPOS_INTERNACIONAL) con tipo claro
+GRUPO_A_TIPO = {"Macroeconomía": "Macro/financiero", "Geopolítica y Logística": "Geopolítico/conflicto",
+                "Defensa Comercial": "Política comercial", "Ferroaleaciones": "Oferta/producción"}
+# Estudios de mercado y notas de empresas sin impacto en precios de insumos
+PATRON_RUIDO_NOTICIA = r"tama[nñ]o del mercado|market size|informe de previsi|forecast report|crecimiento \[20"
+
+
+def tipo_impacto_noticias(noticias: pd.DataFrame) -> pd.DataFrame:
+    """Agrega 'tipo_impacto' (uno de TIPOS_IMPACTO o None si no aplica) a
+    noticias de load_noticias_periodo y quita estudios de mercado."""
+    if noticias.empty:
+        return noticias.assign(tipo_impacto=pd.Series(dtype=object))
+    out = noticias[~noticias["titulo"].fillna("").str.contains(PATRON_RUIDO_NOTICIA, case=False, regex=True)].copy()
+    texto = out["titulo"].fillna("").str.lower()
+    grupo = out["grupo_tematico"] if "grupo_tematico" in out else pd.Series(None, index=out.index)
+    tipos = []
+    for i in out.index:
+        tipo = grupo[i] if grupo[i] in TIPOS_IMPACTO else None
+        tipo = tipo or next((t for t, p in PATRONES_TIPO_NOTICIA.items() if re.search(p, texto[i])), None)
+        tipos.append(tipo or GRUPO_A_TIPO.get(grupo[i]) or VARIABLE_A_TIPO.get(out.at[i, "variable_principal"]))
+    out["tipo_impacto"] = tipos
     return out

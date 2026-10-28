@@ -658,6 +658,37 @@ GRUPO_FERROALEACIONES: dict[str, list[str]] = {
     ],
 }
 
+# Noticias generales que mueven insumos y ferroaleaciones, una búsqueda por tipo
+# de impacto (rupturas.TIPOS_IMPACTO). El nombre del grupo ES el tipo: queda en
+# GRUPO_TEMATICO y la pestaña de quiebres separa las noticias con él.
+GRUPOS_IMPACTO_GLOBAL: dict[str, list[str]] = {
+    "Geopolítico/conflicto": [
+        "sanctions metals supply war",
+        "Red Sea shipping attacks",
+        "China export controls critical minerals",
+    ],
+    "Macro/financiero": [
+        "Federal Reserve interest rates markets",
+        "China economy stimulus steel demand",
+        "global stock market selloff recession",
+    ],
+    "Energía": [
+        "oil prices OPEC",
+        "natural gas prices Europe industry",
+        "power rationing smelters electricity prices",
+    ],
+    "Política comercial": [
+        "steel tariffs Section 232",
+        "antidumping ferroalloys",
+        "export ban ore minerals",
+    ],
+    "Oferta/producción": [
+        "smelter shutdown production cut",
+        "manganese chrome mine output disruption",
+        "Indonesia nickel output quota",
+    ],
+}
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # NOTICIAS INTERNACIONALES — 5 categorías estratégicas globales
@@ -771,7 +802,8 @@ def buscar_noticias_sector(grupo: str, max_resultados: int = 40) -> list[dict]:
     Usa todas las queries del grupo (no solo 3) y 10 resultados por query.
     Complementa con NewsAPI si hay pocos resultados.
     """
-    all_groups = {**GRUPOS_NACIONAL, **GRUPOS_INTERNACIONAL, **GRUPOS_INDUSTRIA, **GRUPO_FERROALEACIONES}
+    all_groups = {**GRUPOS_NACIONAL, **GRUPOS_INTERNACIONAL, **GRUPOS_INDUSTRIA, **GRUPO_FERROALEACIONES,
+                  **GRUPOS_IMPACTO_GLOBAL}
     queries = all_groups.get(grupo)
     if not queries:
         queries = [grupo]

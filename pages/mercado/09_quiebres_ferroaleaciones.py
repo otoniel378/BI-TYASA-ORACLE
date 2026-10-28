@@ -24,25 +24,23 @@ import streamlit as st
 from config import COLORS, COLOR_SEQUENCE
 
 from mercado_fastmarkets.loaders import FERROALEACIONES, load_ferroaleaciones, load_semaforo_ferros
-from mercado_noticias.loaders import (
-    load_eventos_todos, load_mercado_mensual, load_noticias_en_rango, load_noticias_ferroaleaciones,
-)
+from mercado_noticias.loaders import load_eventos_todos, load_mercado_mensual, load_noticias_periodo
 from mercado_noticias.analytics.rupturas import (
-    MIN_SEGMENTO, agregar_desempeno_posterior, bandas_normales, detectar_rupturas, huella_impacto, normalizar_mensual,
-    resumen_casos_parecidos, rupturas_a_dataframe, vincular_eventos,
+    HORIZONTES_MESES, MIN_SEGMENTO, TIPOS_IMPACTO, agregar_desempeno_posterior, bandas_normales, detectar_rupturas,
+    huella_impacto, normalizar_mensual, rupturas_a_dataframe, tipo_impacto_noticias, vincular_eventos,
 )
 from core.components.kpi_cards import render_kpi_row, seccion_titulo
 
 # Las noticias clasificadas del sistema empiezan en nov 2024; antes no hay con qué cruzar.
 INICIO_NOTICIAS = pd.Timestamp("2024-11-01")
 DIAS_CONTEXTO = 45
-CATEGORIAS_CONTEXTO = ("aranceles_comercio", "china_sobrecapacidad", "energia_electricidad",
-                       "chatarra_scrap", "demanda_general", "carbon_coquizable")
+# Búsqueda en Google del periodo de un quiebre: metal base en inglés y búsqueda
+# web con rango de fechas (con "ferromolybdenum price" y el filtro de noticias
+# Google no devolvía nada para 2014).
 TERMINO_GOOGLE = {
-    "FerroManganeso": "ferromanganese", "SilicoManganeso": "silicomanganese",
-    "FerroSilicio": "ferrosilicon", "FerroCromo": "ferrochrome", "FerroVanadio": "ferrovanadium",
-    "FerroMolibdeno": "ferromolybdenum", "FerroTitanio": "ferrotitanium", "FerroNiobio": "ferroniobium",
-    "Niquel": "LME nickel",
+    "FerroManganeso": "manganese", "SilicoManganeso": "manganese", "FerroSilicio": "ferrosilicon",
+    "FerroCromo": "ferrochrome", "FerroVanadio": "vanadium", "FerroMolibdeno": "molybdenum",
+    "FerroTitanio": "titanium", "FerroNiobio": "niobium", "Niquel": "nickel",
 }
 # Palabras en el título que ligan una noticia de ferroaleaciones con una serie en particular
 PATRON_SERIE = {
@@ -77,7 +75,7 @@ def _hex_rgba(hex_color: str, alpha: float) -> str:
 def _calcular_todo(desde_anio: int) -> tuple[pd.DataFrame, pd.DataFrame]:
     """(precios mensuales de todas las series, quiebres de todas las series con
     evento vinculado y desempeño posterior). Se calculan todas a la vez porque
-    los "casos parecidos" comparan contra las demás ferroaleaciones."""
+    el tipo de impacto cuenta cuántas aleaciones quebraron al mismo tiempo."""
     crudo = load_ferroaleaciones()
     if crudo.empty:
         return pd.DataFrame(), pd.DataFrame()
@@ -92,15 +90,42 @@ def _calcular_todo(desde_anio: int) -> tuple[pd.DataFrame, pd.DataFrame]:
     return ancho, agregar_desempeno_posterior(rupturas, ancho)
 
 
-def _noticias_de_serie(serie: str, desde, hasta) -> pd.DataFrame:
-    noticias = load_noticias_ferroaleaciones(desde, hasta)
+def _noticias_por_tipo(serie: str, desde, hasta) -> pd.DataFrame:
+    """Noticias del periodo con tipo de impacto; 'de_serie' marca las que
+    mencionan esta ferroaleación."""
+    noticias = tipo_impacto_noticias(load_noticias_periodo(desde, hasta))
     if noticias.empty:
         return noticias
     patron = f"{PATRON_SERIE.get(serie, serie)}|{PATRON_GENERAL}"
-    return noticias[noticias["titulo"].str.contains(patron, case=False, regex=True, na=False)]
+    noticias = noticias.assign(de_serie=noticias["titulo"].str.contains(patron, case=False, regex=True, na=False))
+    return noticias[noticias["tipo_impacto"].notna() | noticias["de_serie"]]
 
 
-def _tabla_noticias(noticias: pd.DataFrame, n: int = 12) -> None:
+def _pestanas_noticias(noticias: pd.DataFrame, serie: str) -> None:
+    """Una pestaña por tipo de impacto con noticias, más una de la propia serie."""
+    grupos = [(f"De {serie}", noticias[noticias["de_serie"]])]
+    grupos += [(t, noticias[noticias["tipo_impacto"] == t]) for t in TIPOS_IMPACTO]
+    grupos = [(nombre, g) for nombre, g in grupos if not g.empty]
+    for (nombre, g), tab in zip(grupos, st.tabs([f"{nombre} ({len(g)})" for nombre, g in grupos])):
+        with tab:
+            _tabla_noticias(g)
+
+
+def _cambios_desde(precio: pd.Series, fecha) -> dict:
+    """Cambio % del precio desde <fecha> a +3, +6 y +12 meses (NaN si aún no pasa)."""
+    base = precio.get(fecha)
+    out = {}
+    for h in HORIZONTES_MESES:
+        fut = precio.get(pd.Timestamp(fecha) + pd.DateOffset(months=h))
+        out[h] = (fut / base - 1) * 100 if pd.notna(base) and pd.notna(fut) and base else float("nan")
+    return out
+
+
+def _pct(v) -> str:
+    return f"{v:+.0f}%" if pd.notna(v) else "—"
+
+
+def _tabla_noticias(noticias: pd.DataFrame, n: int = 15) -> None:
     st.dataframe(
         noticias.head(n).assign(Fecha=lambda d: d["fecha_pub"].dt.strftime("%Y-%m-%d"))[
             ["Fecha", "titulo", "razon", "fuente", "url"]],
@@ -112,27 +137,40 @@ def _tabla_noticias(noticias: pd.DataFrame, n: int = 12) -> None:
     )
 
 
-def _html_casos_parecidos(resumen: pd.DataFrame, regimen: str, desde_cuando: str) -> str:
-    """Tarjeta: qué hizo el precio en quiebres del mismo tipo en las demás series."""
-    if resumen.empty:
-        return (f"<div style='font-size:13px;color:{COLORS['text_light']};'>"
-                f"Sin casos parecidos ({regimen}) con historia suficiente.</div>")
+def _html_historia_serie(rupturas_serie: pd.DataFrame, q: pd.Series, serie: str) -> str:
+    """Tarjeta: qué hizo el precio de ESTA ferroaleación las otras veces que
+    entró al mismo régimen (Alza, Baja o Estable), medido desde que cada quiebre
+    se confirmó (6 meses después), que es cuando se habría sabido."""
+    nuevo = q["regimen"].split(" → ")[-1]
+    casos = rupturas_serie[(rupturas_serie["regimen"].str.split(" → ").str[-1] == nuevo)
+                           & (rupturas_serie["fecha"] != q["fecha"])].sort_values("fecha")
+    caja = (f"<div style='font-size:13px;line-height:1.5;color:{COLORS['text']};background:{COLORS['surface']};"
+            f"border:1px solid #E5E7EB;border-radius:8px;padding:12px 14px;'>"
+            f"<div style='font-weight:700;color:{COLORS['primary']};'>Otras veces que {serie} pasó a {nuevo}</div>")
+    if casos.empty:
+        return (f"{caja}<div style='color:{COLORS['text_light']};margin-top:4px;'>"
+                f"No había pasado desde {desde_anio}: no hay historia propia con qué comparar.</div></div>")
+
+    def celda(v):
+        if pd.isna(v):
+            return f"<td style='padding:3px 8px;color:{COLORS['text_light']};text-align:right;'>—</td>"
+        c = COLORS["danger"] if v > 0 else COLORS["success"]
+        return f"<td style='padding:3px 8px;font-weight:600;color:{c};text-align:right;'>{v:+.0f}%</td>"
+
+    cab = (f"<tr style='color:{COLORS['text_light']};font-size:11px;'><td style='padding:3px 8px 3px 0;'>Quiebre</td>"
+           + "".join(f"<td style='padding:3px 8px;text-align:right;'>{h} meses</td>" for h in HORIZONTES_MESES)
+           + "</tr>")
     filas = "".join(
-        f"<tr><td style='padding:3px 10px 3px 0;'>{int(r.horizonte)} meses</td>"
-        f"<td style='padding:3px 10px;font-weight:700;color:{COLORS['danger'] if r.mediana > 0 else COLORS['success']};'>"
-        f"{r.mediana:+.0f}%</td>"
-        f"<td style='padding:3px 10px;color:{COLORS['text_light']};'>{r.p25:+.0f}% a {r.p75:+.0f}%</td>"
-        f"<td style='padding:3px 0 3px 10px;'>subió en {r.subieron} de {r.casos}</td></tr>"
-        for r in resumen.itertuples()
+        f"<tr><td style='padding:3px 8px 3px 0;'>{_mes(r['fecha'])} · {r['regimen']}</td>"
+        + "".join(celda(r[f"despues_{h}m"]) for h in HORIZONTES_MESES) + "</tr>"
+        for _, r in casos.iterrows()
     )
-    return (
-        f"<div style='font-size:13px;line-height:1.5;color:{COLORS['text']};background:{COLORS['surface']};"
-        f"border:1px solid #E5E7EB;border-radius:8px;padding:12px 14px;'>"
-        f"<div style='font-weight:700;color:{COLORS['primary']};'>Qué pasó en casos parecidos ({regimen})</div>"
-        f"<div style='font-size:11px;color:{COLORS['text_light']};margin-bottom:6px;'>"
-        f"Cambio del precio {desde_cuando}, en las 9 series desde {desde_anio}. Mediana y rango de la mitad central.</div>"
-        f"<table style='font-size:13px;border-collapse:collapse;'>{filas}</table></div>"
-    )
+    v12 = casos["despues_12m"].dropna()
+    resumen = (f"<div style='margin-top:6px;'>A 12 meses subió en <b>{int((v12 > 0).sum())} de {len(v12)}</b> "
+               f"(mediana {v12.median():+.0f}%)</div>" if len(v12) else "")
+    return (f"{caja}<div style='font-size:11px;color:{COLORS['text_light']};margin-bottom:6px;'>"
+            f"Cambio del precio desde que cada quiebre se confirmó (6 meses después)</div>"
+            f"<table style='font-size:13px;border-collapse:collapse;'>{cab}{filas}</table>{resumen}</div>")
 
 
 # ---------------------------------------------------------------------------
@@ -275,8 +313,9 @@ fig.update_layout(
     )],
 )
 evento_grafica = st.plotly_chart(fig, width="stretch", key="qf_chart", on_select="rerun", selection_mode="points")
-st.caption("Sombra: rango normal según el año anterior · Naranja: fuera de lo normal · "
-           "Rombo/estrella: quiebre (estrella = explicado por un evento) · Clic en un quiebre para ver su detalle")
+st.caption("Sombra: rango normal según el año anterior · Naranja: precio fuera de lo normal · "
+           "Rombo/estrella: quiebre, cuando cambia la tendencia o la volatilidad; puede pasar dentro del rango "
+           "(estrella = explicado por un evento) · Clic en un quiebre para ver su detalle")
 
 # ---------------------------------------------------------------------------
 # Situación actual
@@ -299,53 +338,70 @@ if not rupturas.empty:
             f"<div><b>Causa:</b> {actual['evento_nombre'] or 'sin evento verificado'}</div></div>"
         )
     with col_c:
-        st.html(_html_casos_parecidos(
-            resumen_casos_parecidos(rupturas_todas, actual["regimen"], excluir=(serie, actual["fecha"])),
-            actual["regimen"], "desde que el quiebre se confirma (6 meses después)"))
+        st.html(_html_historia_serie(rupturas, actual, serie))
 else:
     st.info("Sin quiebres detectados en este periodo.")
 
+# ---------------------------------------------------------------------------
+# Alarma de la serie: cómo le ha ido al semáforo (walk-forward desde 2008)
+# ---------------------------------------------------------------------------
 hist = sem_prob[(sem_prob["serie"] == serie) & (sem_prob["tipo"] == "backtest")].sort_values("fecha") \
     if not sem_prob.empty else pd.DataFrame()
-if not hist.empty:
-    with st.expander(f"Cómo le ha ido al semáforo con {serie}"):
-        m = sem_met[sem_met["serie"] == serie]
-        if not m.empty:
-            m = m.iloc[0]
-            st.html(
-                f"<div style='font-size:13px;line-height:1.6;color:{COLORS['text']};'>"
-                f"Desde 2008 hubo <b>{int(m['episodios'])}</b> alzas de más de 20% en 3 meses; el semáforo avisó "
-                f"(amarillo o rojo) a tiempo en <b>{int(m['detectados'])}</b>. Da en promedio "
-                f"<b>{float(m['falsas_por_anio']):.1f}</b> falsas alarmas al año. Cuando avisa, acierta "
-                f"{float(m['aciertan']) if pd.notna(m['aciertan']) else 0:.0%} de las veces, contra "
-                f"{float(m['prob_base']):.0%} si no hubiera aviso. Cada año se calculó solo con información anterior."
-                f"</div>"
-            )
-        fh = go.Figure()
-        alzas = hist[hist["y"] == 1]
-        for f in alzas["fecha"]:
-            fh.add_vrect(x0=f, x1=f + pd.DateOffset(months=1), fillcolor=COLORS["danger"], opacity=0.15, line_width=0)
-        fh.add_trace(go.Scatter(x=hist["fecha"], y=hist["prob"], mode="lines", name="Probabilidad de alza",
-                                line=dict(color=COLORS["primary"], width=1.8),
-                                hovertemplate="%{x|%b %Y}: %{y:.0%}<extra></extra>"))
-        fh.add_hline(y=0.20, line=dict(color=COLORS["warning"], dash="dash", width=1))
-        fh.add_hline(y=0.40, line=dict(color=COLORS["danger"], dash="dash", width=1))
-        fh.update_layout(
-            paper_bgcolor=COLORS["surface"], plot_bgcolor=COLORS["background"],
-            font=dict(family="Inter, Arial, sans-serif", color=COLORS["text"]),
-            margin=dict(l=40, r=20, t=20, b=30), height=280, showlegend=False,
-            xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#E5E7EB", tickformat=".0%", range=[0, 1]),
-        )
-        st.plotly_chart(fh, width="stretch", key="qf_chart_semaforo")
-        st.caption("Línea: probabilidad que daba el modelo cada mes · Franjas rojas: meses en que el precio "
-                   "sí subió más de 20% en los 3 meses siguientes · Punteadas: umbrales amarillo y rojo")
+m = sem_met[sem_met["serie"] == serie] if not sem_met.empty else pd.DataFrame()
+if not hist.empty and not m.empty:
+    m = m.iloc[0]
+    hist = hist.assign(
+        alerta=hist["prob"] >= 0.20,
+        # Mismo criterio que alerta_alzas.metricas: acierta si hay alza en ese mes o los 2 siguientes
+        alza_cerca=hist["y"][::-1].rolling(3, min_periods=1).max()[::-1] == 1,
+    )
+    debil = "" if confiable.get(serie, False) else " · señal débil: tómalo solo como referencia"
+    seccion_titulo(f"Alarma de {serie}", f"Cómo ha avisado desde 2008 · cada año se calculó solo con "
+                                         f"información anterior{debil}")
+    aciertan = float(m["aciertan"]) if pd.notna(m["aciertan"]) else 0.0
+    render_kpi_row([
+        {"label": "Alzas de +20% en 3 meses", "value": int(m["episodios"]), "help_text": "Desde 2008"},
+        {"label": "Avisadas a tiempo", "value": f"{int(m['detectados'])} de {int(m['episodios'])}",
+         "help_text": "Amarillo o rojo hasta 2 meses antes de que empezara el alza"},
+        {"label": "Falsas alarmas al año", "value": f"{float(m['falsas_por_anio']):.1f}",
+         "help_text": "Avisos sin alza en los 3 meses siguientes"},
+        {"label": "Cuando avisa, acierta", "value": f"{aciertan:.0%}",
+         "help_text": f"Sin aviso, la probabilidad de alza en un mes cualquiera es {float(m['prob_base']):.0%}"},
+    ])
+    fh = go.Figure()
+    for f in hist.loc[hist["y"] == 1, "fecha"]:
+        fh.add_vrect(x0=f, x1=f + pd.DateOffset(months=1), fillcolor=COLORS["danger"], opacity=0.12, line_width=0)
+    fh.add_trace(go.Scatter(x=hist["fecha"], y=hist["prob"], mode="lines", name="Probabilidad de alza",
+                            line=dict(color=COLORS["primary"], width=1.6),
+                            hovertemplate="%{x|%b %Y}: %{y:.0%}<extra></extra>"))
+    for nombre_av, filtro, c in (("Aviso correcto", hist["alerta"] & hist["alza_cerca"], COLORS["danger"]),
+                                 ("Falsa alarma", hist["alerta"] & ~hist["alza_cerca"], COLORS["neutral"])):
+        av = hist[filtro]
+        fh.add_trace(go.Scatter(x=av["fecha"], y=av["prob"], mode="markers", name=nombre_av,
+                                marker=dict(size=8, color=c, line=dict(width=1, color="white")),
+                                hovertemplate=f"{nombre_av} · %{{x|%b %Y}}: %{{y:.0%}}<extra></extra>"))
+    fh.add_hline(y=0.20, line=dict(color=COLORS["warning"], dash="dash", width=1))
+    fh.add_hline(y=0.40, line=dict(color=COLORS["danger"], dash="dash", width=1))
+    fh.update_layout(
+        paper_bgcolor=COLORS["surface"], plot_bgcolor=COLORS["background"],
+        font=dict(family="Inter, Arial, sans-serif", color=COLORS["text"]),
+        margin=dict(l=40, r=20, t=30, b=30), height=300,
+        legend=dict(orientation="h", y=1.12, x=1, xanchor="right"),
+        xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#E5E7EB", tickformat=".0%", range=[0, 1]),
+    )
+    st.plotly_chart(fh, width="stretch", key="qf_chart_semaforo")
+    st.caption("Franjas rojas: meses en que el precio sí subió más de 20% en los 3 meses siguientes · "
+               "Punteadas: umbrales amarillo (20%) y rojo (40%)")
 
-seccion_titulo(f"Noticias recientes de {serie}", f"Últimos {DIAS_NOTICIAS_RECIENTES} días")
-recientes = _noticias_de_serie(serie, pd.Timestamp.now() - pd.Timedelta(days=DIAS_NOTICIAS_RECIENTES), pd.Timestamp.now())
+seccion_titulo(f"Noticias que pueden mover a {serie}",
+               f"Últimos {DIAS_NOTICIAS_RECIENTES} días, por tipo de impacto · noticias generales, "
+               f"no necesariamente de esta ferroaleación")
+recientes = _noticias_por_tipo(serie, pd.Timestamp.now() - pd.Timedelta(days=DIAS_NOTICIAS_RECIENTES),
+                               pd.Timestamp.now())
 if recientes.empty:
-    st.caption("Sin noticias todavía; el proceso diario ya busca noticias de ferroaleaciones.")
+    st.caption("Sin noticias clasificadas en este periodo.")
 else:
-    _tabla_noticias(recientes, n=8)
+    _pestanas_noticias(recientes, serie)
 
 if vista.empty:
     st.info("No hay quiebres con la evidencia seleccionada.")
@@ -374,7 +430,8 @@ q = vista.loc[i_sel]
 col_d, col_e = st.columns([1, 1])
 with col_d:
     p_chow = f"{q['p_chow']:.4f}" if pd.notna(q["p_chow"]) else "no aplica (tramo corto)"
-    cambio = f"{q['cambio_precio_6m']:+.0f}%" if pd.notna(q["cambio_precio_6m"]) else "—"
+    cambios = _cambios_desde(precios[serie], q["fecha"])
+    cambio = " · ".join(f"{h} meses {_pct(v)}" for h, v in cambios.items())
     st.html(
         f"<div style='font-size:13px;line-height:1.7;color:{COLORS['text']};background:{COLORS['surface']};"
         f"border:1px solid #E5E7EB;border-radius:8px;padding:12px 14px;'>"
@@ -385,7 +442,7 @@ with col_d:
         f"<div><b>Volatilidad:</b> {q['vol_pre_anual']:.0f}% → {q['vol_post_anual']:.0f}% anual "
         f"<span style='color:{COLORS['text_light']};'>(p = {q['p_volatilidad']:.4f})</span></div>"
         f"<div><b>Cambio estructural (Chow):</b> p = {p_chow}</div>"
-        f"<div><b>Precio 6 meses después vs. 6 antes:</b> {cambio}</div>"
+        f"<div><b>Precio después del quiebre:</b> {cambio}</div>"
         f"<div><b>Evidencia:</b> {q['evidencia']} · régimen anterior {q['meses_pre']} meses, nuevo {q['meses_post']}</div>"
         f"<div style='margin-top:6px;'><b>Tipo de impacto:</b> {q['tipo_impacto']} "
         f"<span style='color:{COLORS['text_light']};'>"
@@ -393,9 +450,7 @@ with col_d:
         f"<div><b>Qué pasaba en el mercado (±2 meses):</b> {q['senales_mercado']}</div>"
         f"</div>"
     )
-    st.html("<div style='height:10px'></div>" + _html_casos_parecidos(
-        resumen_casos_parecidos(rupturas_todas, q["regimen"], excluir=(serie, q["fecha"])),
-        q["regimen"], "desde que el quiebre se confirma (6 meses después)"))
+    st.html("<div style='height:10px'></div>" + _html_historia_serie(rupturas, q, serie))
 with col_e:
     if q["evento_id"]:
         url = _url_en(q["evento_fuente"])
@@ -414,63 +469,58 @@ with col_e:
             f"padding:10px 14px;border-radius:0 8px 8px 0;font-size:13px;'>"
             f"Sin evento verificado en el catálogo para esta fecha.</div>"
         )
-    termino = TERMINO_GOOGLE.get(serie, serie)
-    antes = (q["fecha"] - pd.DateOffset(months=3)).strftime("%Y-%m-%d")
-    despues = (q["fecha"] + pd.DateOffset(months=1)).strftime("%Y-%m-%d")
-    gnews = "https://www.google.com/search?" + urllib.parse.urlencode(
-        {"q": f"{termino} price after:{antes} before:{despues}", "tbm": "nws"})
+    antes, despues = q["fecha"] - pd.DateOffset(months=4), q["fecha"] + pd.DateOffset(months=3)
+    gnews = "https://www.google.com/search?" + urllib.parse.urlencode({
+        "q": f"{TERMINO_GOOGLE.get(serie, serie)} price",
+        "tbs": f"cdr:1,cd_min:{antes.month}/{antes.day}/{antes.year},cd_max:{despues.month}/{despues.day}/{despues.year}",
+    })
     st.html(f"<div style='margin-top:8px;font-size:12px;'>"
             f"<a href='{gnews}' target='_blank' style='color:{COLORS['secondary']};'>"
             f"Buscar noticias de ese periodo</a></div>")
 
 if q["fecha"] >= INICIO_NOTICIAS:
     desde_n, hasta_n = q["fecha"] - pd.Timedelta(days=DIAS_CONTEXTO), q["fecha"] + pd.Timedelta(days=DIAS_CONTEXTO)
-    propias = _noticias_de_serie(serie, desde_n, hasta_n)
-    if not propias.empty:
-        seccion_titulo(f"Noticias de {serie} en ese periodo", f"±{DIAS_CONTEXTO} días del quiebre")
-        _tabla_noticias(propias)
+    periodo = _noticias_por_tipo(serie, desde_n, hasta_n)
+    seccion_titulo("Noticias del periodo", f"±{DIAS_CONTEXTO} días del quiebre, por tipo de impacto · "
+                                           f"contexto, no necesariamente la causa")
+    if periodo.empty:
+        st.info("Sin noticias clasificadas en ese periodo.")
     else:
-        seccion_titulo("Noticias del periodo", f"±{DIAS_CONTEXTO} días · contexto general, no necesariamente la causa")
-        generales = load_noticias_en_rango(desde_n, hasta_n, CATEGORIAS_CONTEXTO)
-        if generales.empty:
-            st.info("Sin noticias clasificadas en ese periodo.")
-        else:
-            _tabla_noticias(generales)
+        _pestanas_noticias(periodo, serie)
 
 # ---------------------------------------------------------------------------
-# Todos los quiebres de la serie
+# Todos los quiebres de la serie, en orden cronológico
 # ---------------------------------------------------------------------------
-seccion_titulo(f"Quiebres de {serie}", f"Desde {desde_anio}")
-tabla = vista.assign(
-    Fecha=lambda d: d["fecha"].map(_mes),
-    Cambio=lambda d: d["cambio_precio_6m"].map(lambda v: f"{v:+.0f}%" if pd.notna(v) else "—"),
-    Evento=lambda d: d["evento_nombre"].fillna("—"),
-    Tipo=lambda d: d["tipo_impacto"] + d["tipo_fuente"].map({"evento verificado": "", "huella de mercado": " (probable)"}),
-)[["Fecha", "regimen", "volatilidad", "Cambio", "evidencia", "Tipo", "Evento"]]
-tabla.columns = ["Fecha", "Tendencia", "Volatilidad", "Precio 6m después vs. 6m antes", "Evidencia",
-                 "Tipo de impacto", "Evento"]
+seccion_titulo(f"Quiebres de {serie}", f"Desde {desde_anio} · cambio del precio desde el mes del quiebre")
+cambios_q = pd.DataFrame([_cambios_desde(precios[serie], f) for f in vista["fecha"]], index=vista.index)
+cronologico = vista.join(cambios_q).sort_values("fecha")
+tabla = pd.DataFrame({
+    "Fecha": cronologico["fecha"].map(_mes),
+    "Tendencia": cronologico["regimen"],
+    "Volatilidad": cronologico["volatilidad"],
+    "Evidencia": cronologico["evidencia"],
+    "Precio (USD/t)": bandas["precio"].reindex(cronologico["fecha"]).map(lambda v: f"{v:,.0f}").values,
+    **{f"{h} meses después": cronologico[h].map(_pct) for h in HORIZONTES_MESES},
+})
 st.dataframe(tabla, hide_index=True, width="stretch")
 
 # ---------------------------------------------------------------------------
-# Qué tipo de impactos mueven las ferroaleaciones (todas las series)
+# Qué tipo de impactos mueven a esta ferroaleación
 # ---------------------------------------------------------------------------
-todas_vista = rupturas_todas[rupturas_todas["evidencia"].isin(evid_sel)] if not rupturas_todas.empty else rupturas_todas
-if not todas_vista.empty:
-    seccion_titulo("Qué tipo de impactos mueven las ferroaleaciones",
-                   f"Las 9 series desde {desde_anio} · el tipo probable sale de lo que hacía el mercado, no prueba la causa")
-    resumen_tipo = (
-        todas_vista.groupby("tipo_impacto")
-        .agg(quiebres=("serie", "size"),
-             verificados=("tipo_fuente", lambda s: int((s == "evento verificado").sum())),
-             alzas=("direccion", lambda s: int((s == "Sube").sum())),
-             cambio=("cambio_precio_6m", "median"),
-             a12=("despues_12m", "median"))
-        .sort_values("quiebres", ascending=False).reset_index()
-    )
-    resumen_tipo["cambio"] = resumen_tipo["cambio"].map(lambda v: f"{v:+.0f}%" if pd.notna(v) else "—")
-    resumen_tipo["a12"] = resumen_tipo["a12"].map(lambda v: f"{v:+.0f}%" if pd.notna(v) else "—")
-    resumen_tipo.columns = ["Tipo de impacto", "Quiebres", "Con evento verificado", "Tendencia sube",
-                            "Precio 6m después vs. 6m antes (mediana)", "12 meses después de confirmarse (mediana)"]
-    st.dataframe(resumen_tipo, hide_index=True, width="stretch")
+seccion_titulo(f"Qué tipo de impactos mueven a {serie}",
+               f"Quiebres desde {desde_anio} · el tipo probable sale de lo que hacía el mercado, no prueba la causa")
+resumen_tipo = (
+    cronologico.groupby("tipo_impacto")
+    .agg(quiebres=("serie", "size"),
+         verificados=("tipo_fuente", lambda s: int((s == "evento verificado").sum())),
+         alzas=("direccion", lambda s: int((s == "Sube").sum())),
+         **{f"m{h}": (h, "median") for h in HORIZONTES_MESES})
+    .sort_values("quiebres", ascending=False).reset_index()
+)
+for h in HORIZONTES_MESES:
+    resumen_tipo[f"m{h}"] = resumen_tipo[f"m{h}"].map(_pct)
+resumen_tipo.columns = (["Tipo de impacto", "Quiebres", "Con evento verificado", "Tendencia sube"]
+                        + [f"{h} meses después (mediana)" for h in HORIZONTES_MESES])
+st.dataframe(resumen_tipo, hide_index=True, width="stretch")
 
 st.caption("Datos: Fastmarkets (AMM), LME y Yahoo Finance · Eventos: catálogo curado con fuente")

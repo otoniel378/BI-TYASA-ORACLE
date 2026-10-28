@@ -27,6 +27,9 @@ MAX_TOTAL     = 60  # límite total para no exceder tokens de Gemini
 # Cupo propio de ferroaleaciones, al inicio del lote y por encima de MAX_TOTAL:
 # como clasificar_lote() corta en orden, un grupo al final nunca se clasificaba.
 MAX_FERROALEACIONES = 6
+# Igual para las noticias generales por tipo de impacto (geopolítica, macro,
+# energía...): cupo propio por tipo para que no las desplacen las del sector.
+MAX_POR_IMPACTO = 3
 
 
 def _get_gemini_key() -> str:
@@ -216,6 +219,7 @@ def run():
     from mercado_noticias.analytics.noticias import (
         buscar_noticias_sector,
         GRUPOS_INDUSTRIA, GRUPOS_NACIONAL, GRUPOS_INTERNACIONAL, GRUPO_FERROALEACIONES,
+        GRUPOS_IMPACTO_GLOBAL,
     )
     from mercado_noticias.analytics.sentimiento import (
         clasificar_lote, resultados_a_dataframe,
@@ -234,9 +238,11 @@ def run():
     seen_urls: set[str] = set()
 
     n_ferros = 0
-    for grupo in GRUPO_FERROALEACIONES:
+    cupos = {**{g: MAX_FERROALEACIONES for g in GRUPO_FERROALEACIONES},
+             **{g: MAX_POR_IMPACTO for g in GRUPOS_IMPACTO_GLOBAL}}
+    for grupo, cupo in cupos.items():
         try:
-            for n in buscar_noticias_sector(grupo, max_resultados=MAX_FERROALEACIONES):
+            for n in buscar_noticias_sector(grupo, max_resultados=cupo):
                 url = n.get("url", "")
                 if url and url not in seen_urls:
                     seen_urls.add(url)

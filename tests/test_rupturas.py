@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from mercado_noticias.analytics.rupturas import (  # noqa: E402
     MIN_SEGMENTO, agregar_desempeno_posterior, bandas_normales, detectar_rupturas, huella_impacto, normalizar_mensual,
-    resumen_casos_parecidos, rupturas_a_dataframe, vincular_eventos,
+    resumen_casos_parecidos, rupturas_a_dataframe, tipo_impacto_noticias, vincular_eventos,
 )
 
 
@@ -92,3 +92,21 @@ def test_vincula_solo_eventos_de_la_misma_serie_y_ventana():
     })
     out = vincular_eventos(rupt, eventos)
     assert out.loc[out["fecha"] == fecha, "evento_id"].iloc[0] == "bueno"
+
+
+def test_tipo_impacto_noticias():
+    noticias = pd.DataFrame({
+        "titulo": ["Sanciones a Rusia golpean el suministro de metales", "Sube el arancel al acero",
+                   "Tamaño del mercado de acero HRC 2034", "Gerdau inaugura planta",
+                   "Producción de acero crudo sube en julio", "Oil prices jump"],
+        "razon": ["", "", "", "guerra comercial", "", ""],
+        "variable_principal": ["otro", "aranceles_comercio", "HRC_laminado_caliente", "otro", "otro", "otro"],
+        "grupo_tematico": ["Urgente", "Urgente", "Insumos", "Empresas", "Insumos", "Energía"],
+    })
+    out = tipo_impacto_noticias(noticias).set_index("titulo")["tipo_impacto"]
+    assert out["Sanciones a Rusia golpean el suministro de metales"] == "Geopolítico/conflicto"
+    assert out["Sube el arancel al acero"] == "Política comercial"
+    assert "Tamaño del mercado de acero HRC 2034" not in out.index      # estudio de mercado: fuera
+    assert out["Gerdau inaugura planta"] is None                       # la razón no cuenta
+    assert out["Producción de acero crudo sube en julio"] != "Energía"  # "crudo" no es petróleo
+    assert out["Oil prices jump"] == "Energía"                         # grupo de búsqueda = tipo
