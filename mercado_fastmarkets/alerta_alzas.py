@@ -2,9 +2,23 @@
 mercado_fastmarkets/alerta_alzas.py — Semáforo de alerta temprana de alzas en
 ferroaleaciones (pages/mercado/09_quiebres_ferroaleaciones.py).
 
-Pregunta: ¿qué tan probable es que la serie suba más de UMBRAL_ALZA (20%) en
+Pregunta: ¿qué tan probable es que la serie suba más de UMBRAL_ALZA (15%) en
 los próximos HORIZONTE (3) meses? Viene del prototipo del "Estudio de riesgos
 en insumos" (detectó a tiempo 63% de las alzas fuertes 2008-2026 en 4 insumos).
+
+Semáforo (2008-2026, fuera de muestra, 9 series; en un mes cualquiera la serie
+sube +15% en 3 meses ~12% de las veces):
+  - Verde: modelo < 20% y precio dentro del rango normal -> subió 10%.
+  - Amarillo: modelo >= 20% o precio arriba del rango -> 20%.
+  - Rojo: las dos a la vez -> 32% (la mayoría en 2021).
+Detecta a tiempo 53% de las alzas con 1.8 falsas alarmas por serie al año. Con
+el amarillo en 10% detectaba 84% pero con 3.8 falsas alarmas y casi la mitad
+de los meses en alerta; en 25%, 43% con 1.3.
+La probabilidad del modelo NO se usa como número literal: arriba de 20% ya no
+acierta más que entre 10 y 20% (con 30%+ subió 12%), y calibrarla con isotónica
+hacia adelante lo empeoró (el patrón alto no se sostiene de un periodo a otro).
+Lo que sí separa es "bajo" contra "no bajo"; el precio arriba del rango normal
+(rupturas.bandas_normales) es la señal más fuerte (32% contra 11.5%).
 
   - Un solo modelo para todas las series (panel con indicador de serie): cada
     serie tiene pocos episodios de alza; juntas alcanzan para entrenar.
@@ -23,8 +37,8 @@ from sklearn.metrics import roc_auc_score
 from xgboost import XGBClassifier
 
 HORIZONTE = 3          # meses hacia adelante
-UMBRAL_ALZA = 0.20     # alza que cuenta como "fuerte"
-ROJO, AMARILLO = 0.40, 0.20
+UMBRAL_ALZA = 0.15     # alza que cuenta como "fuerte" (con 20% solo 4 de 9 series tenían señal confiable)
+AMARILLO = 0.20        # probabilidad del modelo a partir de la cual el riesgo es "elevado"
 PRIMER_ANIO_PRUEBA = 2008
 EXTERNAS_YF = {"NG=F": "gas_hh", "BZ=F": "brent", "HG=F": "cobre", "MXN=X": "usd_mxn", "DX-Y.NYB": "dolar_idx"}
 
@@ -37,8 +51,25 @@ MERCADO_HUELLA_YF = {
 }
 
 
-def semaforo(p: float) -> str:
-    return "Rojo" if p >= ROJO else "Amarillo" if p >= AMARILLO else "Verde"
+def semaforo(p: float, arriba: bool = False) -> str:
+    """Rojo = modelo elevado y precio arriba del rango normal; Amarillo = una de las dos."""
+    elevado = p >= AMARILLO
+    return "Rojo" if elevado and arriba else "Amarillo" if elevado or arriba else "Verde"
+
+
+def agregar_rango(df: pd.DataFrame, precios: pd.DataFrame) -> pd.DataFrame:
+    """Agrega 'arriba' (precio del mes arriba de su rango normal, que solo usa
+    meses anteriores) y 'semaforo' a filas (serie, fecha, prob)."""
+    from mercado_noticias.analytics.rupturas import bandas_normales
+    arriba = []
+    for serie in precios.columns:
+        b = bandas_normales(precios[serie].dropna())
+        arriba.append(pd.DataFrame({"serie": serie, "fecha": b.index.values,
+                                    "arriba": (b["precio"] > b["banda_sup"]).values}))
+    out = df.merge(pd.concat(arriba), on=["serie", "fecha"], how="left")
+    out["arriba"] = out["arriba"].fillna(False).astype(bool)
+    out["semaforo"] = [semaforo(p, a) for p, a in zip(out["prob"], out["arriba"])]
+    return out
 
 
 def cargar_externas(desde: str = "1999-01-01", tickers: dict | None = None) -> pd.DataFrame:
@@ -123,8 +154,7 @@ def prediccion_actual(panel: pd.DataFrame) -> pd.DataFrame:
     modelo = _modelo().fit(entren[cols], entren["y"])
     ult = panel.sort_values("fecha").groupby("serie").tail(1).copy()
     ult["prob"] = modelo.predict_proba(ult[cols])[:, 1]
-    ult["semaforo"] = ult["prob"].map(semaforo)
-    return ult[["fecha", "serie", "prob", "semaforo", "r1", "r3"]].reset_index(drop=True)
+    return ult[["fecha", "serie", "prob", "r1", "r3"]].reset_index(drop=True)
 
 
 def _episodios(y: pd.Series) -> list[int]:
@@ -133,7 +163,9 @@ def _episodios(y: pd.Series) -> list[int]:
 
 def metricas(oos: pd.DataFrame, umbral: float = AMARILLO) -> pd.DataFrame:
     """Por serie y total: episodios de alza, detectados a tiempo (alerta entre 2
-    meses antes y el inicio), falsas alarmas por año y % de alertas que acertaron."""
+    meses antes y el inicio), falsas alarmas por año y % de alertas que acertaron.
+    Alerta = prob >= <umbral>, o semáforo distinto de verde si <oos> ya lo trae
+    (agregar_rango)."""
     filas = []
     con_y = oos[oos["y"].notna()]
     for serie, g in list(con_y.groupby("serie")) + [("Total", con_y)]:
@@ -141,7 +173,7 @@ def metricas(oos: pd.DataFrame, umbral: float = AMARILLO) -> pd.DataFrame:
         aciertos = []
         for _, gs in (g.groupby("serie") if serie == "Total" else [(serie, g)]):
             gs = gs.sort_values("fecha").reset_index(drop=True)
-            alerta = gs["prob"] >= umbral
+            alerta = gs["semaforo"] != "Verde" if "semaforo" in gs else gs["prob"] >= umbral
             for i in _episodios(gs["y"]):
                 tot += 1
                 det += bool(alerta.iloc[max(0, i - 2):i + 1].any())

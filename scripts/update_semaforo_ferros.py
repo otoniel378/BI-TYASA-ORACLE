@@ -34,7 +34,8 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from mercado_fastmarkets.alerta_alzas import (
-    AMARILLO, MERCADO_HUELLA_YF, cargar_externas, construir_panel, metricas, prediccion_actual, walk_forward,
+    AMARILLO, MERCADO_HUELLA_YF, UMBRAL_ALZA, agregar_rango, cargar_externas, construir_panel, metricas,
+    prediccion_actual, walk_forward,
 )
 from mercado_fastmarkets.loaders import FERROALEACIONES
 from mercado_noticias.analytics.rupturas import TIPOS_IMPACTO, bandas_normales, normalizar_mensual
@@ -99,7 +100,7 @@ def _guardar(conn, oos: pd.DataFrame, actual: pd.DataFrame, met: pd.DataFrame):
     cursor.execute("DELETE FROM ADMIN.GOLD_SEMAFORO_FERROS")
     cursor.execute("DELETE FROM ADMIN.GOLD_SEMAFORO_METRICAS")
     filas = [
-        (r.serie, r.fecha.to_pydatetime(), "backtest", float(r.prob), None,
+        (r.serie, r.fecha.to_pydatetime(), "backtest", float(r.prob), r.semaforo,
          _nan_a_none(float(r.alza_fut)), None if pd.isna(r.y) else int(r.y))
         for r in oos.itertuples()
     ] + [
@@ -194,7 +195,7 @@ def _registrar_eventos(conn, precios: pd.DataFrame, actual: pd.DataFrame, api_ke
         ult = bandas.iloc[-1]
         motivos = []
         if r.semaforo == "Rojo":
-            motivos.append(f"alerta roja, {r.prob:.0%} de probabilidad de subir más de 20% en 3 meses")
+            motivos.append(f"alerta roja: riesgo alto de subir más de {UMBRAL_ALZA:.0%} en 3 meses")
         if ult["fuera"]:
             lado = "por arriba" if ult["precio"] > ult["banda_sup"] else "por abajo"
             motivos.append(f"precio fuera de su rango normal ({lado})")
@@ -234,9 +235,9 @@ def main():
         externas = cargar_externas()
         print(f"Variables externas: {list(externas.columns)}")
         panel = construir_panel(precios, externas)
-        oos = walk_forward(panel)
+        oos = agregar_rango(walk_forward(panel), precios)
         met = metricas(oos, AMARILLO)
-        actual = prediccion_actual(panel)
+        actual = agregar_rango(prediccion_actual(panel), precios)
         tot = met[met["serie"] == "Total"].iloc[0]
         print(f"Validación: {int(tot.detectados)}/{int(tot.episodios)} alzas detectadas a tiempo, "
               f"{tot.falsas_por_anio:.2f} falsas alarmas por serie al año, AUC {tot.auc:.2f}")

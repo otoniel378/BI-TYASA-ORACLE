@@ -23,6 +23,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from config import COLORS, COLOR_SEQUENCE
 
+from mercado_fastmarkets.alerta_alzas import AMARILLO, UMBRAL_ALZA
 from mercado_fastmarkets.loaders import FERROALEACIONES, load_ferroaleaciones, load_semaforo_ferros
 from mercado_noticias.loaders import load_eventos_todos, load_mercado_mensual, load_noticias_periodo
 from mercado_noticias.analytics.rupturas import (
@@ -219,10 +220,14 @@ sem_prob, sem_met = load_semaforo_ferros()
 COLOR_SEMAFORO = {"Verde": COLORS["success"], "Amarillo": COLORS["warning"], "Rojo": COLORS["danger"]}
 confiable = (dict(zip(sem_met["serie"], sem_met["confiable"].astype(int).astype(bool)))
              if not sem_met.empty else {})
+NIVEL_SEMAFORO = {"Verde": "Riesgo bajo", "Amarillo": "Riesgo elevado", "Rojo": "Riesgo alto"}
 if not sem_prob.empty:
     sem_actual = sem_prob[sem_prob["tipo"] == "actual"].set_index("serie")
-    seccion_titulo("Semáforo de alza", f"Probabilidad de subir más de 20% en los próximos 3 meses · "
-                                       f"datos al {_mes(sem_actual['fecha'].max())}")
+    # Qué tan seguido subió de verdad en los meses de cada color (9 series, fuera de muestra)
+    bt = sem_prob[(sem_prob["tipo"] == "backtest") & sem_prob["y"].notna() & sem_prob["semaforo"].notna()]
+    frecuencia = bt.groupby("semaforo")["y"].mean().to_dict()
+    seccion_titulo("Semáforo de alza", f"Riesgo de que el precio suba más de {UMBRAL_ALZA:.0%} en los próximos "
+                                       f"3 meses · datos al {_mes(sem_actual['fecha'].max())}")
     chips = []
     for nombre in nombres:
         if nombre not in sem_actual.index:
@@ -239,13 +244,16 @@ if not sem_prob.empty:
             f"<div style='font-size:11px;color:{COLORS['text_light']};'>{nombre}</div>"
             f"<div style='display:flex;align-items:center;gap:6px;margin-top:2px;'>"
             f"<span style='width:12px;height:12px;border-radius:50%;background:{c};display:inline-block;'></span>"
-            f"<span style='font-size:15px;font-weight:700;color:{COLORS['text']};'>{r['prob']:.0%}</span>"
-            f"<span style='font-size:11px;color:{c};font-weight:600;'>{r['semaforo']}</span></div>"
-            f"{nota_debil}</div>"
+            f"<span style='font-size:13px;font-weight:700;color:{c};'>{NIVEL_SEMAFORO.get(r['semaforo'], '—')}</span>"
+            f"</div>{nota_debil}</div>"
         )
     st.html(f"<div style='display:flex;flex-wrap:wrap;gap:8px;'>{''.join(chips)}</div>")
-    st.caption("Verde < 20% · Amarillo 20–40% · Rojo ≥ 40% · Señal débil: el modelo no ha demostrado acierto "
-               "en esa serie, tómalo solo como referencia")
+    if frecuencia:
+        partes = " · ".join(f"{NIVEL_SEMAFORO[k]}: subió en {frecuencia[k]:.0%} de los casos"
+                            for k in ("Verde", "Amarillo", "Rojo") if k in frecuencia)
+        st.caption(f"Desde 2008, cuando el semáforo estuvo así, el precio subió más de {UMBRAL_ALZA:.0%} en 3 meses: "
+                   f"{partes} (un mes cualquiera: {bt['y'].mean():.0%}) · Rojo = el modelo ve riesgo y el precio ya "
+                   f"está arriba de su rango normal · Señal débil: el modelo no ha demostrado acierto en esa serie")
 
 # ---------------------------------------------------------------------------
 # Gráfica interactiva
@@ -371,7 +379,7 @@ m = sem_met[sem_met["serie"] == serie] if not sem_met.empty else pd.DataFrame()
 if not hist.empty and not m.empty:
     m = m.iloc[0]
     hist = hist.assign(
-        alerta=hist["prob"] >= 0.20,
+        alerta=hist["semaforo"] != "Verde",
         # Mismo criterio que alerta_alzas.metricas: acierta si hay alza en ese mes o los 2 siguientes
         alza_cerca=hist["y"][::-1].rolling(3, min_periods=1).max()[::-1] == 1,
     )
@@ -380,7 +388,7 @@ if not hist.empty and not m.empty:
                                          f"información anterior{debil}")
     aciertan = float(m["aciertan"]) if pd.notna(m["aciertan"]) else 0.0
     render_kpi_row([
-        {"label": "Alzas de +20% en 3 meses", "value": int(m["episodios"]), "help_text": "Desde 2008"},
+        {"label": f"Alzas de +{UMBRAL_ALZA:.0%} en 3 meses", "value": int(m["episodios"]), "help_text": "Desde 2008"},
         {"label": "Avisadas a tiempo", "value": f"{int(m['detectados'])} de {int(m['episodios'])}",
          "help_text": "Amarillo o rojo hasta 2 meses antes de que empezara el alza"},
         {"label": "Falsas alarmas al año", "value": f"{float(m['falsas_por_anio']):.1f}",
@@ -391,7 +399,7 @@ if not hist.empty and not m.empty:
     fh = go.Figure()
     for f in hist.loc[hist["y"] == 1, "fecha"]:
         fh.add_vrect(x0=f, x1=f + pd.DateOffset(months=1), fillcolor=COLORS["danger"], opacity=0.12, line_width=0)
-    fh.add_trace(go.Scatter(x=hist["fecha"], y=hist["prob"], mode="lines", name="Probabilidad de alza",
+    fh.add_trace(go.Scatter(x=hist["fecha"], y=hist["prob"], mode="lines", name="Señal del modelo",
                             line=dict(color=COLORS["primary"], width=1.6),
                             hovertemplate="%{x|%b %Y}: %{y:.0%}<extra></extra>"))
     for nombre_av, filtro, c in (("Aviso correcto", hist["alerta"] & hist["alza_cerca"], COLORS["danger"]),
@@ -400,18 +408,18 @@ if not hist.empty and not m.empty:
         fh.add_trace(go.Scatter(x=av["fecha"], y=av["prob"], mode="markers", name=nombre_av,
                                 marker=dict(size=8, color=c, line=dict(width=1, color="white")),
                                 hovertemplate=f"{nombre_av} · %{{x|%b %Y}}: %{{y:.0%}}<extra></extra>"))
-    fh.add_hline(y=0.20, line=dict(color=COLORS["warning"], dash="dash", width=1))
-    fh.add_hline(y=0.40, line=dict(color=COLORS["danger"], dash="dash", width=1))
+    fh.add_hline(y=AMARILLO, line=dict(color=COLORS["warning"], dash="dash", width=1))
     fh.update_layout(
         paper_bgcolor=COLORS["surface"], plot_bgcolor=COLORS["background"],
         font=dict(family="Inter, Arial, sans-serif", color=COLORS["text"]),
         margin=dict(l=40, r=20, t=30, b=30), height=300,
         legend=dict(orientation="h", y=1.12, x=1, xanchor="right"),
-        xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#E5E7EB", tickformat=".0%", range=[0, 1]),
+        xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#E5E7EB", tickformat=".0%",
+                                               range=[0, max(0.5, float(hist["prob"].max()) * 1.1)]),
     )
     st.plotly_chart(fh, width="stretch", key="qf_chart_semaforo")
-    st.caption("Franjas rojas: meses en que el precio sí subió más de 20% en los 3 meses siguientes · "
-               "Punteadas: umbrales amarillo (20%) y rojo (40%)")
+    st.caption(f"Franjas rojas: meses en que el precio sí subió más de {UMBRAL_ALZA:.0%} en los 3 meses siguientes · "
+               f"Punteada: arriba de {AMARILLO:.0%} el modelo ve riesgo elevado · Puntos: meses en amarillo o rojo")
 
 seccion_titulo(f"Noticias que pueden mover a {serie}",
                f"Últimos {DIAS_NOTICIAS_RECIENTES} días, por tipo de impacto · noticias generales, "
