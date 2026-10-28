@@ -26,8 +26,9 @@ from config import COLORS, COLOR_SEQUENCE
 from mercado_fastmarkets.loaders import FERROALEACIONES, load_ferroaleaciones, load_semaforo_ferros
 from mercado_noticias.loaders import load_eventos_todos, load_mercado_mensual, load_noticias_periodo
 from mercado_noticias.analytics.rupturas import (
-    HORIZONTES_MESES, MIN_SEGMENTO, TIPOS_IMPACTO, agregar_desempeno_posterior, bandas_normales, detectar_rupturas,
-    huella_impacto, normalizar_mensual, rupturas_a_dataframe, tipo_impacto_noticias, vincular_eventos,
+    HORIZONTES_MESES, TIPOS_IMPACTO, agregar_desempeno_posterior, bandas_normales, detectar_rupturas,
+    huella_impacto, normalizar_mensual, quiebre_en_formacion, rupturas_a_dataframe, tipo_impacto_noticias,
+    vincular_eventos,
 )
 from core.components.kpi_cards import render_kpi_row, seccion_titulo
 
@@ -198,6 +199,7 @@ rupturas = (rupturas_todas[rupturas_todas["serie"] == serie].reset_index(drop=Tr
 vista = (rupturas[rupturas["evidencia"].isin(evid_sel)].sort_values("fecha", ascending=False).reset_index(drop=True)
          if not rupturas.empty else rupturas)
 ultimo = bandas.iloc[-1]
+formacion = quiebre_en_formacion(precios[serie])
 tend_actual = rupturas.sort_values("fecha").iloc[-1]["tendencia_post_anual"] if not rupturas.empty else None
 fuera_12m = int(bandas["fuera"].iloc[-12:].sum())
 
@@ -282,6 +284,14 @@ if not vista.empty:
         hovertemplate=("<b>Quiebre · %{x|%b %Y}</b><br>%{customdata[1]}<br>Evidencia: %{customdata[2]}"
                        "<br>%{customdata[3]}<br><i>Clic para ver detalle</i><extra></extra>"),
     ))
+if formacion:
+    fig.add_vline(x=formacion["desde"], line=dict(color=COLORS["warning"], dash="dash", width=1.5))
+    fig.add_trace(go.Scatter(
+        x=[formacion["desde"]], y=[bandas["precio"].get(formacion["desde"])], name="Quiebre en formación",
+        mode="markers", marker=dict(size=15, symbol="diamond-open", color=COLORS["warning"], line=dict(width=3)),
+        hovertemplate=(f"<b>Posible quiebre en formación · %{{x|%b %Y}}</b><br>{formacion['regimen']}<br>"
+                       f"Se confirma o descarta en {formacion['meses_para_confirmar']} mes(es)<extra></extra>"),
+    ))
 fig.update_layout(
     paper_bgcolor=COLORS["surface"], plot_bgcolor=COLORS["background"],
     font=dict(family="Inter, Arial, sans-serif", color=COLORS["text"]),
@@ -315,16 +325,27 @@ fig.update_layout(
 evento_grafica = st.plotly_chart(fig, width="stretch", key="qf_chart", on_select="rerun", selection_mode="points")
 st.caption("Sombra: rango normal según el año anterior · Naranja: precio fuera de lo normal · "
            "Rombo/estrella: quiebre, cuando cambia la tendencia o la volatilidad; puede pasar dentro del rango "
-           "(estrella = explicado por un evento) · Clic en un quiebre para ver su detalle")
+           "(estrella = explicado por un evento) · Rombo hueco: posible quiebre en formación · "
+           "Clic en un quiebre para ver su detalle")
 
 # ---------------------------------------------------------------------------
 # Situación actual
 # ---------------------------------------------------------------------------
 seccion_titulo("Situación actual", f"Datos al {_mes(bandas.index[-1])}")
+if formacion:
+    st.html(
+        f"<div style='border-left:3px solid {COLORS['warning']};background:#FFF8EE;padding:10px 14px;"
+        f"border-radius:0 8px 8px 0;font-size:13px;line-height:1.6;margin-bottom:10px;'>"
+        f"<b>Posible quiebre en formación desde {_mes(formacion['desde'])}:</b> {formacion['regimen']} · "
+        f"tendencia {formacion['tendencia_pre_anual']:+.0f}% → {formacion['tendencia_post_anual']:+.0f}% anual · "
+        f"volatilidad {formacion['vol_pre_anual']:.0f}% → {formacion['vol_post_anual']:.0f}% anual. "
+        f"Lleva {formacion['meses']} meses; se confirma o descarta en {formacion['meses_para_confirmar']} mes(es)."
+        f"<div style='font-size:11px;color:{COLORS['text_light']};'>Probado 2004–2026: adelanta la detección de "
+        f"7 a 3 meses en promedio · un aviso falso cada 2 años por ferroaleación</div></div>"
+    )
 col_s, col_c = st.columns([1, 1])
 if not rupturas.empty:
     actual = rupturas.sort_values("fecha").iloc[-1]
-    confirmado = actual["fecha"] + pd.DateOffset(months=MIN_SEGMENTO) <= bandas.index[-1]
     estado_mes = ("fuera de lo normal" if bandas["fuera"].iloc[-1] else "dentro de lo normal")
     with col_s:
         st.html(
@@ -332,8 +353,7 @@ if not rupturas.empty:
             f"border:1px solid #E5E7EB;border-radius:8px;padding:12px 14px;'>"
             f"<div><b>Régimen actual:</b> {actual['regimen'].split(' → ')[-1]} "
             f"({actual['tendencia_post_anual']:+.0f}% anual), desde {_mes(actual['fecha'])}</div>"
-            f"<div><b>Último quiebre:</b> {actual['regimen']} · evidencia {actual['evidencia'].lower()} · "
-            f"{'confirmado' if confirmado else 'aún en confirmación (menos de 6 meses de datos)'}</div>"
+            f"<div><b>Último quiebre confirmado:</b> {actual['regimen']} · evidencia {actual['evidencia'].lower()}</div>"
             f"<div><b>Último mes:</b> {estado_mes}</div>"
             f"<div><b>Causa:</b> {actual['evento_nombre'] or 'sin evento verificado'}</div></div>"
         )

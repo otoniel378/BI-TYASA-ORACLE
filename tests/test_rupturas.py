@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from mercado_noticias.analytics.rupturas import (  # noqa: E402
     MIN_SEGMENTO, agregar_desempeno_posterior, bandas_normales, detectar_rupturas, huella_impacto, normalizar_mensual,
-    resumen_casos_parecidos, rupturas_a_dataframe, tipo_impacto_noticias, vincular_eventos,
+    quiebre_en_formacion, resumen_casos_parecidos, rupturas_a_dataframe, tipo_impacto_noticias, vincular_eventos,
 )
 
 
@@ -110,3 +110,17 @@ def test_tipo_impacto_noticias():
     assert out["Gerdau inaugura planta"] is None                       # la razón no cuenta
     assert out["Producción de acero crudo sube en julio"] != "Energía"  # "crudo" no es petróleo
     assert out["Oil prices jump"] == "Energía"                         # grupo de búsqueda = tipo
+
+
+def test_quiebre_en_formacion_avisa_antes_de_6_meses():
+    rng = np.random.default_rng(1)
+    # 4 meses de alza moderada al final: el detector normal todavía no la corta
+    r = np.concatenate([rng.normal(0.0, 0.02, 120), [0.04] * 4])
+    idx = pd.date_range("2005-01-01", periods=len(r) + 1, freq="MS")
+    precio = pd.Series(100 * np.exp(np.concatenate([[0], np.cumsum(r)])), index=idx)
+    assert not detectar_rupturas(precio, "X")
+    f = quiebre_en_formacion(precio)
+    assert f is not None and f["regimen"] == "Estable → Alza"
+    assert f["meses_para_confirmar"] == 6 - f["meses"]
+    sin_cambio = pd.Series(100 * np.exp(np.concatenate([[0], np.cumsum(rng.normal(0, 0.02, 124))])), index=idx)
+    assert quiebre_en_formacion(sin_cambio) is None

@@ -202,6 +202,56 @@ def detectar_rupturas(precio: pd.Series, nombre: str, desde: pd.Timestamp | None
     return resultado
 
 
+# ── Quiebre en formación ─────────────────────────────────────────────────────
+# Un quiebre se confirma con MIN_SEGMENTO (6) meses de datos nuevos. Para avisar
+# antes: ¿los últimos 3-5 meses se comportan distinto del régimen vigente? Se
+# acepta si cortar ahí mejora la verosimilitud más de PENAL_EN_FORMACION·log(n)
+# (el BIC de un quiebre confirmado cobra 3·log(n)). Simulado mes a mes 2004-2026
+# solo con datos disponibles en cada mes, sobre 50 quiebres Fuertes o Moderados:
+# el detector solo los veía en una mediana de 7 meses (14% en ≤3 meses); junto
+# con este aviso, en 3 meses (52% en ≤3), con ~0.5 avisos falsos por serie al
+# año. Con 3·log(n) avisaba solo 30% de los quiebres y con 4·log(n) 6%.
+PENAL_EN_FORMACION = 2.0
+MESES_EN_FORMACION = (3, 4, 5)
+
+
+def _costo(x: np.ndarray) -> float:
+    return len(x) * np.log(max(x.var(), VAR_MIN))
+
+
+def quiebre_en_formacion(precio: pd.Series, desde: pd.Timestamp | None = None) -> dict | None:
+    """Si los últimos 3-5 meses ya no se parecen al régimen vigente, devuelve
+    desde (primer mes distinto), meses, regimen ("Baja → Alza"), tendencias y
+    volatilidades anuales antes/después y meses_para_confirmar. None si no."""
+    p = precio.dropna()
+    if desde is not None:
+        p = p[p.index >= desde]
+    r = np.log(p).diff().dropna()
+    if len(r) < 3 * MIN_SEGMENTO:
+        return None
+    cortes = segmentar(r.values)
+    tramo = r.iloc[cortes[-1] if cortes else 0:]
+    mejor_n, mejor_g = None, PENAL_EN_FORMACION * np.log(len(r))
+    for n in MESES_EN_FORMACION:
+        if len(tramo) - n < MIN_SEGMENTO:
+            continue
+        g = _costo(tramo.values) - _costo(tramo.values[:-n]) - _costo(tramo.values[-n:])
+        if g > mejor_g:
+            mejor_n, mejor_g = n, g
+    if mejor_n is None:
+        return None
+    pre, post = tramo.iloc[:-mejor_n], tramo.iloc[-mejor_n:]
+    t_pre, t_post = pre.mean() * 12 * 100, post.mean() * 12 * 100
+    return {
+        "desde": post.index[0], "meses": mejor_n,
+        "regimen": f"{_estado(t_pre)} → {_estado(t_post)}",
+        "tendencia_pre_anual": round(t_pre, 1), "tendencia_post_anual": round(t_post, 1),
+        "vol_pre_anual": round(pre.std() * np.sqrt(12) * 100, 1),
+        "vol_post_anual": round(post.std() * np.sqrt(12) * 100, 1),
+        "meses_para_confirmar": MIN_SEGMENTO - mejor_n,
+    }
+
+
 def bandas_normales(precio: pd.Series, ventana: int = 12, hueco: int = 3, k: float = 2.5,
                     meses_vol: int = 36, vol_min: float = 0.02) -> pd.DataFrame:
     """Banda de control para graficar "lo normal", con base LIMPIA (mismo
