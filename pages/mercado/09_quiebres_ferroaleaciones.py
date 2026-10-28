@@ -244,8 +244,8 @@ if not vista.empty:
 fig.update_layout(
     paper_bgcolor=COLORS["surface"], plot_bgcolor=COLORS["background"],
     font=dict(family="Inter, Arial, sans-serif", color=COLORS["text"]),
-    margin=dict(l=40, r=20, t=50, b=20), height=520, hovermode="closest", clickmode="event+select",
-    yaxis=dict(gridcolor="#E5E7EB", title=DESCRIPCION_SERIE[serie]),
+    margin=dict(l=40, r=20, t=105, b=20), height=560, hovermode="closest", clickmode="event+select",
+    yaxis=dict(gridcolor="#E5E7EB", title="USD/t"),
     xaxis=dict(
         showgrid=False, rangeslider=dict(visible=True, thickness=0.06),
         rangeselector=dict(buttons=[
@@ -255,8 +255,21 @@ fig.update_layout(
             dict(step="all", label="Todo"),
         ]),
     ),
-    legend=dict(orientation="h", y=1.08, x=1, xanchor="right"),
-    title=dict(text=f"{serie}: precio, rango normal y quiebres", font=dict(size=14, color=COLORS["primary"]), x=0),
+    legend=dict(orientation="h", y=1.2, x=1, xanchor="right"),
+    title=dict(text=f"{serie}: precio, rango normal y quiebres<br><span style='font-size:11px;color:{COLORS['text_light']}'>"
+                    f"{DESCRIPCION_SERIE[serie]} · precio medio (Mid)</span>",
+               font=dict(size=14, color=COLORS["primary"]), x=0, y=0.98, yanchor="top"),
+    # Escala normal / logarítmica en el navegador (sin rerun): en log las subidas y
+    # bajadas se ven proporcionales y la sombra ancha después de un pico se aplana.
+    updatemenus=[dict(
+        type="buttons", direction="right", x=0.24, xanchor="left", y=1.0, yanchor="bottom",
+        pad=dict(t=0, b=4), showactive=True, active=0,
+        bgcolor=COLORS["surface"], bordercolor="#E5E7EB", font=dict(size=11),
+        buttons=[
+            dict(label="Escala normal", method="relayout", args=[{"yaxis.type": "linear"}]),
+            dict(label="Escala log", method="relayout", args=[{"yaxis.type": "log"}]),
+        ],
+    )],
 )
 evento_grafica = st.plotly_chart(fig, width="stretch", key="qf_chart", on_select="rerun", selection_mode="points")
 st.caption("Sombra: rango normal según el año anterior · Naranja: fuera de lo normal · "
