@@ -67,3 +67,6 @@ oracle/Wallet_TYASAADW/
 # Experimento LSTM de categorías (abandonado, F1 0.42 < umbral 0.65 — ver
 # ml/categoria_noticias/train_lstm.py). No se usa en producción, pesado (15MB+).
 ml/categoria_noticias/artifacts/
+
+# Bitácora y archivos de trabajo de scripts/cargar_alertas_monitor.ps1
+logs/

@@ -44,12 +44,20 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--salida", default="alertas_rutas.json")
     ap.add_argument("--dias", type=int, default=DIAS_VIGENCIA)
+    ap.add_argument("--docs-dir", help="además, un <id>.json por aviso (para cargarlos con ArtifactData)")
     args = ap.parse_args()
     alertas = alertas_rutas(_noticias(args.dias), dias=args.dias)
     cargado = datetime.now().strftime("%Y-%m-%d %H:%M")
     docs = {r["id"]: {**{k: v for k, v in r.items() if k != "id"}, "activo": True, "cargado": cargado}
             for r in alertas.to_dict("records")}
     Path(args.salida).write_text(json.dumps(docs, ensure_ascii=False, indent=1), encoding="utf-8")
+    if args.docs_dir:
+        d = Path(args.docs_dir)
+        d.mkdir(parents=True, exist_ok=True)
+        for f in d.glob("*.json"):
+            f.unlink()
+        for k, v in docs.items():
+            (d / f"{k}.json").write_text(json.dumps(v, ensure_ascii=False), encoding="utf-8")
     print(f"{len(docs)} avisos en {alertas['nodo'].nunique() if len(alertas) else 0} lugares -> {args.salida}")
     if len(alertas):
         print(alertas.groupby(["nodo", "lugar"]).size().to_string())
