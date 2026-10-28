@@ -689,6 +689,21 @@ GRUPOS_IMPACTO_GLOBAL: dict[str, list[str]] = {
     ],
 }
 
+# Noticias por lugar de las rutas de importación de ferroaleaciones (pasos
+# marítimos, países de origen y puertos de llegada). Alimentan los avisos por
+# ruta (mercado_noticias/analytics/rutas_alertas.py). Grupo = "Ruta: <zona>".
+GRUPOS_RUTAS: dict[str, list[str]] = {
+    "Ruta: Mar Rojo y Suez": ["Red Sea shipping Houthi attacks", "Suez Canal transits shipping"],
+    "Ruta: Panamá": ["Panama Canal drought draft restrictions", "Panama Canal transit delays"],
+    "Ruta: Ormuz y Malaca": ["Strait of Hormuz shipping", "Malacca Strait shipping"],
+    "Ruta: Bósforo y Mar Negro": ["Bosphorus Black Sea shipping"],
+    "Ruta: Sudáfrica": ["Transnet port strike Richards Bay", "South Africa chrome exports Saldanha port"],
+    "Ruta: Turquía y Kazajistán": ["Turkey ferrochrome exports port", "Kazakhstan rail exports ferroalloys"],
+    "Ruta: India y Brasil": ["India ferroalloy exports port", "Brazil port strike Santos"],
+    "Ruta: puertos de México": ["puerto Veracruz Altamira Coatzacoalcos bloqueo",
+                                "Manzanillo Lázaro Cárdenas puerto congestión"],
+}
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # NOTICIAS INTERNACIONALES — 5 categorías estratégicas globales
@@ -803,7 +818,7 @@ def buscar_noticias_sector(grupo: str, max_resultados: int = 40) -> list[dict]:
     Complementa con NewsAPI si hay pocos resultados.
     """
     all_groups = {**GRUPOS_NACIONAL, **GRUPOS_INTERNACIONAL, **GRUPOS_INDUSTRIA, **GRUPO_FERROALEACIONES,
-                  **GRUPOS_IMPACTO_GLOBAL}
+                  **GRUPOS_IMPACTO_GLOBAL, **GRUPOS_RUTAS}
     queries = all_groups.get(grupo)
     if not queries:
         queries = [grupo]

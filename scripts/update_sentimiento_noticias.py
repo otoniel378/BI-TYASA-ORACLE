@@ -30,6 +30,7 @@ MAX_FERROALEACIONES = 6
 # Igual para las noticias generales por tipo de impacto (geopolítica, macro,
 # energía...): cupo propio por tipo para que no las desplacen las del sector.
 MAX_POR_IMPACTO = 3
+MAX_POR_RUTA = 3      # noticias por zona de las rutas de importación (avisos por ruta)
 
 
 def _get_gemini_key() -> str:
@@ -219,7 +220,7 @@ def run():
     from mercado_noticias.analytics.noticias import (
         buscar_noticias_sector,
         GRUPOS_INDUSTRIA, GRUPOS_NACIONAL, GRUPOS_INTERNACIONAL, GRUPO_FERROALEACIONES,
-        GRUPOS_IMPACTO_GLOBAL,
+        GRUPOS_IMPACTO_GLOBAL, GRUPOS_RUTAS,
     )
     from mercado_noticias.analytics.sentimiento import (
         clasificar_lote, resultados_a_dataframe,
@@ -239,7 +240,8 @@ def run():
 
     n_ferros = 0
     cupos = {**{g: MAX_FERROALEACIONES for g in GRUPO_FERROALEACIONES},
-             **{g: MAX_POR_IMPACTO for g in GRUPOS_IMPACTO_GLOBAL}}
+             **{g: MAX_POR_IMPACTO for g in GRUPOS_IMPACTO_GLOBAL},
+             **{g: MAX_POR_RUTA for g in GRUPOS_RUTAS}}
     for grupo, cupo in cupos.items():
         try:
             for n in buscar_noticias_sector(grupo, max_resultados=cupo):
@@ -251,7 +253,7 @@ def run():
                     n_ferros += 1
         except Exception as e:
             print(f"    [WARN] {grupo}: {e}")
-    print(f"\n  Ferroaleaciones: {n_ferros} noticias (cupo propio)")
+    print(f"\n  Ferroaleaciones, impactos y rutas: {n_ferros} noticias (cupo propio)")
 
     print(f"\n  Buscando noticias en {len(todos_grupos)} grupos temáticos...")
     for grupo in todos_grupos:
