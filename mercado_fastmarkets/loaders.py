@@ -54,18 +54,23 @@ SIMBOLOS_POR_FAMILIA = {
 # Ferroaleaciones para el monitor de quiebres (pages/mercado/09_quiebres_ferroaleaciones.py).
 # Los nombres deben coincidir con VARIABLES_RELACIONADAS de GOLD_EVENTOS_HISTORICOS
 # (scripts/seed_eventos_historicos.py::FERROS_TODOS) para vincular quiebre y evento.
+# Unidades: Fastmarkets publica en ¢/lb, $/lb o $/kg, pero los Excel se descargan
+# con "Unit conversion has been applied... All compatible prices are in [Tonne]":
+# los VALOR de BRONZE_FASTMARKETS_PRECIOS están en USD por tonelada métrica (la
+# DESCRIPCION conserva la unidad original). Ej. FeMn 2,094 USD/t = 95 ¢/lb.
+# Medida "Mid" = punto medio del rango bajo-alto que cotiza Fastmarkets.
 FERROALEACIONES = {
-    "MB-FEM-0003": ("FerroManganeso", "Ferromanganeso medio carbono 80% Mn, Pittsburgh, ¢/lb"),
-    "MB-SIM-0003": ("SilicoManganeso", "Silicomanganeso 65% Mn, Pittsburgh, ¢/lb"),
-    "MB-FES-0002": ("FerroSilicio", "Ferrosilicio 75% Si, Pittsburgh, ¢/lb"),
-    "MB-FEC-0010": ("FerroCromo", "Ferrocromo bajo carbono 60% Cr, Pittsburgh"),
-    "MB-FEV-0002": ("FerroVanadio", "Ferrovanadio 70-80% V, Pittsburgh, $/lb"),
-    "MB-FEO-0002": ("FerroMolibdeno", "Ferromolibdeno 65-70% Mo, Pittsburgh, $/lb"),
-    "MB-FET-0002": ("FerroTitanio", "Ferrotitanio 68-72% Ti, EE.UU., $/lb"),
-    "MB-FN-0001":  ("FerroNiobio", "Ferroniobio 63-67% Nb, Europa"),
+    "MB-FEM-0003": ("FerroManganeso", "Ferromanganeso medio carbono 80% Mn, Pittsburgh · USD/t"),
+    "MB-SIM-0003": ("SilicoManganeso", "Silicomanganeso 65% Mn, Pittsburgh · USD/t"),
+    "MB-FES-0002": ("FerroSilicio", "Ferrosilicio 75% Si, Pittsburgh · USD/t"),
+    "MB-FEC-0010": ("FerroCromo", "Ferrocromo bajo carbono 60% Cr, Pittsburgh · USD/t"),
+    "MB-FEV-0002": ("FerroVanadio", "Ferrovanadio 70-80% V, Pittsburgh · USD/t"),
+    "MB-FEO-0002": ("FerroMolibdeno", "Ferromolibdeno 65-70% Mo, Pittsburgh · USD/t"),
+    "MB-FET-0002": ("FerroTitanio", "Ferrotitanio 68-72% Ti, EE.UU. · USD/t"),
+    "MB-FN-0001":  ("FerroNiobio", "Ferroniobio 63-67% Nb, Europa · USD/t"),
     # No es ferroaleación, pero entra al acero SBQ como elemento de aleación y
     # viene en el mismo paquete de AMM.
-    "XL-NI-FRC.O": ("Niquel", "Níquel LME al contado, USD/t"),
+    "XL-NI-FRC.O": ("Niquel", "Níquel LME al contado · USD/t"),
 }
 
 NOMBRES_FASTMARKETS = {v for m in SIMBOLOS_POR_FAMILIA.values() for v in m.values()} | set(

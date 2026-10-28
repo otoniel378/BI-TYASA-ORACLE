@@ -115,18 +115,12 @@ def aplicar_filtro_lista(
 
 def sidebar_header(titulo: str, icono: str = "") -> None:
     icono_html = f'<span style="font-size:1rem;">{icono}</span>' if icono else ""
-    st.sidebar.markdown(
-        f"""
-        <div style="
-            display:flex;align-items:center;gap:8px;
-            padding:6px 4px 10px;
-            border-bottom:1px solid #DDE3EC;
-            margin-bottom:10px;
-        ">
-            {icono_html}
-            <span style="color:#1B3A5C;font-weight:700;font-size:0.72rem;
-                         text-transform:uppercase;letter-spacing:0.07em;">{titulo}</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    # st.html y en una sola línea: con st.markdown, sin ícono quedaba una línea
+    # vacía dentro del <div>, Markdown cerraba el bloque HTML y mostraba el
+    # <span> indentado como código crudo en la barra lateral.
+    st.sidebar.html(
+        '<div style="display:flex;align-items:center;gap:8px;padding:6px 4px 10px;'
+        'border-bottom:1px solid #DDE3EC;margin-bottom:10px;">'
+        f'{icono_html}<span style="color:#1B3A5C;font-weight:700;font-size:0.72rem;'
+        f'text-transform:uppercase;letter-spacing:0.07em;">{titulo}</span></div>'
     )

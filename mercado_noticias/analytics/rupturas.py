@@ -201,20 +201,26 @@ def detectar_rupturas(precio: pd.Series, nombre: str, desde: pd.Timestamp | None
     return resultado
 
 
-def bandas_normales(precio: pd.Series, ventana: int = 12, k: float = 2.5, sd_min: float = 0.05) -> pd.DataFrame:
-    """Banda de control móvil para graficar "lo normal": para cada mes, el
-    promedio del log del precio en los <ventana> meses ANTERIORES ± k
-    desviaciones de ese mismo periodo (mínimo <sd_min>, ~5%, para que un
-    tramo plano sin cotizaciones nuevas no deje una banda de ancho cero).
-    Con k=2.5 y piso 5% queda fuera ~8% de los meses en las 9 series
-    (2000-2026); con k=2 era ~14%, demasiado ruido en escalones normales.
-    Un mes está "fuera" si el precio sale de la banda que el año previo
-    marcaba como normal. Columnas: precio, centro, banda_inf, banda_sup, fuera."""
+def bandas_normales(precio: pd.Series, ventana: int = 12, hueco: int = 3, k: float = 2.5,
+                    meses_vol: int = 36, vol_min: float = 0.02) -> pd.DataFrame:
+    """Banda de control para graficar "lo normal", con base LIMPIA (mismo
+    principio que detector.detectar_quiebres_automatico, que excluye los días
+    recientes): para cada mes,
+      - centro = mediana del log del precio en los <ventana> meses que terminan
+        <hueco> meses antes (el evento en curso no contamina la referencia);
+      - ancho = k × volatilidad mensual de los rendimientos de los <meses_vol>
+        meses previos al hueco (piso <vol_min>), escalada por √(meses entre el
+        centro de la base y el mes evaluado): un precio se dispersa con el tiempo.
+    Antes se usaba la desviación del NIVEL de los 12 meses anteriores: en un
+    alza esa desviación crecía con el propio precio y el pico de 2008 del FeMn
+    (×3) quedaba "normal". Con esta base, en las 9 series 2000-2026 queda fuera
+    ~8% de los meses y se marcan 7 de 8 picos conocidos (2008, 2021-22).
+    Columnas: precio, centro, banda_inf, banda_sup, fuera."""
     p = precio.dropna()
     log_p = np.log(p)
-    previo = log_p.shift(1).rolling(ventana, min_periods=ventana // 2)
-    centro = previo.mean()
-    sd = previo.std().clip(lower=sd_min)
+    centro = log_p.shift(hueco + 1).rolling(ventana, min_periods=ventana // 2).median()
+    vol = log_p.diff().shift(hueco + 1).rolling(meses_vol, min_periods=meses_vol // 2).std().clip(lower=vol_min)
+    sd = vol * np.sqrt(hueco + 1 + (ventana - 1) / 2)
     out = pd.DataFrame({
         "precio": p,
         "centro": np.exp(centro),
