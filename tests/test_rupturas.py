@@ -8,7 +8,7 @@ import pandas as pd
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from mercado_noticias.analytics.rupturas import (  # noqa: E402
-    MIN_SEGMENTO, agregar_desempeno_posterior, bandas_normales, detectar_rupturas, normalizar_mensual,
+    MIN_SEGMENTO, agregar_desempeno_posterior, bandas_normales, detectar_rupturas, huella_impacto, normalizar_mensual,
     resumen_casos_parecidos, rupturas_a_dataframe, vincular_eventos,
 )
 
@@ -62,6 +62,22 @@ def test_casos_parecidos_miden_desde_la_confirmacion():
     base = precios["X"].iloc[MIN_SEGMENTO]
     assert np.isclose(out["despues_3m"].iloc[0], (precios["X"].iloc[MIN_SEGMENTO + 3] / base - 1) * 100)
     assert resumen_casos_parecidos(out, "Estable → Alza", excluir=("X", idx[0])).empty
+
+
+def test_huella_evento_manda_y_caida_de_bolsa_es_financiero():
+    idx = pd.date_range("2000-01-01", periods=120, freq="MS")
+    sp = pd.Series(1000.0, index=idx)
+    sp.loc["2008-09-01":] = 700.0                       # caída de 30%
+    mercado = pd.DataFrame({"sp500": sp})
+    rupt = pd.DataFrame({
+        "serie": ["X", "Y", "Z"],
+        "fecha": pd.to_datetime(["2008-10-01", "2003-05-01", "2003-06-01"]),
+        "evento_tipo": [None, "Política comercial", None],
+    })
+    out = huella_impacto(rupt, mercado).set_index("serie")
+    assert out.loc["X", "tipo_impacto"] == "Macro/financiero" and out.loc["X", "tipo_fuente"] == "huella de mercado"
+    assert out.loc["Y", "tipo_impacto"] == "Política comercial" and out.loc["Y", "tipo_fuente"] == "evento verificado"
+    assert out.loc["Z", "tipo_impacto"] == "Oferta/producción"   # sin señal y sola: propio de la aleación
 
 
 def test_vincula_solo_eventos_de_la_misma_serie_y_ventana():

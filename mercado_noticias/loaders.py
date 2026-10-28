@@ -155,7 +155,7 @@ def load_eventos_todos() -> pd.DataFrame:
     """Catálogo completo de eventos curados — para vincular en memoria muchos
     quiebres a la vez sin una consulta por quiebre."""
     sql = f"""
-        SELECT ID, FECHA_INICIO, FECHA_FIN, NOMBRE, DESCRIPCION, VARIABLES_RELACIONADAS, FUENTE
+        SELECT ID, FECHA_INICIO, FECHA_FIN, NOMBRE, DESCRIPCION, VARIABLES_RELACIONADAS, FUENTE, TIPO_IMPACTO
         FROM {T_EVENTOS}
         ORDER BY FECHA_INICIO
     """
@@ -164,6 +164,18 @@ def load_eventos_todos() -> pd.DataFrame:
         df["fecha_inicio"] = pd.to_datetime(df["fecha_inicio"])
         df["fecha_fin"] = pd.to_datetime(df["fecha_fin"])
     return df
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def load_mercado_mensual() -> pd.DataFrame:
+    """Ancho mensual (índice = primer día del mes) de GOLD_MERCADO_MENSUAL: bolsa,
+    VIX, energía, dólar, cobre y flete desde 2000 (scripts/update_semaforo_ferros.py)."""
+    df = _lc(run_query(f"SELECT FECHA, VARIABLE, VALOR FROM {table_ref('gold_mercado_mensual')}"))
+    if df.empty:
+        return df
+    df["fecha"] = pd.to_datetime(df["fecha"]).dt.to_period("M").dt.to_timestamp()
+    df["valor"] = pd.to_numeric(df["valor"], errors="coerce")
+    return df.pivot_table(index="fecha", columns="variable", values="valor").sort_index()
 
 
 @st.cache_data(ttl=1800, show_spinner=False)

@@ -24,9 +24,11 @@ import streamlit as st
 from config import COLORS, COLOR_SEQUENCE
 
 from mercado_fastmarkets.loaders import FERROALEACIONES, load_ferroaleaciones, load_semaforo_ferros
-from mercado_noticias.loaders import load_eventos_todos, load_noticias_en_rango, load_noticias_ferroaleaciones
+from mercado_noticias.loaders import (
+    load_eventos_todos, load_mercado_mensual, load_noticias_en_rango, load_noticias_ferroaleaciones,
+)
 from mercado_noticias.analytics.rupturas import (
-    MIN_SEGMENTO, agregar_desempeno_posterior, bandas_normales, detectar_rupturas, normalizar_mensual,
+    MIN_SEGMENTO, agregar_desempeno_posterior, bandas_normales, detectar_rupturas, huella_impacto, normalizar_mensual,
     resumen_casos_parecidos, rupturas_a_dataframe, vincular_eventos,
 )
 from core.components.kpi_cards import render_kpi_row, seccion_titulo
@@ -86,6 +88,7 @@ def _calcular_todo(desde_anio: int) -> tuple[pd.DataFrame, pd.DataFrame]:
     for s in ancho.columns:
         todas += detectar_rupturas(ancho[s], s)
     rupturas = vincular_eventos(rupturas_a_dataframe(todas), load_eventos_todos())
+    rupturas = huella_impacto(rupturas, load_mercado_mensual())
     return ancho, agregar_desempeno_posterior(rupturas, ancho)
 
 
@@ -384,6 +387,10 @@ with col_d:
         f"<div><b>Cambio estructural (Chow):</b> p = {p_chow}</div>"
         f"<div><b>Precio 6 meses después vs. 6 antes:</b> {cambio}</div>"
         f"<div><b>Evidencia:</b> {q['evidencia']} · régimen anterior {q['meses_pre']} meses, nuevo {q['meses_post']}</div>"
+        f"<div style='margin-top:6px;'><b>Tipo de impacto:</b> {q['tipo_impacto']} "
+        f"<span style='color:{COLORS['text_light']};'>"
+        f"({'según el evento verificado' if q['tipo_fuente'] == 'evento verificado' else 'probable, según el mercado'})</span></div>"
+        f"<div><b>Qué pasaba en el mercado (±2 meses):</b> {q['senales_mercado']}</div>"
         f"</div>"
     )
     st.html("<div style='height:10px'></div>" + _html_casos_parecidos(
@@ -438,8 +445,32 @@ tabla = vista.assign(
     Fecha=lambda d: d["fecha"].map(_mes),
     Cambio=lambda d: d["cambio_precio_6m"].map(lambda v: f"{v:+.0f}%" if pd.notna(v) else "—"),
     Evento=lambda d: d["evento_nombre"].fillna("—"),
-)[["Fecha", "regimen", "volatilidad", "Cambio", "evidencia", "Evento"]]
-tabla.columns = ["Fecha", "Tendencia", "Volatilidad", "Precio 6m después vs. 6m antes", "Evidencia", "Evento"]
+    Tipo=lambda d: d["tipo_impacto"] + d["tipo_fuente"].map({"evento verificado": "", "huella de mercado": " (probable)"}),
+)[["Fecha", "regimen", "volatilidad", "Cambio", "evidencia", "Tipo", "Evento"]]
+tabla.columns = ["Fecha", "Tendencia", "Volatilidad", "Precio 6m después vs. 6m antes", "Evidencia",
+                 "Tipo de impacto", "Evento"]
 st.dataframe(tabla, hide_index=True, width="stretch")
 
-st.caption("Datos: Fastmarkets (AMM) y LME · Eventos: catálogo curado con fuente")
+# ---------------------------------------------------------------------------
+# Qué tipo de impactos mueven las ferroaleaciones (todas las series)
+# ---------------------------------------------------------------------------
+todas_vista = rupturas_todas[rupturas_todas["evidencia"].isin(evid_sel)] if not rupturas_todas.empty else rupturas_todas
+if not todas_vista.empty:
+    seccion_titulo("Qué tipo de impactos mueven las ferroaleaciones",
+                   f"Las 9 series desde {desde_anio} · el tipo probable sale de lo que hacía el mercado, no prueba la causa")
+    resumen_tipo = (
+        todas_vista.groupby("tipo_impacto")
+        .agg(quiebres=("serie", "size"),
+             verificados=("tipo_fuente", lambda s: int((s == "evento verificado").sum())),
+             alzas=("direccion", lambda s: int((s == "Sube").sum())),
+             cambio=("cambio_precio_6m", "median"),
+             a12=("despues_12m", "median"))
+        .sort_values("quiebres", ascending=False).reset_index()
+    )
+    resumen_tipo["cambio"] = resumen_tipo["cambio"].map(lambda v: f"{v:+.0f}%" if pd.notna(v) else "—")
+    resumen_tipo["a12"] = resumen_tipo["a12"].map(lambda v: f"{v:+.0f}%" if pd.notna(v) else "—")
+    resumen_tipo.columns = ["Tipo de impacto", "Quiebres", "Con evento verificado", "Tendencia sube",
+                            "Precio 6m después vs. 6m antes (mediana)", "12 meses después de confirmarse (mediana)"]
+    st.dataframe(resumen_tipo, hide_index=True, width="stretch")
+
+st.caption("Datos: Fastmarkets (AMM), LME y Yahoo Finance · Eventos: catálogo curado con fuente")

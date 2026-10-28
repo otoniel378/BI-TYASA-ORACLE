@@ -29,15 +29,24 @@ PRIMER_ANIO_PRUEBA = 2008
 EXTERNAS_YF = {"NG=F": "gas_hh", "BZ=F": "brent", "HG=F": "cobre", "MXN=X": "usd_mxn", "DX-Y.NYB": "dolar_idx"}
 
 
+# Variables para la huella de impacto de los quiebres (rupturas.huella_impacto);
+# se guardan mensuales en GOLD_MERCADO_MENSUAL.
+MERCADO_HUELLA_YF = {
+    "^GSPC": "sp500", "^VIX": "vix", "CL=F": "petroleo_wti", "NG=F": "gas_hh",
+    "DX-Y.NYB": "dolar_idx", "HG=F": "cobre", "BDRY": "flete_seco",
+}
+
+
 def semaforo(p: float) -> str:
     return "Rojo" if p >= ROJO else "Amarillo" if p >= AMARILLO else "Verde"
 
 
-def cargar_externas(desde: str = "1999-01-01") -> pd.DataFrame:
-    """Promedio mensual de las variables externas (yfinance). Vacío si no hay red."""
+def cargar_externas(desde: str = "1999-01-01", tickers: dict | None = None) -> pd.DataFrame:
+    """Promedio mensual de variables de mercado (yfinance; por defecto las del
+    modelo, EXTERNAS_YF). Vacío si no hay red."""
     import yfinance as yf
     series = {}
-    for ticker, nombre in EXTERNAS_YF.items():
+    for ticker, nombre in (tickers or EXTERNAS_YF).items():
         try:
             d = yf.download(ticker, start=desde, progress=False, auto_adjust=True)
             if len(d):

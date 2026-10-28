@@ -8,6 +8,9 @@ pages/mercado/09_quiebres_ferroaleaciones.py.
                            'backtest' = validación hacia adelante (histórico),
                            'actual'   = último mes con el modelo entrenado con todo.
   GOLD_SEMAFORO_METRICAS — qué tan bien acertó el modelo en la validación, por serie.
+  GOLD_MERCADO_MENSUAL   — bolsa, VIX, energía, dólar, cobre y flete mensuales desde
+                           2000, para la huella de impacto de los quiebres.
+  + columna TIPO_IMPACTO en GOLD_EVENTOS_HISTORICOS.
 
 Uso:
     python scripts/setup_semaforo_ferros_oracle.py
@@ -54,7 +57,24 @@ TABLES_DDL = {
             CONSTRAINT PK_SEMAFORO_METRICAS PRIMARY KEY (SERIE)
         )
     """,
+    # Promedio mensual de variables de mercado desde 2000 (yfinance), para la huella
+    # de impacto de cada quiebre (rupturas.huella_impacto). GOLD_VARIABLES_MERCADO
+    # solo guarda desde 2024, insuficiente para quiebres históricos.
+    "GOLD_MERCADO_MENSUAL": """
+        CREATE TABLE ADMIN.GOLD_MERCADO_MENSUAL (
+            FECHA        DATE          NOT NULL,
+            VARIABLE     VARCHAR2(30)  NOT NULL,
+            VALOR        NUMBER,
+            CARGADO_EN   TIMESTAMP DEFAULT SYSTIMESTAMP,
+            CONSTRAINT PK_MERCADO_MENSUAL PRIMARY KEY (FECHA, VARIABLE)
+        )
+    """,
 }
+
+# Columnas agregadas a tablas que ya existían (ORA-01430 = ya estaba)
+COLUMNAS_NUEVAS = [
+    ("GOLD_EVENTOS_HISTORICOS", "TIPO_IMPACTO", "VARCHAR2(40)"),
+]
 
 
 def get_conn() -> oracledb.Connection:
@@ -94,6 +114,16 @@ def create_tables(recreate: bool = False):
             except oracledb.DatabaseError as e:
                 if "ORA-00955" in str(e):
                     print(f"  {name} ya existe, se omite")
+                else:
+                    raise
+        for tabla, columna, tipo in COLUMNAS_NUEVAS:
+            try:
+                cursor.execute(f"ALTER TABLE ADMIN.{tabla} ADD ({columna} {tipo})")
+                conn.commit()
+                print(f"  ALTER {tabla} ADD {columna}")
+            except oracledb.DatabaseError as e:
+                if "ORA-01430" in str(e):
+                    print(f"  {tabla}.{columna} ya existe, se omite")
                 else:
                     raise
     finally:

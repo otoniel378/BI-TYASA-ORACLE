@@ -34,10 +34,10 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from mercado_fastmarkets.alerta_alzas import (
-    AMARILLO, cargar_externas, construir_panel, metricas, prediccion_actual, walk_forward,
+    AMARILLO, MERCADO_HUELLA_YF, cargar_externas, construir_panel, metricas, prediccion_actual, walk_forward,
 )
 from mercado_fastmarkets.loaders import FERROALEACIONES
-from mercado_noticias.analytics.rupturas import bandas_normales, normalizar_mensual
+from mercado_noticias.analytics.rupturas import TIPOS_IMPACTO, bandas_normales, normalizar_mensual
 from mercado_noticias.loaders import PATRON_FERROALEACIONES
 
 load_dotenv()
@@ -125,6 +125,24 @@ def _guardar(conn, oos: pd.DataFrame, actual: pd.DataFrame, met: pd.DataFrame):
     print(f"  Guardadas {len(filas)} probabilidades y {len(met)} filas de métricas")
 
 
+def _guardar_mercado_mensual(conn) -> None:
+    """Reemplaza GOLD_MERCADO_MENSUAL con la historia mensual desde 2000 de las
+    variables de la huella de impacto (pocos cientos de filas por variable)."""
+    mercado = cargar_externas("2000-01-01", MERCADO_HUELLA_YF)
+    if mercado.empty:
+        print("  Aviso: sin datos de mercado (yfinance); GOLD_MERCADO_MENSUAL no se toca")
+        return
+    filas = [(f.to_pydatetime(), var, float(v))
+             for var in mercado.columns for f, v in mercado[var].dropna().items()]
+    cursor = conn.cursor()
+    cursor.execute("ALTER SESSION DISABLE PARALLEL DML")
+    cursor.execute("DELETE FROM ADMIN.GOLD_MERCADO_MENSUAL")
+    cursor.executemany("INSERT INTO ADMIN.GOLD_MERCADO_MENSUAL (FECHA, VARIABLE, VALOR) VALUES (:1, :2, :3)", filas)
+    conn.commit()
+    cursor.close()
+    print(f"  Mercado mensual: {len(filas)} filas ({', '.join(mercado.columns)})")
+
+
 def _noticias_ferro(cursor, hasta: datetime) -> list[tuple]:
     cursor.execute("""
         SELECT TITULO, RAZON, URL FROM ADMIN.GOLD_SENTIMIENTO_NOTICIAS
@@ -136,29 +154,35 @@ def _noticias_ferro(cursor, hasta: datetime) -> list[tuple]:
     return cursor.fetchall()
 
 
-def _sintetizar(serie: str, motivo: str, noticias: list[tuple], api_key: str) -> tuple[str, str]:
-    """(nombre, descripcion). Sin Gemini o si no responde en formato, se guarda
-    la descripción estadística: mejor registrar algo que perder el evento."""
+def _sintetizar(serie: str, motivo: str, noticias: list[tuple], api_key: str) -> tuple[str, str, str | None]:
+    """(nombre, descripcion, tipo_impacto). Sin Gemini o si no responde en formato,
+    se guarda la descripción estadística y tipo None (la página usa entonces la
+    huella de mercado): mejor registrar algo que perder el evento."""
     nombre_fb = f"{serie}: {motivo}"
     desc_fb = f"Señal automática en {serie}: {motivo}."
     if not api_key:
-        return nombre_fb, desc_fb
+        return nombre_fb, desc_fb, None
     contexto = "; ".join(f"{t} ({r})" for t, r, _ in noticias[:6]) or "sin noticias de ferroaleaciones en el periodo"
     prompt = (
         f"El precio de {serie} (Fastmarkets/LME) muestra: {motivo}. Noticias recientes: {contexto}. "
         "Para TYASA (acería mexicana de horno eléctrico que compra ferroaleaciones), explica la causa probable "
         "solo con base en esas noticias; si no la explican, dilo. Responde EXACTAMENTE en este formato:\n"
-        "NOMBRE: <máximo 8 palabras>\nDESCRIPCION: <máximo 2 frases>"
+        "NOMBRE: <máximo 8 palabras>\nDESCRIPCION: <máximo 2 frases>\n"
+        f"TIPO: <uno de: {' | '.join(TIPOS_IMPACTO)} | Sin determinar>"
     )
     try:
         from mercado_noticias.analytics.ai_analysis import _call_gemini_text
-        resp = _call_gemini_text(prompt, api_key, max_output_tokens=200, temperature=0.3)
+        resp = _call_gemini_text(prompt, api_key, max_output_tokens=220, temperature=0.3)
         m_n = re.search(r"NOMBRE:\s*(.+)", resp)
-        m_d = re.search(r"DESCRIPCION:\s*(.+)", resp, re.DOTALL)
-        return (m_n.group(1).strip() if m_n else nombre_fb)[:200], (m_d.group(1).strip() if m_d else desc_fb)[:2000]
+        m_d = re.search(r"DESCRIPCION:\s*(.+?)(?:\nTIPO:|$)", resp, re.DOTALL)
+        m_t = re.search(r"TIPO:\s*(.+)", resp)
+        tipo = m_t.group(1).strip() if m_t else None
+        return ((m_n.group(1).strip() if m_n else nombre_fb)[:200],
+                (m_d.group(1).strip() if m_d else desc_fb)[:2000],
+                tipo if tipo in TIPOS_IMPACTO else None)
     except Exception as e:
         print(f"  Aviso: Gemini no respondió ({e}); se guarda descripción estadística")
-        return nombre_fb, desc_fb
+        return nombre_fb, desc_fb, None
 
 
 def _registrar_eventos(conn, precios: pd.DataFrame, actual: pd.DataFrame, api_key: str):
@@ -178,19 +202,19 @@ def _registrar_eventos(conn, precios: pd.DataFrame, actual: pd.DataFrame, api_ke
             continue
         mes = bandas.index[-1]
         noticias = _noticias_ferro(cursor, datetime.now())
-        nombre, descripcion = _sintetizar(r.serie, " y ".join(motivos), noticias, api_key)
+        nombre, descripcion, tipo = _sintetizar(r.serie, " y ".join(motivos), noticias, api_key)
         fuente = "; ".join(u for _, _, u in noticias) or "Detección automática del semáforo de ferroaleaciones"
         cursor.execute("""
             MERGE INTO ADMIN.GOLD_EVENTOS_HISTORICOS t
             USING (SELECT :id AS ID FROM dual) s ON (t.ID = s.ID)
             WHEN MATCHED THEN UPDATE SET
                 FECHA_FIN = :fecha, NOMBRE = :nombre, DESCRIPCION = :descripcion,
-                VARIABLES_RELACIONADAS = :serie, FUENTE = :fuente
+                VARIABLES_RELACIONADAS = :serie, FUENTE = :fuente, TIPO_IMPACTO = :tipo
             WHEN NOT MATCHED THEN INSERT
-                (ID, FECHA_INICIO, FECHA_FIN, NOMBRE, DESCRIPCION, VARIABLES_RELACIONADAS, FUENTE)
-                VALUES (:id, :fecha, :fecha, :nombre, :descripcion, :serie, :fuente)
+                (ID, FECHA_INICIO, FECHA_FIN, NOMBRE, DESCRIPCION, VARIABLES_RELACIONADAS, FUENTE, TIPO_IMPACTO)
+                VALUES (:id, :fecha, :fecha, :nombre, :descripcion, :serie, :fuente, :tipo)
         """, {"id": f"auto_ferro_{r.serie}_{mes:%Y%m}", "fecha": mes.to_pydatetime(), "nombre": nombre,
-              "descripcion": descripcion, "serie": r.serie, "fuente": fuente[:500]})
+              "descripcion": descripcion, "serie": r.serie, "fuente": fuente[:500], "tipo": tipo})
         conn.commit()
         n += 1
         print(f"  Evento automático {r.serie} {mes:%Y-%m}: {nombre}")
@@ -218,6 +242,7 @@ def main():
               f"{tot.falsas_por_anio:.2f} falsas alarmas por serie al año, AUC {tot.auc:.2f}")
         print(actual.round(3).to_string(index=False))
         _guardar(conn, oos, actual, met)
+        _guardar_mercado_mensual(conn)
         if not args.sin_eventos:
             _registrar_eventos(conn, precios, actual, _get_gemini_key())
     finally:

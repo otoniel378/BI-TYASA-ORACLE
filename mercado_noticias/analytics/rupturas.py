@@ -279,6 +279,95 @@ def resumen_casos_parecidos(rupturas: pd.DataFrame, regimen: str, excluir: tuple
     return pd.DataFrame(filas)
 
 
+# ── Tipo de impacto ──────────────────────────────────────────────────────────
+TIPOS_IMPACTO = [
+    "Geopolítico/conflicto", "Política comercial", "Energía", "Clima/desastre",
+    "Oferta/producción", "Macro/financiero", "Logística",
+]
+MESES_HUELLA = 2
+# Bolsa: umbrales fijos (caída de 12% en 3 meses o VIX de 30 = estrés financiero).
+UMBRAL_BOLSA, UMBRAL_VIX = -0.12, 30.0
+# Demás variables: cuenta como señal un cambio a 3 meses en el 5% más extremo de
+# su propia historia. Con umbrales fijos (o ventana de ±3 meses y 10%) casi todo
+# quiebre coincidía con "algo": el gas Henry Hub se mueve ±30-60% en 3 meses muy
+# seguido. Con ±2 meses y 5%, de 49 quiebres sin evento: 29 macro/financiero,
+# 12 sin señal (propios de la aleación) y 8 energía.
+CUANTIL_SENAL = 0.95
+
+
+def huella_impacto(rupturas: pd.DataFrame, mercado: pd.DataFrame) -> pd.DataFrame:
+    """Clasifica el tipo de impacto probable de cada quiebre con lo que hizo el
+    mercado en ±MESES_HUELLA meses. <mercado>: ancho mensual (índice = primer día
+    del mes) con columnas sp500, vix, petroleo_wti, gas_hh, dolar_idx, cobre,
+    flete_seco (GOLD_MERCADO_MENSUAL); las que falten se ignoran.
+
+    Solo distingue lo que el mercado puede mostrar (financiero, energía, logística,
+    alcance general o propio). Geopolítico, política comercial y clima solo se
+    saben por un evento verificado: si el quiebre tiene evento con tipo, ése manda
+    (columna tipo_fuente = "evento verificado")."""
+    out = rupturas.copy()
+    r3 = (mercado / mercado.shift(3) - 1) if not mercado.empty else pd.DataFrame()
+    umbral = r3.abs().quantile(CUANTIL_SENAL) if not r3.empty else pd.Series(dtype=float)
+    simult, senales_col, probable = [], [], []
+    for _, q in out.iterrows():
+        cerca = out[(out["serie"] != q["serie"])
+                    & ((out["fecha"] - q["fecha"]).abs() <= pd.Timedelta(days=31 * MESES_HUELLA))]
+        n_sim = cerca["serie"].nunique()
+        desde, hasta = q["fecha"] - pd.DateOffset(months=MESES_HUELLA), q["fecha"] + pd.DateOffset(months=MESES_HUELLA)
+        v = r3[(r3.index >= desde) & (r3.index <= hasta)] if not r3.empty else r3
+        nivel = mercado[(mercado.index >= desde) & (mercado.index <= hasta)] if not mercado.empty else mercado
+
+        def extremo(col):
+            if col not in v.columns or v[col].dropna().empty:
+                return None
+            s = v[col].dropna()
+            return float(s.loc[s.abs().idxmax()])
+
+        senales, tipos = [], []
+        sp = v["sp500"].min() if "sp500" in v.columns and not v["sp500"].dropna().empty else None
+        vix = nivel["vix"].max() if "vix" in nivel.columns and not nivel["vix"].dropna().empty else None
+        if (sp is not None and sp <= UMBRAL_BOLSA) or (vix is not None and vix >= UMBRAL_VIX):
+            partes = []
+            if sp is not None and sp <= UMBRAL_BOLSA:
+                partes.append(f"S&P 500 {sp:+.0%}")
+            if vix is not None and vix >= UMBRAL_VIX:
+                partes.append(f"VIX {vix:.0f}")
+            senales.append("Caída de la bolsa (" + ", ".join(partes) + ")")
+            tipos.append("Macro/financiero")
+        for col, nombre, tipo_col, solo_alza in (
+            ("petroleo_wti", "Petróleo", "Energía", False), ("gas_hh", "Gas", "Energía", False),
+            ("flete_seco", "Flete granel", "Logística", True), ("dolar_idx", "Dólar", "Macro/financiero", False),
+            ("cobre", "Cobre", "Macro/financiero", False),
+        ):
+            x = extremo(col)
+            if x is None or col not in umbral.index:
+                continue
+            if (x if solo_alza else abs(x)) >= umbral[col]:
+                senales.append(f"{nombre} {x:+.0%}")
+                tipos.append(tipo_col)
+        if n_sim >= 2:
+            senales.append(f"{n_sim} aleaciones más quebraron en ±{MESES_HUELLA} meses")
+
+        if tipos:
+            tipo = tipos[0]
+        elif n_sim >= 2:
+            tipo = "Macro/financiero"   # choque general sin señal de mercado clara: demanda global
+        else:
+            tipo = "Oferta/producción"  # solo esta aleación: algo propio de su oferta (minas, plantas, aranceles)
+        simult.append(n_sim)
+        senales_col.append("; ".join(senales) if senales else "Sin movimientos fuertes de mercado")
+        probable.append(tipo)
+
+    out["aleaciones_simultaneas"] = simult
+    out["alcance"] = ["Varias aleaciones" if n >= 2 else "Solo esta aleación" for n in simult]
+    out["senales_mercado"] = senales_col
+    out["tipo_probable"] = probable
+    tipo_evento = out["evento_tipo"] if "evento_tipo" in out.columns else pd.Series([None] * len(out), index=out.index)
+    out["tipo_impacto"] = tipo_evento.where(tipo_evento.notna(), out["tipo_probable"])
+    out["tipo_fuente"] = np.where(tipo_evento.notna(), "evento verificado", "huella de mercado")
+    return out
+
+
 # ── Vinculación con eventos ──────────────────────────────────────────────────
 # El precio mensual reacciona con rezago (cotizaciones escalonadas, contratos):
 # un quiebre se vincula a un evento si su fecha cae entre 2 meses antes del
@@ -291,7 +380,7 @@ def vincular_eventos(rupturas: pd.DataFrame, eventos: pd.DataFrame) -> pd.DataFr
     en VARIABLES_RELACIONADAS (columnas evento_*). Sin evento -> None: se deja
     sin explicar a propósito, para no inventar relaciones."""
     out = rupturas.copy()
-    for col in ("evento_id", "evento_nombre", "evento_descripcion", "evento_fuente", "evento_inicio"):
+    for col in ("evento_id", "evento_nombre", "evento_descripcion", "evento_fuente", "evento_inicio", "evento_tipo"):
         out[col] = None
     if out.empty or eventos.empty:
         return out
@@ -311,4 +400,6 @@ def vincular_eventos(rupturas: pd.DataFrame, eventos: pd.DataFrame) -> pd.DataFr
         out.at[i, "evento_descripcion"] = mejor["descripcion"]
         out.at[i, "evento_fuente"] = mejor["fuente"]
         out.at[i, "evento_inicio"] = mejor["fecha_inicio"]
+        tipo = mejor.get("tipo_impacto")
+        out.at[i, "evento_tipo"] = tipo if isinstance(tipo, str) and tipo else None
     return out
