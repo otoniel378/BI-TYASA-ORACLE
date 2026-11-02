@@ -39,6 +39,7 @@ jobs:
           pip install oracledb pandas python-dotenv requests scikit-learn sentence-transformers
           pip install googlenewsdecoder "selectolax<1.0"
           pip install google-genai
+          pip install beautifulsoup4
 
       - name: Extraer wallet de Oracle
         run: |
@@ -60,6 +61,19 @@ jobs:
           GMAIL_APP_PASSWORD:     ${{ secrets.GMAIL_APP_PASSWORD }}
           DIGEST_EMAIL_TO:        ${{ secrets.DIGEST_EMAIL_TO }}
         run: python scripts/update_sentimiento_noticias.py
+
+      - name: Monitorear DOF por decretos/acuerdos relevantes para TYASA
+        env:
+          ORACLE_USER:            ${{ secrets.ORACLE_USER }}
+          ORACLE_PASSWORD:        ${{ secrets.ORACLE_PASSWORD }}
+          ORACLE_DSN:             ${{ secrets.ORACLE_DSN }}
+          ORACLE_WALLET_DIR:      /tmp/oracle_wallet
+          ORACLE_WALLET_PASSWORD: ${{ secrets.ORACLE_WALLET_PASSWORD }}
+          GEMINI_API_KEY:         ${{ secrets.GEMINI_API_KEY }}
+          GMAIL_USER:             ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD:     ${{ secrets.GMAIL_APP_PASSWORD }}
+          DIGEST_EMAIL_TO:        ${{ secrets.DIGEST_EMAIL_TO }}
+        run: python scripts/monitor_dof.py
 
       - name: Cruzar quiebres activos con noticias clasificadas
         env:

@@ -36,3 +36,7 @@ selectolax<1.0
 # instalado, GH Actions/Streamlit Cloud caían al REST fallback, que hasta
 # ahora no deshabilitaba thinking y producía respuestas truncadas/sin JSON.
 google-genai>=0.3.0
+
+# Lee el texto completo de las notas del DOF (mercado_noticias/analytics/dof_monitor.py)
+# para extraer fracciones arancelarias y tablas, que no vienen en el resumen del RSS.
+beautifulsoup4>=4.12.0
