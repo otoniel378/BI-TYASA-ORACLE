@@ -241,6 +241,7 @@ SECCIONES = {
     "aceros_largos": {"label": "ACEROS LARGOS"},
     "aceros_sbq": {"label": "ACEROS SBQ"},
     "mercado": {"label": "MERCADO GLOBAL"},
+    "mas_info": {"label": "MÁS INFORMACIÓN"},
     "chat_ia": {"label": "CHAT IA"},
 }
 
@@ -265,14 +266,16 @@ SUBSECCIONES = {
     },
     "mercado": {
         "mkt_monitor": "Monitor de Quiebres",
-        "mkt_vars": "Variables Globales",
         "mkt_industria": "Monitor Siderúrgico",
         "mkt_inegi": "Indicadores INEGI",
-        "mkt_sentimiento": "Sentimiento",
         "mkt_competencia": "Competencia",
         "mkt_comercio": "Comercio Exterior",
         "mkt_pronostico": "Pronóstico",
         "mkt_ferros": "Quiebres Ferroaleaciones",
+    },
+    "mas_info": {
+        "mi_vars": "Variables Globales",
+        "mi_sentimiento": "Sentimiento",
     },
     "chat_ia": {
         "chat": "Chat con los datos",
@@ -311,14 +314,16 @@ PAGINAS = {
     
     # MERCADO
     "mkt_monitor": "pages.mercado.01_monitor",
-    "mkt_vars": "pages.mercado.02_variables",
     "mkt_industria": "pages.mercado.03_industria",
     "mkt_inegi": "pages.mercado.04_indicadores",
-    "mkt_sentimiento": "pages.mercado.05_sentimiento",
     "mkt_competencia": "pages.mercado.06_competencia",
     "mkt_comercio": "pages.mercado.07_comercio_exterior",
     "mkt_pronostico": "pages.mercado.08_pronostico_comercio",
     "mkt_ferros": "pages.mercado.09_quiebres_ferroaleaciones",
+
+    # MÁS INFORMACIÓN
+    "mi_vars": "pages.mercado.02_variables",
+    "mi_sentimiento": "pages.mercado.05_sentimiento",
 
     # CHAT IA
     "chat": "pages.chat_ia.chat",
@@ -423,6 +428,9 @@ elif seccion == "aceros_sbq":
 
 elif seccion == "mercado":
     modulo = PAGINAS.get(subseccion, "pages.mercado.01_monitor")
+
+elif seccion == "mas_info":
+    modulo = PAGINAS.get(subseccion, "pages.mercado.02_variables")
 
 elif seccion == "chat_ia":
     modulo = PAGINAS.get(subseccion, "pages.chat_ia.chat")
