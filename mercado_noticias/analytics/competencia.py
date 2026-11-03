@@ -454,6 +454,7 @@ def render_feed_social(
         link_html = f'<a href="{url}" target="_blank" class="ic-link" title="Ver original">Ver</a>' if url else ""
 
         avatar_ini = (empresa[:1] or "?").upper()
+        snippet_html = snippet if snippet else '<em style="color:#D1D5DB;">Sin texto disponible</em>'
         cards.append(
             f'<div class="ic-card">'
             f'<div class="ic-card-top" style="background:{c};">{net_pill}</div>'
@@ -465,7 +466,7 @@ def render_feed_social(
             f'</div>'
             f'<span class="ic-date">{fecha}</span>'
             f'</div>'
-            f'<div class="ic-text">{snippet if snippet else "<em style=\'color:#D1D5DB;\'>Sin texto disponible</em>"}</div>'
+            f'<div class="ic-text">{snippet_html}</div>'
             f'<div class="ic-card-footer">'
             f'<div class="ic-stats">{"".join(stats_html)}</div>'
             f'{link_html}'

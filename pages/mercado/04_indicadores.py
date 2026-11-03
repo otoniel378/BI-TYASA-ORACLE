@@ -3,7 +3,7 @@
 Cards compactas de overview + expanders con gráfica Plotly + análisis IA por indicador.
 """
 
-import os, sys, json
+import os, sys
 _root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _root not in sys.path:
     sys.path.insert(0, _root)
@@ -63,35 +63,6 @@ _ALERT = {
 _ORDER   = {"Critico": 0, "Alto": 1, "Moderado": 2, "Normal": 3}
 
 
-# ── Tooltips nativos sobre las pestañas (IMAI, EMIM, ...) ────────────────────
-def _tabs_tooltip_script(tooltips: dict) -> str:
-    """Pone el atributo title (tooltip nativo del navegador) a cada botón de
-    pestaña cuyo texto coincida con una sigla del glosario. st.tabs() no
-    expone esto directamente, así que se hace por DOM una vez montado —
-    con MutationObserver para que también aplique si Streamlit vuelve a
-    dibujar las pestañas (cambio de Mensual/Anual, etc.)."""
-    data = json.dumps(tooltips, ensure_ascii=False)
-    return f"""
-    <script>
-    (function() {{
-        const TOOLTIPS = {data};
-        function aplicar() {{
-            document.querySelectorAll('[data-baseweb="tab"]').forEach(function(el) {{
-                const label = (el.innerText || '').trim();
-                if (TOOLTIPS[label] && el.title !== TOOLTIPS[label]) {{
-                    el.title = TOOLTIPS[label];
-                    el.style.cursor = 'help';
-                }}
-            }});
-        }}
-        aplicar();
-        if (!window.__inegiTooltipsObserver) {{
-            window.__inegiTooltipsObserver = new MutationObserver(aplicar);
-            window.__inegiTooltipsObserver.observe(document.body, {{childList: true, subtree: true}});
-        }}
-    }})();
-    </script>
-    """
 
 
 # ── Utilidades ───────────────────────────────────────────────────────────────
@@ -677,8 +648,7 @@ def render():
         st.markdown(
             f"<h2 style='color:{_TEXT_DARK};margin-bottom:2px;'>Indicadores INEGI</h2>"
             f"<p style='color:{_TEXT_MUTED};margin:0;'>52 series macroeconómicas · 12 grupos · "
-            "alertas Z-score · comparación anual · noticias · reportes descargables — "
-            "pasa el cursor sobre la sigla de cada grupo (ej. IMAI) para ver su significado</p>",
+            "alertas Z-score · comparación anual · noticias · reportes descargables</p>",
             unsafe_allow_html=True,
         )
     with col_btn:
@@ -719,6 +689,13 @@ def render():
     ) or "Mensual"
     st.markdown("<div style='margin-bottom:4px;'></div>", unsafe_allow_html=True)
 
+    # ── Glosario de siglas ───────────────────────────────────────────────────
+    with st.expander("¿Qué significa cada sigla?"):
+        cols_gloss = st.columns(3)
+        for idx, (sigla, significado) in enumerate(GRUPOS_TOOLTIP.items()):
+            with cols_gloss[idx % 3]:
+                st.markdown(f"**{sigla}** — {significado}")
+
     # ── Tabs ─────────────────────────────────────────────────────────────────
     group_keys  = GRUPOS_MENSUALES if freq_sel == "Mensual" else GRUPOS_ANUALES
     non_normal  = df_alerts[df_alerts["alerta"] != "Normal"]
@@ -728,7 +705,6 @@ def render():
     tabs = st.tabs(
         list(group_keys) + [mapa_label, alert_label]
     )
-    st.html(_tabs_tooltip_script(GRUPOS_TOOLTIP), unsafe_allow_javascript=True)
 
     # ── Group tabs ───────────────────────────────────────────────────────────
     for i, gkey in enumerate(group_keys):
