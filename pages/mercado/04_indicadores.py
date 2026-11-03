@@ -696,85 +696,120 @@ def render():
             with cols_gloss[idx % 3]:
                 st.markdown(f"**{sigla}** — {significado}")
 
-    # ── Tabs ─────────────────────────────────────────────────────────────────
+    # ── Tabs (botones con tooltip nativo de Streamlit — hover muestra el
+    # significado de la sigla; st.tabs() no soporta esto) ───────────────────
     group_keys  = GRUPOS_MENSUALES if freq_sel == "Mensual" else GRUPOS_ANUALES
     non_normal  = df_alerts[df_alerts["alerta"] != "Normal"]
     alert_count = len(non_normal)
     alert_label = f"Alertas ({alert_count})" if alert_count else "Alertas"
     mapa_label  = "Mapa por Estado"
-    tabs = st.tabs(
-        list(group_keys) + [mapa_label, alert_label]
+    tab_keys    = list(group_keys) + [mapa_label, alert_label]
+
+    if st.session_state.get("inegi_tab_sel") not in tab_keys:
+        st.session_state.inegi_tab_sel = tab_keys[0]
+
+    st.markdown(
+        """
+        <style>
+        [data-testid="stVerticalBlock"]:has(#inegi-tabs-marker) + [data-testid="stHorizontalBlock"] button {
+            border: none !important; border-bottom: 3px solid transparent !important;
+            border-radius: 0 !important; background: transparent !important;
+            color: #64748B !important; font-weight: 600 !important; box-shadow: none !important;
+        }
+        [data-testid="stVerticalBlock"]:has(#inegi-tabs-marker) + [data-testid="stHorizontalBlock"] button[kind="primary"] {
+            border-bottom: 3px solid #1B3A5C !important; color: #1B3A5C !important;
+            background: transparent !important;
+        }
+        </style>
+        <div id="inegi-tabs-marker" style="display:none"></div>
+        """,
+        unsafe_allow_html=True,
     )
+    tab_cols = st.columns(len(tab_keys))
+    for i, key in enumerate(tab_keys):
+        with tab_cols[i]:
+            if st.button(
+                key, key=f"inegi_tab_btn_{key}", width="stretch",
+                type="primary" if st.session_state.inegi_tab_sel == key else "secondary",
+                help=GRUPOS_TOOLTIP.get(key),
+            ):
+                st.session_state.inegi_tab_sel = key
+                st.rerun()
+    st.markdown("<div style='margin-bottom:10px;'></div>", unsafe_allow_html=True)
+
+    tab_sel = st.session_state.inegi_tab_sel
 
     # ── Group tabs ───────────────────────────────────────────────────────────
-    for i, gkey in enumerate(group_keys):
+    for gkey in group_keys:
+        if tab_sel != gkey:
+            continue
         g      = GRUPOS_INEGI[gkey]
         claves = g["claves"]
-        with tabs[i]:
-            # Overview compacto
-            st.html(_group_grid(gkey, g, alerts_idx, sparklines))
 
-            with st.expander("Generar reporte de todo el grupo", expanded=False):
-                nota_grp = (
-                    f"Un análisis con proyección e implicaciones para TYASA por cada uno de los "
-                    f"{len(claves)} indicadores del grupo — puede tardar un poco más por las llamadas a IA."
-                    if _GEMINI_KEY else
-                    "Configura GEMINI_API_KEY para incluir el análisis con proyección por indicador."
-                )
-                st.caption(nota_grp)
-                col_w, col_p = st.columns(2)
-                with col_w:
-                    if st.button("Generar Word (grupo)", key=f"genw_grp_{gkey}", width="stretch"):
-                        with st.spinner("Generando documento Word del grupo..."):
-                            st.session_state[f"docx_grp_{gkey}"] = generar_word_grupo(
-                                gkey, periodos=24, api_key=_GEMINI_KEY
-                            )
-                    if st.session_state.get(f"docx_grp_{gkey}"):
-                        st.download_button(
-                            "Descargar .docx", data=st.session_state[f"docx_grp_{gkey}"],
-                            file_name=f"INEGI_Grupo_{gkey}.docx",
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                            key=f"dlw_grp_{gkey}", width="stretch",
-                        )
-                with col_p:
-                    if st.button("Generar PDF (grupo)", key=f"genp_grp_{gkey}", width="stretch"):
-                        with st.spinner("Generando documento PDF del grupo..."):
-                            st.session_state[f"pdf_grp_{gkey}"] = generar_pdf_grupo(
-                                gkey, periodos=24, api_key=_GEMINI_KEY
-                            )
-                    if st.session_state.get(f"pdf_grp_{gkey}"):
-                        st.download_button(
-                            "Descargar .pdf", data=st.session_state[f"pdf_grp_{gkey}"],
-                            file_name=f"INEGI_Grupo_{gkey}.pdf", mime="application/pdf",
-                            key=f"dlp_grp_{gkey}", width="stretch",
-                        )
+        # Overview compacto
+        st.html(_group_grid(gkey, g, alerts_idx, sparklines))
 
-            st.markdown(
-                "<p style='color:#64748B;font-size:11px;margin:16px 0 8px;'>"
-                "▼  Haz clic en un indicador para ver su gráfica completa y análisis IA</p>",
-                unsafe_allow_html=True,
+        with st.expander("Generar reporte de todo el grupo", expanded=False):
+            nota_grp = (
+                f"Un análisis con proyección e implicaciones para TYASA por cada uno de los "
+                f"{len(claves)} indicadores del grupo — puede tardar un poco más por las llamadas a IA."
+                if _GEMINI_KEY else
+                "Configura GEMINI_API_KEY para incluir el análisis con proyección por indicador."
             )
+            st.caption(nota_grp)
+            col_w, col_p = st.columns(2)
+            with col_w:
+                if st.button("Generar Word (grupo)", key=f"genw_grp_{gkey}", width="stretch"):
+                    with st.spinner("Generando documento Word del grupo..."):
+                        st.session_state[f"docx_grp_{gkey}"] = generar_word_grupo(
+                            gkey, periodos=24, api_key=_GEMINI_KEY
+                        )
+                if st.session_state.get(f"docx_grp_{gkey}"):
+                    st.download_button(
+                        "Descargar .docx", data=st.session_state[f"docx_grp_{gkey}"],
+                        file_name=f"INEGI_Grupo_{gkey}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        key=f"dlw_grp_{gkey}", width="stretch",
+                    )
+            with col_p:
+                if st.button("Generar PDF (grupo)", key=f"genp_grp_{gkey}", width="stretch"):
+                    with st.spinner("Generando documento PDF del grupo..."):
+                        st.session_state[f"pdf_grp_{gkey}"] = generar_pdf_grupo(
+                            gkey, periodos=24, api_key=_GEMINI_KEY
+                        )
+                if st.session_state.get(f"pdf_grp_{gkey}"):
+                    st.download_button(
+                        "Descargar .pdf", data=st.session_state[f"pdf_grp_{gkey}"],
+                        file_name=f"INEGI_Grupo_{gkey}.pdf", mime="application/pdf",
+                        key=f"dlp_grp_{gkey}", width="stretch",
+                    )
 
-            # Expander por indicador
-            for clave in claves:
-                label  = INDICADORES_LABEL.get(clave, clave)
-                alerta = alerts_idx.loc[clave]["alerta"] if clave in alerts_idx.index else "Normal"
-                am     = _ALERT[alerta]
-                try:
-                    z_val  = float(alerts_idx.loc[clave]["z_score"]) if clave in alerts_idx.index else 0.0
-                    z_str  = f"  z={z_val:+.2f}" if alerta != "Normal" else ""
-                except Exception:
-                    z_str = ""
-                exp_label = f"{label}  ·  {alerta.upper()}{z_str}"
-                with st.expander(exp_label, expanded=False):
-                    _render_detail(clave, gkey, g, alerts_idx, _GEMINI_KEY)
+        st.markdown(
+            "<p style='color:#64748B;font-size:11px;margin:16px 0 8px;'>"
+            "▼  Haz clic en un indicador para ver su gráfica completa y análisis IA</p>",
+            unsafe_allow_html=True,
+        )
+
+        # Expander por indicador
+        for clave in claves:
+            label  = INDICADORES_LABEL.get(clave, clave)
+            alerta = alerts_idx.loc[clave]["alerta"] if clave in alerts_idx.index else "Normal"
+            am     = _ALERT[alerta]
+            try:
+                z_val  = float(alerts_idx.loc[clave]["z_score"]) if clave in alerts_idx.index else 0.0
+                z_str  = f"  z={z_val:+.2f}" if alerta != "Normal" else ""
+            except Exception:
+                z_str = ""
+            exp_label = f"{label}  ·  {alerta.upper()}{z_str}"
+            with st.expander(exp_label, expanded=False):
+                _render_detail(clave, gkey, g, alerts_idx, _GEMINI_KEY)
 
     # ── Mapa por Estado tab ──────────────────────────────────────────────────
-    with tabs[-2]:
+    if tab_sel == mapa_label:
         render_mapa_estatal()
 
     # ── Alerts tab ───────────────────────────────────────────────────────────
-    with tabs[-1]:
+    if tab_sel == alert_label:
         if non_normal.empty:
             st.success("Todos los indicadores están en rango normal.")
         else:
