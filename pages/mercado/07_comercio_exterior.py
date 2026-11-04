@@ -37,7 +37,8 @@ from config import COLORS
 from core.components.kpi_cards import render_kpi_row
 from core.components.tables import _boton_descarga
 from core.components.charts import (
-    linea_temporal, barras_horizontales, scatter, estructura_100, barras_divergentes, barras_con_tendencia,
+    linea_temporal, barras_horizontales, estructura_100, barras_divergentes, barras_con_tendencia,
+    espejo_flujos, barras_resaltada, linea_vigencias, cambio_puntos, linea_con_promedio, scatter_cuadrantes,
 )
 from fracciones_tyasa import FRACCIONES_TYASA, FRACCIONES_TYASA_PREFIJO, RAZON_SOCIAL_TYASA_SNICE
 from fracciones_tyasa_ligie import FRACCIONES_TYASA_DESCRIPCION
@@ -263,6 +264,13 @@ def _agrupar_por_partida(fracciones_df: pd.DataFrame) -> pd.DataFrame:
 _TXT_SUBE, _TXT_BAJA = "#1F5FAE", "#C2410C"
 
 
+def _color_signo(v) -> str:
+    """Estilo de celda para variaciones: azul si sube, naranja si baja."""
+    if pd.isna(v) or v == 0:
+        return ""
+    return f"color:{_TXT_SUBE if v > 0 else _TXT_BAJA};font-weight:600"
+
+
 def _flecha_pct(actual: float, anterior: float | None) -> str:
     if anterior is None:
         return ""
@@ -281,13 +289,16 @@ def _flecha_pp(actual: float, anterior: float | None) -> str:
     return f"<span style='color:{color};font-weight:600;'>{flecha} {abs(dif):.1f} pp</span>"
 
 
-def _top_fracciones_html(actual: pd.DataFrame, anterior: pd.DataFrame | None, n: int = 5) -> str:
+def _top_fracciones_html(
+    actual: pd.DataFrame, anterior: pd.DataFrame | None, n: int = 5, total: float | None = None,
+) -> str:
     """Ranking tipo "Power Rank" de fracciones: barra, toneladas, % del mes y
     variación contra el mes anterior. <actual>/<anterior>: columnas fraccion
-    (8 dígitos) y volumen_ton."""
+    (8 dígitos) y volumen_ton. <total>: base del "% del mes" si <actual> ya viene
+    recortado (si no, la suma de <actual>)."""
     if actual.empty:
         return f"<p style='color:{COLORS['text_light']};font-size:0.85rem;'>Sin datos para este periodo.</p>"
-    total = actual["volumen_ton"].sum() or 1
+    total = total or actual["volumen_ton"].sum() or 1
     top = actual.nlargest(n, "volumen_ton")
     max_vol = top["volumen_ton"].max() or 1
     previo = anterior.set_index("fraccion")["volumen_ton"] if anterior is not None and not anterior.empty else None
@@ -998,49 +1009,37 @@ with tab_tyasa:
 
                 col_neto, col_top5_ie = st.columns([2, 1])
                 with col_neto:
-                    neto_long = pd.concat([
-                        neto_df[["periodo_mes", "importacion"]].rename(columns={"importacion": "volumen_total"}).assign(serie="Importación"),
-                        neto_df[["periodo_mes", "exportacion"]].rename(columns={"exportacion": "volumen_total"}).assign(serie="Exportación"),
-                        neto_df[["periodo_mes", "neto"]].rename(columns={"neto": "volumen_total"}).assign(serie="Consumo aparente (neto)"),
-                    ], ignore_index=True)
                     st.plotly_chart(
-                        linea_temporal(
-                            neto_long, x="periodo_mes", y="volumen_total", color="serie",
-                            titulo="Importación vs. Exportación vs. Consumo aparente — catálogo TYASA",
-                            y_label="Ton", height=420,
+                        espejo_flujos(
+                            neto_df, x="periodo_mes", entra="importacion", sale="exportacion", neto="neto",
+                            titulo="Lo que entra, lo que sale y lo que se queda — catálogo TYASA",
+                            nombre_neto="Consumo aparente (neto)",
                         ),
                         width="stretch",
                     )
+                    st.caption("Barras arriba: importación. Barras abajo: exportación. Línea: lo que se queda.")
 
                 with col_top5_ie:
                     st.markdown("###### Top 5 fracciones por movimiento")
                     periodo_ie_sel = st.selectbox(
                         "Periodo", periodos_con_ambos, index=len(periodos_con_ambos) - 1, key="snice_top5_ie_periodo",
                     )
+                    idx_ie = periodos_con_ambos.index(periodo_ie_sel)
+                    prev_ie = periodos_con_ambos[idx_ie - 1] if idx_ie > 0 else None
 
-                    st.caption(f"Importación — {periodo_ie_sel}")
-                    top5_imp = load_top_fracciones_tyasa(periodo_ie_sel, "IMPORTACION", limite=5, fracciones=fracciones_filtro)
-                    if top5_imp.empty:
-                        st.caption("Sin datos.")
-                    else:
-                        ti = top5_imp.copy()
-                        ti["Fracción"] = ti["fraccion"].map(
-                            lambda f: f"{f} — {FRACCIONES_TYASA_DESCRIPCION.get(f, 'sin descripción')}"
-                        )
-                        ti["Volumen (ton)"] = ti["volumen_total"].map(lambda v: f"{v:,.0f}")
-                        st.dataframe(ti[["Fracción", "Volumen (ton)"]], hide_index=True, width="stretch", height=210)
+                    def _top_mov(periodo: str | None, movimiento: str) -> pd.DataFrame | None:
+                        if not periodo:
+                            return None
+                        return load_top_fracciones_tyasa(
+                            periodo, movimiento, limite=500, fracciones=fracciones_filtro,
+                        ).rename(columns={"volumen_total": "volumen_ton"})
 
-                    st.caption(f"Exportación — {periodo_ie_sel}")
-                    top5_exp = load_top_fracciones_tyasa(periodo_ie_sel, "EXPORTACION", limite=5, fracciones=fracciones_filtro)
-                    if top5_exp.empty:
-                        st.caption("Sin datos.")
-                    else:
-                        te = top5_exp.copy()
-                        te["Fracción"] = te["fraccion"].map(
-                            lambda f: f"{f} — {FRACCIONES_TYASA_DESCRIPCION.get(f, 'sin descripción')}"
+                    for mov, nombre in (("IMPORTACION", "Importación"), ("EXPORTACION", "Exportación")):
+                        st.html(
+                            _card_open(f"{nombre} — {periodo_ie_sel}", f"Variación vs. {prev_ie or 'mes anterior'}")
+                            + _top_fracciones_html(_top_mov(periodo_ie_sel, mov), _top_mov(prev_ie, mov))
+                            + _CARD_CLOSE
                         )
-                        te["Volumen (ton)"] = te["volumen_total"].map(lambda v: f"{v:,.0f}")
-                        st.dataframe(te[["Fracción", "Volumen (ton)"]], hide_index=True, width="stretch", height=210)
 
         st.divider()
         st.markdown("##### Intención de importación (por vigencia del permiso)")
@@ -1051,8 +1050,10 @@ with tab_tyasa:
             st.info("Sin datos de vigencia disponibles todavía.")
         else:
             meses_disponibles = pd.period_range(mes_min, mes_max, freq="M").astype(str).tolist()
+            mes_hoy = pd.Timestamp.today().strftime("%Y-%m")
             mes_sel = st.selectbox(
-                "Mes a proyectar", meses_disponibles, index=len(meses_disponibles) - 1,
+                "Mes a proyectar", meses_disponibles,
+                index=meses_disponibles.index(mes_hoy) if mes_hoy in meses_disponibles else len(meses_disponibles) - 1,
                 key="snice_mes_vigencia",
             )
             resumen_mes = load_resumen_vigentes_en_mes(mes_sel, fracciones_exactas_snice, fracciones_prefijo_snice)
@@ -1066,7 +1067,20 @@ with tab_tyasa:
                     {"label": "Países", "value": int(resumen_mes.get("paises_distintos") or 0)},
                 ])
 
-                col_v1, col_v2 = st.columns([1.2, 1])
+                serie_vig = pd.DataFrame({"mes": meses_disponibles})
+                serie_vig["volumen_ton"] = serie_vig["mes"].map(
+                    lambda m: (load_resumen_vigentes_en_mes(m, fracciones_exactas_snice, fracciones_prefijo_snice) or {})
+                    .get("volumen_total") or 0
+                ) / 1000
+                st.plotly_chart(
+                    barras_resaltada(
+                        serie_vig, x="mes", y="volumen_ton", resaltar=mes_sel,
+                        titulo="Volumen con permiso vigente, mes por mes", height=260,
+                    ),
+                    width="stretch",
+                )
+
+                col_v1, col_v2 = st.columns([1, 1.2])
                 with col_v1:
                     fracciones_mes = load_fracciones_vigentes_en_mes(mes_sel, fracciones_exactas_snice, fracciones_prefijo_snice)
                     fracciones_mes = fracciones_mes.copy()
@@ -1081,21 +1095,46 @@ with tab_tyasa:
                         ),
                         width="stretch",
                     )
+                avisos_mes = load_avisos_vigentes_en_mes(
+                    mes_sel, fracciones_exactas_snice, fracciones_prefijo_snice, limite=200,
+                )
                 with col_v2:
-                    avisos_mes = load_avisos_vigentes_en_mes(
-                        mes_sel, fracciones_exactas_snice, fracciones_prefijo_snice, limite=200,
+                    gantt = avisos_mes.nlargest(12, "volumen_aviso").copy()
+                    gantt["volumen_ton"] = gantt["volumen_aviso"] / 1000
+                    gantt["etiqueta"] = (
+                        gantt["razon_social"].map(_empresa_corta) + " · " + gantt["fraccion_arancelaria"]
                     )
-                    tabla_v = avisos_mes.copy()
-                    tabla_v["volumen_aviso"] = (tabla_v["volumen_aviso"] / 1000).map(lambda v: f"{v:,.2f}")
-                    tabla_v = tabla_v.rename(columns={
-                        "razon_social": "Razón social", "fraccion_arancelaria": "Fracción",
-                        "pais_origen": "País", "volumen_aviso": "Volumen (ton)",
-                        "inicio_vigencia": "Inicio vigencia", "fin_vigencia": "Fin vigencia",
-                    })
-                    st.dataframe(
-                        tabla_v[["Razón social", "Fracción", "País", "Volumen (ton)", "Inicio vigencia", "Fin vigencia"]],
-                        hide_index=True, width="stretch", height=360,
+                    # Dos avisos de la misma empresa y fracción tendrían la misma
+                    # etiqueta y se encimarían en una sola fila.
+                    dup = gantt.groupby("etiqueta").cumcount()
+                    gantt.loc[dup > 0, "etiqueta"] += dup[dup > 0].map(lambda k: f" ({k + 1})")
+                    st.plotly_chart(
+                        linea_vigencias(
+                            gantt, inicio="inicio_vigencia", fin="fin_vigencia", etiqueta="etiqueta",
+                            valor="volumen_ton", mes=mes_sel,
+                            titulo=f"Los avisos más grandes vigentes en {mes_sel} y cuándo vencen",
+                        ),
+                        width="stretch",
                     )
+
+                tabla_v = avisos_mes.copy()
+                tabla_v["volumen_aviso"] = tabla_v["volumen_aviso"] / 1000
+                tabla_v = tabla_v.rename(columns={
+                    "razon_social": "Razón social", "fraccion_arancelaria": "Fracción",
+                    "pais_origen": "País", "volumen_aviso": "Volumen (ton)",
+                    "inicio_vigencia": "Inicio vigencia", "fin_vigencia": "Fin vigencia",
+                })
+                st.dataframe(
+                    tabla_v[["Razón social", "Fracción", "País", "Volumen (ton)", "Inicio vigencia", "Fin vigencia"]],
+                    hide_index=True, width="stretch", height=300,
+                    column_config={
+                        "Volumen (ton)": st.column_config.ProgressColumn(
+                            format="%.1f", min_value=0, max_value=float(tabla_v["Volumen (ton)"].max() or 1),
+                        ),
+                        "Inicio vigencia": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                        "Fin vigencia": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                    },
+                )
 
         st.divider()
         st.markdown(f"##### Comparación por cuatrimestre (CANACERO — {movimiento_dash_label})")
@@ -1155,26 +1194,32 @@ with tab_tyasa:
                     {"label": "Variación total", "value": round(delta_total_pct, 1), "suffix": " %"},
                 ])
 
-                comp_chart = comp.head(15).copy()
-                comp_chart["delta_abs_ton"] = comp_chart["delta_ton"].abs()
+                comp_chart = comp[comp["delta_ton"] != 0].head(15).copy()
+                comp_chart["etiqueta_corta"] = comp_chart["etiqueta"].map(lambda e: e if len(e) <= 60 else e[:59] + "…")
                 st.plotly_chart(
-                    barras_horizontales(
-                        comp_chart, x="delta_abs_ton", y="etiqueta",
+                    barras_divergentes(
+                        comp_chart, x="delta_ton", y="etiqueta_corta",
                         titulo=f"Mayores variaciones ({movimiento_dash_label}): {cuatri_sel} vs. {cuatri_anterior}",
-                        x_label="Ton (variación absoluta)", max_items=15,
+                        x_label="Ton (cambio)",
                     ),
                     width="stretch",
                 )
+                st.caption("A la derecha las que subieron, a la izquierda las que bajaron.")
 
                 tabla_comp = comp[["etiqueta", "anterior", "actual", "delta_ton", "delta_pct", "direccion"]].copy()
-                for c in ("anterior", "actual", "delta_ton"):
-                    tabla_comp[c] = tabla_comp[c].map(lambda v: f"{v:,.1f}")
-                tabla_comp["delta_pct"] = tabla_comp["delta_pct"].map(lambda v: f"{v:.1f}%")
                 tabla_comp.columns = [
                     "Fracción", f"{cuatri_anterior} (ton)", f"{cuatri_sel} (ton)",
                     "Variación (ton)", "Variación (%)", "Dirección",
                 ]
-                st.dataframe(tabla_comp, hide_index=True, width="stretch", height=360)
+                st.dataframe(
+                    tabla_comp.style
+                    .format({
+                        f"{cuatri_anterior} (ton)": "{:,.1f}", f"{cuatri_sel} (ton)": "{:,.1f}",
+                        "Variación (ton)": "{:+,.1f}", "Variación (%)": "{:+.1f}%",
+                    })
+                    .map(_color_signo, subset=["Variación (ton)", "Variación (%)"]),
+                    hide_index=True, width="stretch", height=360,
+                )
 
                 st.markdown(f"###### Precio unitario — mismos cuatrimestres ({movimiento_dash_label})")
                 st.caption("Precio promedio por fracción en cada cuatrimestre.")
@@ -1252,6 +1297,9 @@ with tab_tyasa:
                     )
 
                     top_precio_chart = precio_comp[precio_comp["confiable"]].head(10).copy()
+                    top_precio_chart["etiqueta_corta"] = top_precio_chart["etiqueta"].map(
+                        lambda e: e if len(e) <= 55 else e[:54] + "…"
+                    )
                     if top_precio_chart.empty:
                         st.info(
                             "Ninguna fracción con variación de precio en este periodo pasó el filtro de "
@@ -1259,15 +1307,15 @@ with tab_tyasa:
                             "la tabla de abajo, o la gráfica de histórico mensual más abajo en la página."
                         )
                     else:
-                        top_precio_chart["delta_abs_pct"] = top_precio_chart["delta_precio_pct"].abs()
                         st.plotly_chart(
-                            barras_horizontales(
-                                top_precio_chart, x="delta_abs_pct", y="etiqueta",
+                            cambio_puntos(
+                                top_precio_chart, y="etiqueta_corta", antes="precio_anterior", despues="precio_actual",
                                 titulo=f"Mayor variación de precio unitario ({movimiento_dash_label}): {cuatri_sel} vs. {cuatri_anterior}",
-                                x_label="% variación absoluta", max_items=10,
+                                nombre_antes=cuatri_anterior, nombre_despues=cuatri_sel, sufijo="/t",
                             ),
                             width="stretch",
                         )
+                        st.caption("Punto gris: precio antes. Punto de color: precio ahora (azul subió, naranja bajó).")
                     st.caption("Ver histórico completo de una fracción en 'Precio unitario CANACERO' más abajo.")
 
                     def _motivo_no_confiable(row) -> str:
@@ -1282,17 +1330,20 @@ with tab_tyasa:
                         ["etiqueta", "precio_anterior", "precio_actual", "delta_precio_pct", "volatilidad", "confiable"]
                     ].copy()
                     tabla_precio["confiable"] = precio_comp.apply(_motivo_no_confiable, axis=1)
-                    tabla_precio["precio_anterior"] = tabla_precio["precio_anterior"].map(lambda v: f"${v:,.0f}")
-                    tabla_precio["precio_actual"] = tabla_precio["precio_actual"].map(lambda v: f"${v:,.0f}")
-                    tabla_precio["delta_precio_pct"] = tabla_precio["delta_precio_pct"].map(lambda v: f"{v:+.1f}%")
-                    tabla_precio["volatilidad"] = tabla_precio["volatilidad"].map(
-                        lambda v: f"{v:.2f}" if pd.notna(v) else "N/D"
-                    )
                     tabla_precio.columns = [
                         "Fracción", f"{cuatri_anterior} (USD/ton)", f"{cuatri_sel} (USD/ton)",
                         "Variación precio (%)", "Volatilidad histórica (CV)", "Confiabilidad",
                     ]
-                    st.dataframe(tabla_precio, hide_index=True, width="stretch", height=320)
+                    st.dataframe(
+                        tabla_precio.style
+                        .format({
+                            f"{cuatri_anterior} (USD/ton)": "${:,.0f}", f"{cuatri_sel} (USD/ton)": "${:,.0f}",
+                            "Variación precio (%)": "{:+.1f}%", "Volatilidad histórica (CV)": "{:.2f}",
+                        }, na_rep="N/D")
+                        .map(_color_signo, subset=["Variación precio (%)"])
+                        .map(lambda v: "color:#92400E" if v else "", subset=["Confiabilidad"]),
+                        hide_index=True, width="stretch", height=320,
+                    )
 
         st.divider()
         st.markdown(f"##### Precio unitario CANACERO (USD/ton) — {movimiento_dash_label}")
@@ -1317,13 +1368,22 @@ with tab_tyasa:
                 )
                 serie_precio = precio_frac[precio_frac["fraccion"] == fraccion_precio_sel].sort_values("periodo_mes")
                 st.plotly_chart(
-                    linea_temporal(
+                    linea_con_promedio(
                         serie_precio, x="periodo_mes", y="precio_usd_ton",
                         titulo=f"Precio unitario mensual ({movimiento_dash_label}) — {etiquetas_fraccion.get(fraccion_precio_sel, fraccion_precio_sel)}",
-                        y_label="USD/ton", show_area=True,
+                        prefijo="$", sufijo="/t",
                     ),
                     width="stretch",
                 )
+                ult_p = serie_precio.iloc[-1]
+                hace_12 = (pd.Period(ult_p["periodo_mes"], freq="M") - 12).strftime("%Y-%m")
+                previo_p = serie_precio[serie_precio["periodo_mes"] == hace_12]
+                if not previo_p.empty:
+                    var_12 = (ult_p["precio_usd_ton"] / previo_p["precio_usd_ton"].iloc[0] - 1) * 100
+                    st.caption(
+                        f"{ult_p['periodo_mes']}: ${ult_p['precio_usd_ton']:,.0f}/t · "
+                        f"{'▲' if var_12 >= 0 else '▼'} {abs(var_12):.1f}% vs. {hace_12}."
+                    )
             with col_p2:
                 periodo_scatter_sel = st.selectbox(
                     "Periodo (para el scatter)", periodos_canacero, index=0, key="precio_scatter_periodo",
@@ -1336,16 +1396,16 @@ with tab_tyasa:
                         lambda f: etiquetas_fraccion.get(f, f)
                     )
                     st.plotly_chart(
-                        scatter(
-                            scatter_df, x="volumen_total", y="precio_usd_ton", hover_name="etiqueta",
+                        scatter_cuadrantes(
+                            scatter_df, x="volumen_total", y="precio_usd_ton", etiqueta="etiqueta",
                             titulo=f"Volumen vs. precio unitario ({movimiento_dash_label}) — {periodo_scatter_sel}",
-                            x_label="Ton", y_label="USD/ton",
+                            x_label="Ton (escala logarítmica)", y_label="USD/ton",
                         ),
                         width="stretch",
                     )
                     st.caption(
-                        "Cada punto es una fracción. Abajo a la derecha = mucho volumen a precio bajo "
-                        "(posible presión de oferta); arriba a la izquierda = poco volumen a precio alto."
+                        "Cada punto es una fracción; las líneas punteadas son la mediana. "
+                        "Abajo a la derecha = mucho volumen a precio bajo (posible presión de oferta)."
                     )
 
         st.divider()
@@ -1378,14 +1438,25 @@ with tab_tyasa:
                 fracciones_top_chart = fracciones_top_full[
                     fracciones_top_full["fraccion"].isin(seleccion_chart)
                 ].copy()
-                fracciones_top_chart["etiqueta"] = fracciones_top_chart["fraccion"].map(etiquetas_chart)
-                st.plotly_chart(
-                    barras_horizontales(
-                        fracciones_top_chart, x="volumen_total", y="etiqueta",
-                        titulo=f"Fracciones CANACERO por volumen nacional ({movimiento_dash_label})", x_label="Ton",
-                        max_items=len(seleccion_chart),
-                    ),
-                    width="stretch",
+                idx_rank = periodos_canacero.index(periodo_canacero_sel) if periodo_canacero_sel in periodos_canacero else -1
+                prev_rank = (
+                    periodos_canacero[idx_rank + 1] if 0 <= idx_rank < len(periodos_canacero) - 1 else None
+                )
+                prev_rank_df = (
+                    load_top_fracciones_tyasa(prev_rank, movimiento_dash, limite=100, fracciones=fracciones_filtro)
+                    .rename(columns={"volumen_total": "volumen_ton"})
+                    if prev_rank else None
+                )
+                st.html(
+                    _card_open(
+                        f"Fracciones CANACERO por volumen nacional ({movimiento_dash_label}) — {periodo_canacero_sel}",
+                        f"% sobre el total del mes · variación vs. {prev_rank or 'mes anterior'}",
+                    )
+                    + _top_fracciones_html(
+                        fracciones_top_chart.rename(columns={"volumen_total": "volumen_ton"}), prev_rank_df,
+                        n=len(seleccion_chart), total=fracciones_top_full["volumen_total"].sum(),
+                    )
+                    + _CARD_CLOSE
                 )
 
         st.divider()
@@ -1402,15 +1473,26 @@ with tab_tyasa:
 
         col_f1, col_f2 = st.columns([1.3, 1])
         with col_f1:
-            serie_fraccion = load_serie_fraccion(fraccion_sel, movimiento_dash)
+            serie_fraccion = load_serie_fraccion(fraccion_sel, movimiento_dash).sort_values("periodo_mes").copy()
+            serie_fraccion["promedio_12m"] = serie_fraccion["volumen_total"].rolling(12, min_periods=6).mean()
             st.plotly_chart(
-                linea_temporal(
-                    serie_fraccion, x="periodo_mes", y="volumen_total",
+                barras_con_tendencia(
+                    serie_fraccion, x="periodo_mes", y_barras="volumen_total", y_linea="promedio_12m",
                     titulo=f"Volumen nacional mensual ({movimiento_dash_label}) — {etiquetas_fraccion[fraccion_sel]}",
-                    y_label="Ton", show_area=True,
+                    y_label="Ton", nombre_barras="Mes", nombre_linea="Promedio 12 meses",
+                    sufijo=" t", decimales=0,
                 ),
                 width="stretch",
             )
+            if len(serie_fraccion) >= 24:
+                ult12 = serie_fraccion["volumen_total"].iloc[-12:].sum()
+                ant12 = serie_fraccion["volumen_total"].iloc[-24:-12].sum()
+                if ant12:
+                    var12 = (ult12 / ant12 - 1) * 100
+                    st.caption(
+                        f"Últimos 12 meses: {ult12:,.0f} t · "
+                        f"{'▲' if var12 >= 0 else '▼'} {abs(var12):.1f}% vs. los 12 anteriores."
+                    )
 
         with col_f2:
             avisos_fraccion = load_avisos_fraccion_exacta(periodo_sel, fraccion_sel)
@@ -1422,7 +1504,7 @@ with tab_tyasa:
                 )
             else:
                 tabla_f = avisos_fraccion.copy()
-                tabla_f["volumen_aviso"] = (tabla_f["volumen_aviso"] / 1000).map(lambda v: f"{v:,.2f}")
+                tabla_f["volumen_aviso"] = tabla_f["volumen_aviso"] / 1000
                 tabla_f = tabla_f.rename(columns={
                     "razon_social": "Razón social", "pais_origen": "País",
                     "volumen_aviso": "Volumen (ton)", "fecha_tramite": "Fecha trámite",
@@ -1430,7 +1512,15 @@ with tab_tyasa:
                 })
                 st.dataframe(
                     tabla_f[["Razón social", "País", "Volumen (ton)", "Fecha trámite", "Inicio vigencia", "Fin vigencia"]],
-                    hide_index=True, width="stretch", height=280,
+                    hide_index=True, width="stretch", height=360,
+                    column_config={
+                        "Volumen (ton)": st.column_config.ProgressColumn(
+                            format="%.1f", min_value=0, max_value=float(tabla_f["Volumen (ton)"].max() or 1),
+                        ),
+                        "Fecha trámite": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                        "Inicio vigencia": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                        "Fin vigencia": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                    },
                 )
 
         with st.expander("Ranking de empresas (SNICE, fracciones TYASA)"):
@@ -1448,13 +1538,14 @@ with tab_tyasa:
                 st.caption("Sin datos para este filtro.")
             else:
                 tabla = ranking_df.head(30).copy()
-                tabla["volumen_total"] = (tabla["volumen_total"] / 1000).map(lambda v: f"{v:,.1f}")
-                tabla = tabla.rename(columns={
-                    "razon_social": "Razón social", "volumen_total": "Volumen (ton)",
-                    "avisos": "Avisos", "fracciones_distintas": "Fracciones TYASA", "paises_distintos": "Países",
-                })
-                cols_mostrar = [c for c in ["Razón social", "Volumen (ton)", "Avisos", "Fracciones TYASA", "Países"] if c in tabla.columns]
-                st.dataframe(tabla[cols_mostrar], hide_index=True, width="stretch")
+                tabla["empresa"] = tabla["razon_social"].map(_empresa_corta)
+                tabla["tag"] = tabla["razon_social"].map(
+                    lambda r: "TYASA" if r.upper() == RAZON_SOCIAL_TYASA_SNICE.upper() else None
+                )
+                st.html(
+                    _card_open("Ranking de empresas", f"Avisos SNICE · periodo {periodo_sel}")
+                    + _rank_list_html(tabla, "empresa", "tag") + _CARD_CLOSE
+                )
 
 st.caption(
     f"Datos: SNICE — Secretaría de Economía · Periodo {periodo_sel} · "

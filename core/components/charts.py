@@ -235,7 +235,7 @@ def estructura_100(df, fila, categoria, valor, titulo="", orden_filas=None, heig
 
 
 def barras_con_tendencia(df, x, y_barras, y_linea, titulo="", y_label="", nombre_barras="Mensual",
-                         nombre_linea="Tendencia", hover_extra=None, sufijo="", height=None):
+                         nombre_linea="Tendencia", hover_extra=None, sufijo="", height=None, decimales=1):
     """Barras tenues para el dato mensual (que puede brincar mucho) + una línea
     para la tendencia suavizada (ej. 12 meses móviles), en el MISMO eje y la
     misma unidad. <hover_extra>: columna con texto ya formateado para el tooltip."""
@@ -247,17 +247,17 @@ def barras_con_tendencia(df, x, y_barras, y_linea, titulo="", y_label="", nombre
         x=df[x], y=df[y_barras], name=nombre_barras,
         marker=dict(color="rgba(74,123,167,0.35)", line=dict(width=0)),
         customdata=extra,
-        hovertemplate=f"{nombre_barras}: <b>%{{y:.1f}}{sufijo}</b> %{{customdata}}<extra></extra>",
+        hovertemplate=f"{nombre_barras}: <b>%{{y:,.{decimales}f}}{sufijo}</b> %{{customdata}}<extra></extra>",
     ))
     fig.add_trace(go.Scatter(
         x=df[x], y=df[y_linea], name=nombre_linea, mode="lines",
         line=dict(color=COLORS["primary"], width=2.5),
-        hovertemplate=f"{nombre_linea}: <b>%{{y:.1f}}{sufijo}</b><extra></extra>",
+        hovertemplate=f"{nombre_linea}: <b>%{{y:,.{decimales}f}}{sufijo}</b><extra></extra>",
     ))
     ultimo = df.dropna(subset=[y_linea]).iloc[-1] if df[y_linea].notna().any() else None
     if ultimo is not None:
         fig.add_annotation(
-            x=ultimo[x], y=ultimo[y_linea], text=f"<b>{ultimo[y_linea]:.1f}{sufijo}</b>",
+            x=ultimo[x], y=ultimo[y_linea], text=f"<b>{ultimo[y_linea]:,.{decimales}f}{sufijo}</b>",
             showarrow=False, xanchor="left", xshift=6, font=dict(size=11, color=COLORS["primary"]),
         )
     layout = dict(_LAYOUT_BASE)
@@ -270,7 +270,7 @@ def barras_con_tendencia(df, x, y_barras, y_linea, titulo="", y_label="", nombre
     return fig
 
 
-def barras_divergentes(df, x, y, titulo="", x_label="Ton", resaltar=None, height=None):
+def barras_divergentes(df, x, y, titulo="", x_label="Ton", resaltar=None, height=None, sufijo=" t"):
     """Barras horizontales que crecen a la derecha si <x> es positivo y a la
     izquierda si es negativo (ganadores/perdedores). Si <df> trae columnas
     "anterior" y "actual", se muestran en el tooltip. <resaltar>: texto que, si
@@ -288,21 +288,229 @@ def barras_divergentes(df, x, y, titulo="", x_label="Ton", resaltar=None, height
         cliponaxis=False,
         customdata=d[["anterior", "actual"]].to_numpy() if tiene_detalle else None,
         hovertemplate=(
-            "<b>%{y}</b><br>Cambio: %{x:+,.0f} t<br>Antes %{customdata[0]:,.0f} t → ahora %{customdata[1]:,.0f} t<extra></extra>"
-            if tiene_detalle else "<b>%{y}</b><br>Cambio: %{x:+,.0f} t<extra></extra>"
+            f"<b>%{{y}}</b><br>Cambio: %{{x:+,.0f}}{sufijo}<br>"
+            f"Antes %{{customdata[0]:,.0f}}{sufijo} → ahora %{{customdata[1]:,.0f}}{sufijo}<extra></extra>"
+            if tiene_detalle else f"<b>%{{y}}</b><br>Cambio: %{{x:+,.0f}}{sufijo}<extra></extra>"
         ),
     ))
     etiquetas = list(d[y])
     ticktext = [f"<b>{e}</b>" if resaltar and resaltar in e else e for e in etiquetas]
-    rango = d[x].abs().max() * 1.25 or 1
+    # Rango ajustado a los datos (con aire para el texto de afuera), no simétrico:
+    # si casi todo bajó, la mitad derecha quedaría vacía.
+    lo, hi = min(d[x].min(), 0), max(d[x].max(), 0)
+    aire = (hi - lo) * 0.22 or 1
     layout = dict(_LAYOUT_BASE)
     layout["margin"] = dict(_LAYOUT_BASE["margin"], l=12, r=24)
     fig.update_layout(
         **layout, height=height or max(260, 26 * len(d) + 90), title=_title(titulo), showlegend=False,
-        xaxis=dict(_XAX, title=x_label, range=[-rango, rango], zeroline=True, zerolinecolor="#94A3B8",
+        xaxis=dict(_XAX, title=x_label, range=[lo - aire, hi + aire], zeroline=True, zerolinecolor="#94A3B8",
                    zerolinewidth=1, showgrid=True, gridcolor=_GRID),
         yaxis=dict(_YAX, title="", showgrid=False, tickmode="array", tickvals=etiquetas, ticktext=ticktext,
                    tickfont=dict(size=10, color="#334155"), automargin=True, type="category"),
+    )
+    return fig
+
+
+_ENTRA, _SALE, _NETO = "#2a78d6", "#eb6834", "#1E293B"
+
+
+def espejo_flujos(df, x, entra, sale, neto, titulo="", nombre_entra="Importación",
+                  nombre_sale="Exportación", nombre_neto="Consumo aparente", height=None):
+    """Lo que entra como barras hacia arriba, lo que sale hacia abajo (espejo) y el
+    neto como línea encima — todo en toneladas, un solo eje."""
+    if df.empty:
+        return _empty_fig(titulo)
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=df[x], y=df[entra], name=nombre_entra, marker=dict(color=_ENTRA, line=dict(width=0)),
+        hovertemplate=f"{nombre_entra}: <b>%{{y:,.0f}} t</b><extra></extra>",
+    ))
+    fig.add_trace(go.Bar(
+        x=df[x], y=-df[sale], name=nombre_sale, marker=dict(color=_SALE, line=dict(width=0)),
+        customdata=df[sale], hovertemplate=f"{nombre_sale}: <b>%{{customdata:,.0f}} t</b><extra></extra>",
+    ))
+    fig.add_trace(go.Scatter(
+        x=df[x], y=df[neto], name=nombre_neto, mode="lines+markers",
+        line=dict(color=_NETO, width=2), marker=dict(size=5, color=_NETO, line=dict(color="#FFFFFF", width=1.5)),
+        hovertemplate=f"{nombre_neto}: <b>%{{y:,.0f}} t</b><extra></extra>",
+    ))
+    ultimo = df.iloc[-1]
+    fig.add_annotation(
+        x=ultimo[x], y=ultimo[neto], text=f"<b>{ultimo[neto]:,.0f} t</b>", showarrow=False,
+        xanchor="left", xshift=8, font=dict(size=11, color=_NETO),
+    )
+    layout = dict(_LAYOUT_BASE)
+    layout["margin"] = dict(_LAYOUT_BASE["margin"], r=70, b=70)
+    fig.update_layout(
+        **layout, height=height or 420, title=_title(titulo), barmode="relative", bargap=0.2,
+        hovermode="x unified",
+        xaxis=dict(_XAX, title=""),
+        yaxis=dict(_YAX, title="Ton", zeroline=True, zerolinecolor="#94A3B8", zerolinewidth=1),
+    )
+    return fig
+
+
+def barras_resaltada(df, x, y, resaltar, titulo="", y_label="Ton", sufijo=" t", height=None):
+    """Barras verticales en un tono tenue, con la barra <resaltar> (valor de <x>)
+    en el color principal — para ubicar el mes elegido dentro de la serie."""
+    if df.empty:
+        return _empty_fig(titulo)
+    colores = [COLORS["primary"] if v == resaltar else "rgba(74,123,167,0.35)" for v in df[x]]
+    fig = go.Figure(go.Bar(
+        x=df[x], y=df[y], marker=dict(color=colores, line=dict(width=0)),
+        hovertemplate=f"%{{x}}: <b>%{{y:,.0f}}{sufijo}</b><extra></extra>",
+    ))
+    sel = df[df[x] == resaltar]
+    if not sel.empty:
+        fig.add_annotation(
+            x=resaltar, y=sel[y].iloc[0], text=f"<b>{sel[y].iloc[0]:,.0f}{sufijo}</b>", showarrow=False,
+            yanchor="bottom", yshift=4, font=dict(size=11, color=COLORS["primary"]),
+        )
+    fig.update_layout(
+        **_LAYOUT_BASE, height=height or 280, title=_title(titulo), showlegend=False, bargap=0.25,
+        xaxis=dict(_XAX, title="", type="category"),
+        yaxis=dict(_YAX, title=y_label, rangemode="tozero"),
+    )
+    return fig
+
+
+def linea_vigencias(df, inicio, fin, etiqueta, valor, mes, titulo="", height=None):
+    """Una barra por aviso, de su inicio a su fin de vigencia; el mes <mes>
+    (YYYY-MM) va sombreado para ver qué avisos lo cubren y cuánto les queda."""
+    if df.empty:
+        return _empty_fig(titulo)
+    d = df.copy()
+    d[inicio] = pd.to_datetime(d[inicio])
+    d[fin] = pd.to_datetime(d[fin])
+    d = d.sort_values(valor, ascending=False)
+    fig = go.Figure(go.Bar(
+        y=d[etiqueta], base=d[inicio], x=(d[fin] - d[inicio]).dt.total_seconds() * 1000,
+        orientation="h", marker=dict(color=COLORS["primary"], opacity=0.8, line=dict(width=0)),
+        text=[f"{v:,.0f} t" for v in d[valor]], textposition="inside", insidetextanchor="start",
+        textfont=dict(size=10, color="#FFFFFF"),
+        customdata=list(zip(d[inicio].dt.strftime("%d/%m/%Y"), d[fin].dt.strftime("%d/%m/%Y"), d[valor])),
+        hovertemplate="<b>%{y}</b><br>%{customdata[0]} → %{customdata[1]}<br>%{customdata[2]:,.1f} t<extra></extra>",
+    ))
+    ini_mes = pd.Timestamp(f"{mes}-01")
+    fig.add_vrect(
+        x0=ini_mes, x1=ini_mes + pd.offsets.MonthBegin(1), fillcolor="#eda100", opacity=0.15, line_width=0,
+        annotation_text=mes, annotation_position="top left", annotation_font=dict(size=10, color="#92400E"),
+    )
+    layout = dict(_LAYOUT_BASE)
+    layout["margin"] = dict(_LAYOUT_BASE["margin"], l=12)
+    fig.update_layout(
+        **layout, height=height or max(300, 24 * len(d) + 90), title=_title(titulo), showlegend=False,
+        xaxis=dict(_XAX, type="date", title="", showgrid=True, gridcolor=_GRID, tickformat="%b %Y"),
+        yaxis=dict(_YAX, title="", showgrid=False, autorange="reversed", type="category", automargin=True,
+                   tickfont=dict(size=10, color="#334155")),
+    )
+    return fig
+
+
+def cambio_puntos(df, y, antes, despues, titulo="", nombre_antes="Antes", nombre_despues="Ahora",
+                  prefijo="$", sufijo="", height=None):
+    """Gráfica de mancuerna: un punto gris para <antes>, uno de color para
+    <despues> y la línea entre ambos. Muestra el nivel Y el cambio a la vez
+    (ej. precio de un cuatrimestre contra el anterior)."""
+    if df.empty:
+        return _empty_fig(titulo)
+    d = df.copy()
+    d["_var"] = (d[despues] - d[antes]) / d[antes] * 100
+    d = d.sort_values("_var", ascending=True)
+    fig = go.Figure()
+    for _, r in d.iterrows():
+        fig.add_trace(go.Scatter(
+            x=[r[antes], r[despues]], y=[r[y], r[y]], mode="lines", showlegend=False, hoverinfo="skip",
+            line=dict(color="#CBD5E1", width=3),
+        ))
+    fig.add_trace(go.Scatter(
+        x=d[antes], y=d[y], mode="markers", name=nombre_antes,
+        marker=dict(size=10, color="#94A3B8", line=dict(color="#FFFFFF", width=2)),
+        hovertemplate=f"{nombre_antes}: <b>{prefijo}%{{x:,.0f}}{sufijo}</b><extra></extra>",
+    ))
+    colores = [_SUBE if v >= 0 else _BAJA for v in d["_var"]]
+    fig.add_trace(go.Scatter(
+        x=d[despues], y=d[y], mode="markers+text", name=nombre_despues,
+        marker=dict(size=11, color=colores, line=dict(color="#FFFFFF", width=2)),
+        text=[f"{'▲' if v >= 0 else '▼'} {abs(v):.0f}%" for v in d["_var"]],
+        textposition=["middle right" if v >= 0 else "middle left" for v in d["_var"]],
+        textfont=dict(size=10, color="#475569"),
+        customdata=d["_var"],
+        hovertemplate=f"{nombre_despues}: <b>{prefijo}%{{x:,.0f}}{sufijo}</b> (%{{customdata:+.1f}}%)<extra></extra>",
+    ))
+    layout = dict(_LAYOUT_BASE)
+    layout["margin"] = dict(_LAYOUT_BASE["margin"], l=12, r=40)
+    fig.update_layout(
+        **layout, height=height or max(280, 30 * len(d) + 80), title=_title(titulo),
+        hovermode="y unified", showlegend=False,
+        xaxis=dict(_XAX, title="", tickprefix=prefijo, ticksuffix=sufijo, showgrid=True, gridcolor=_GRID),
+        yaxis=dict(_YAX, title="", showgrid=False, type="category", automargin=True,
+                   tickfont=dict(size=10, color="#334155")),
+    )
+    return fig
+
+
+def linea_con_promedio(df, x, y, ventana=12, titulo="", y_label="", prefijo="", sufijo="", height=None):
+    """Serie mensual + su promedio móvil de <ventana> meses (punteado), con el
+    último valor rotulado. El eje no arranca en cero: sirve para precios."""
+    if df.empty:
+        return _empty_fig(titulo)
+    d = df.sort_values(x).copy()
+    d["_prom"] = d[y].rolling(ventana, min_periods=max(3, ventana // 2)).mean()
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=d[x], y=d["_prom"], name=f"Promedio {ventana} meses", mode="lines",
+        line=dict(color="#94A3B8", width=2, dash="dot"),
+        hovertemplate=f"Promedio {ventana}m: {prefijo}%{{y:,.0f}}{sufijo}<extra></extra>",
+    ))
+    fig.add_trace(go.Scatter(
+        x=d[x], y=d[y], name="Mensual", mode="lines+markers",
+        line=dict(color=COLORS["primary"], width=2), marker=dict(size=4, color=COLORS["primary"]),
+        hovertemplate=f"Mensual: <b>{prefijo}%{{y:,.0f}}{sufijo}</b><extra></extra>",
+    ))
+    ultimo = d.iloc[-1]
+    fig.add_annotation(
+        x=ultimo[x], y=ultimo[y], text=f"<b>{prefijo}{ultimo[y]:,.0f}{sufijo}</b>", showarrow=False,
+        xanchor="left", xshift=6, font=dict(size=11, color=COLORS["primary"]),
+    )
+    layout = dict(_LAYOUT_BASE)
+    layout["margin"] = dict(_LAYOUT_BASE["margin"], r=60, b=70)
+    fig.update_layout(
+        **layout, height=height or 360, title=_title(titulo), hovermode="x unified",
+        xaxis=dict(_XAX, title=""),
+        yaxis=dict(_YAX, title=y_label, tickprefix=prefijo, ticksuffix=sufijo),
+    )
+    return fig
+
+
+def scatter_cuadrantes(df, x, y, etiqueta, titulo="", x_label="", y_label="", log_x=True, height=None):
+    """Dispersión con líneas en la mediana de cada eje, para leerla por
+    cuadrantes. Eje X logarítmico por defecto: los volúmenes van de decenas a
+    cientos de miles de toneladas."""
+    if df.empty:
+        return _empty_fig(titulo)
+    d = df[df[x] > 0] if log_x else df
+    fig = go.Figure(go.Scatter(
+        x=d[x], y=d[y], mode="markers",
+        marker=dict(size=10, color=COLORS["primary"], opacity=0.75, line=dict(color="#FFFFFF", width=1.5)),
+        customdata=d[etiqueta],
+        hovertemplate="<b>%{customdata}</b><br>%{x:,.0f} t · $%{y:,.0f}/t<extra></extra>",
+    ))
+    med_x, med_y = d[x].median(), d[y].median()
+    fig.add_vline(x=med_x, line=dict(color="#94A3B8", width=1, dash="dot"))
+    fig.add_hline(y=med_y, line=dict(color="#94A3B8", width=1, dash="dot"),
+                  annotation_text=f"mediana ${med_y:,.0f}", annotation_position="top left",
+                  annotation_font=dict(size=9, color="#64748B"))
+    for texto, xp, yp, xa, ya in (
+        ("Mucho volumen,<br>precio bajo", 0.99, 0.1, "right", "bottom"),
+        ("Poco volumen,<br>precio alto", 0.01, 0.98, "left", "top"),
+    ):
+        fig.add_annotation(text=texto, xref="paper", yref="paper", x=xp, y=yp, xanchor=xa, yanchor=ya,
+                           showarrow=False, align=xa, font=dict(size=9, color="#94A3B8"))
+    fig.update_layout(
+        **_LAYOUT_BASE, height=height or 360, title=_title(titulo), showlegend=False,
+        xaxis=dict(_XAX, title=x_label, type="log" if log_x else "linear", showgrid=True, gridcolor=_GRID),
+        yaxis=dict(_YAX, title=y_label, tickprefix="$"),
     )
     return fig
 
