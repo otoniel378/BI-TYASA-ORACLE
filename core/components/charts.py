@@ -180,6 +180,133 @@ def pareto(df, x, y, y_acum="PCT_ACUM", titulo="Analisis Pareto", max_items=25):
     return fig
 
 
+# Paleta categórica para composiciones apiladas — validada (separación entre
+# vecinos con y sin daltonismo) sobre fondo blanco. "Otros" va siempre en gris.
+_CAT_ESTRUCTURA = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"]
+_TEXTO_OSCURO_EN = {"#1baf7a", "#eda100", "#e87ba4", "#B8BCC4"}
+_OTROS = "#B8BCC4"
+# Par divergente (sube / baja) — neutro a propósito: que suban las importaciones
+# no es "bueno" ni "malo" por sí solo, así que no se usa verde/rojo.
+_SUBE, _BAJA = "#2a78d6", "#eb6834"
+
+
+def estructura_100(df, fila, categoria, valor, titulo="", orden_filas=None, height=240):
+    """Barras horizontales 100% apiladas: una barra por <fila> (ej. periodo) con
+    la composición por <categoria>. El color sigue a la categoría, no a su
+    posición, así que la misma categoría tiene el mismo color en cada barra.
+    Más de 6 categorías se juntan en "Otros"."""
+    if df.empty:
+        return _empty_fig(titulo)
+    d = df.copy()
+    cats = [c for c in d[categoria].drop_duplicates() if c != "Otros"]
+    if len(cats) > len(_CAT_ESTRUCTURA):
+        d.loc[d[categoria].isin(cats[len(_CAT_ESTRUCTURA):]), categoria] = "Otros"
+        cats = cats[:len(_CAT_ESTRUCTURA)]
+    d = d.groupby([fila, categoria], as_index=False)[valor].sum()
+    d["pct"] = d[valor] / d.groupby(fila)[valor].transform("sum") * 100
+    if "Otros" in set(d[categoria]):
+        cats.append("Otros")
+    filas = orden_filas or list(d[fila].drop_duplicates())
+
+    fig = go.Figure()
+    for i, cat in enumerate(cats):
+        color = _OTROS if cat == "Otros" else _CAT_ESTRUCTURA[i]
+        sub = d[d[categoria] == cat].set_index(fila).reindex(filas)
+        pct = sub["pct"].fillna(0)
+        fig.add_trace(go.Bar(
+            y=filas, x=pct, name=cat, orientation="h",
+            marker=dict(color=color, line=dict(color="#FFFFFF", width=2)),
+            text=[f"{p:.0f}%" if p >= 6 else "" for p in pct],
+            textposition="inside", insidetextanchor="middle",
+            textfont=dict(size=10, color="#1F2937" if color in _TEXTO_OSCURO_EN else "#FFFFFF"),
+            customdata=sub[valor].fillna(0),
+            hovertemplate=f"<b>{cat}</b><br>%{{y}}: %{{x:.1f}}% · %{{customdata:,.0f}} t<extra></extra>",
+        ))
+    layout = dict(_LAYOUT_BASE)
+    layout["legend"] = dict(_LAYOUT_BASE["legend"], y=-0.25, traceorder="normal")
+    layout["margin"] = dict(_LAYOUT_BASE["margin"], l=64, b=60)
+    fig.update_layout(
+        **layout, height=height, title=_title(titulo), barmode="stack",
+        xaxis=dict(_XAX, range=[0, 100], ticksuffix="%", showgrid=False),
+        yaxis=dict(_YAX, title="", showgrid=False, autorange="reversed", type="category",
+                   tickfont=dict(size=11, color="#334155")),
+    )
+    return fig
+
+
+def barras_con_tendencia(df, x, y_barras, y_linea, titulo="", y_label="", nombre_barras="Mensual",
+                         nombre_linea="Tendencia", hover_extra=None, sufijo="", height=None):
+    """Barras tenues para el dato mensual (que puede brincar mucho) + una línea
+    para la tendencia suavizada (ej. 12 meses móviles), en el MISMO eje y la
+    misma unidad. <hover_extra>: columna con texto ya formateado para el tooltip."""
+    if df.empty:
+        return _empty_fig(titulo)
+    extra = df[hover_extra] if hover_extra else [""] * len(df)
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=df[x], y=df[y_barras], name=nombre_barras,
+        marker=dict(color="rgba(74,123,167,0.35)", line=dict(width=0)),
+        customdata=extra,
+        hovertemplate=f"{nombre_barras}: <b>%{{y:.1f}}{sufijo}</b> %{{customdata}}<extra></extra>",
+    ))
+    fig.add_trace(go.Scatter(
+        x=df[x], y=df[y_linea], name=nombre_linea, mode="lines",
+        line=dict(color=COLORS["primary"], width=2.5),
+        hovertemplate=f"{nombre_linea}: <b>%{{y:.1f}}{sufijo}</b><extra></extra>",
+    ))
+    ultimo = df.dropna(subset=[y_linea]).iloc[-1] if df[y_linea].notna().any() else None
+    if ultimo is not None:
+        fig.add_annotation(
+            x=ultimo[x], y=ultimo[y_linea], text=f"<b>{ultimo[y_linea]:.1f}{sufijo}</b>",
+            showarrow=False, xanchor="left", xshift=6, font=dict(size=11, color=COLORS["primary"]),
+        )
+    layout = dict(_LAYOUT_BASE)
+    layout["margin"] = dict(_LAYOUT_BASE["margin"], r=44, b=70)
+    fig.update_layout(
+        **layout, height=height or 380, title=_title(titulo), hovermode="x unified", bargap=0.25,
+        xaxis=dict(_XAX, title=""),
+        yaxis=dict(_YAX, title=y_label, ticksuffix=sufijo, rangemode="tozero"),
+    )
+    return fig
+
+
+def barras_divergentes(df, x, y, titulo="", x_label="Ton", resaltar=None, height=None):
+    """Barras horizontales que crecen a la derecha si <x> es positivo y a la
+    izquierda si es negativo (ganadores/perdedores). Si <df> trae columnas
+    "anterior" y "actual", se muestran en el tooltip. <resaltar>: texto que, si
+    aparece en la etiqueta, la pone en negritas (ej. la propia TYASA)."""
+    if df.empty:
+        return _empty_fig(titulo)
+    d = df.sort_values(x, ascending=True)
+    colores = [_SUBE if v > 0 else _BAJA for v in d[x]]
+    textos = [f"{'▲' if v > 0 else '▼'} {abs(v):,.0f}" for v in d[x]]
+    tiene_detalle = {"anterior", "actual"} <= set(d.columns)
+    fig = go.Figure(go.Bar(
+        y=d[y], x=d[x], orientation="h",
+        marker=dict(color=colores, line=dict(width=0)),
+        text=textos, textposition="outside", textfont=dict(size=10, color="#475569"),
+        cliponaxis=False,
+        customdata=d[["anterior", "actual"]].to_numpy() if tiene_detalle else None,
+        hovertemplate=(
+            "<b>%{y}</b><br>Cambio: %{x:+,.0f} t<br>Antes %{customdata[0]:,.0f} t → ahora %{customdata[1]:,.0f} t<extra></extra>"
+            if tiene_detalle else "<b>%{y}</b><br>Cambio: %{x:+,.0f} t<extra></extra>"
+        ),
+    ))
+    etiquetas = list(d[y])
+    ticktext = [f"<b>{e}</b>" if resaltar and resaltar in e else e for e in etiquetas]
+    rango = d[x].abs().max() * 1.25 or 1
+    layout = dict(_LAYOUT_BASE)
+    layout["margin"] = dict(_LAYOUT_BASE["margin"], l=12, r=24)
+    fig.update_layout(
+        **layout, height=height or max(260, 26 * len(d) + 90), title=_title(titulo), showlegend=False,
+        xaxis=dict(_XAX, title=x_label, range=[-rango, rango], zeroline=True, zerolinecolor="#94A3B8",
+                   zerolinewidth=1, showgrid=True, gridcolor=_GRID),
+        yaxis=dict(_YAX, title="", showgrid=False, tickmode="array", tickvals=etiquetas, ticktext=ticktext,
+                   tickfont=dict(size=10, color="#334155"), automargin=True, type="category"),
+    )
+    return fig
+
+
 def scatter(df, x, y, size=None, color=None, hover_name=None, titulo="", x_label="", y_label=""):
     if df.empty:
         return _empty_fig(titulo)

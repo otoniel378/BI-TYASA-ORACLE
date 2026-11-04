@@ -36,7 +36,9 @@ import pandas as pd
 from config import COLORS
 from core.components.kpi_cards import render_kpi_row
 from core.components.tables import _boton_descarga
-from core.components.charts import linea_temporal, barras_horizontales, scatter
+from core.components.charts import (
+    linea_temporal, barras_horizontales, scatter, estructura_100, barras_divergentes, barras_con_tendencia,
+)
 from fracciones_tyasa import FRACCIONES_TYASA, FRACCIONES_TYASA_PREFIJO, RAZON_SOCIAL_TYASA_SNICE
 from fracciones_tyasa_ligie import FRACCIONES_TYASA_DESCRIPCION
 from tigie_partidas import PARTIDAS, categoria_de
@@ -254,6 +256,96 @@ def _agrupar_por_partida(fracciones_df: pd.DataFrame) -> pd.DataFrame:
         .sort_values("volumen_total", ascending=False)
     )
     return agg
+
+
+# Tonos de texto para "subió / bajó" — mismo par divergente que las gráficas
+# (core/components/charts.py), un paso más oscuro para que se lea como texto.
+_TXT_SUBE, _TXT_BAJA = "#1F5FAE", "#C2410C"
+
+
+def _flecha_pct(actual: float, anterior: float | None) -> str:
+    if anterior is None:
+        return ""
+    if not anterior:
+        return f"<span style='color:{_TXT_SUBE};font-weight:600;'>nueva</span>" if actual else ""
+    var = (actual - anterior) / anterior * 100
+    color, flecha = (_TXT_SUBE, "▲") if var >= 0 else (_TXT_BAJA, "▼")
+    return f"<span style='color:{color};font-weight:600;'>{flecha} {abs(var):.1f}%</span>"
+
+
+def _flecha_pp(actual: float, anterior: float | None) -> str:
+    if anterior is None:
+        return ""
+    dif = actual - anterior
+    color, flecha = (_TXT_SUBE, "▲") if dif >= 0 else (_TXT_BAJA, "▼")
+    return f"<span style='color:{color};font-weight:600;'>{flecha} {abs(dif):.1f} pp</span>"
+
+
+def _top_fracciones_html(actual: pd.DataFrame, anterior: pd.DataFrame | None, n: int = 5) -> str:
+    """Ranking tipo "Power Rank" de fracciones: barra, toneladas, % del mes y
+    variación contra el mes anterior. <actual>/<anterior>: columnas fraccion
+    (8 dígitos) y volumen_ton."""
+    if actual.empty:
+        return f"<p style='color:{COLORS['text_light']};font-size:0.85rem;'>Sin datos para este periodo.</p>"
+    total = actual["volumen_ton"].sum() or 1
+    top = actual.nlargest(n, "volumen_ton")
+    max_vol = top["volumen_ton"].max() or 1
+    previo = anterior.set_index("fraccion")["volumen_ton"] if anterior is not None and not anterior.empty else None
+    filas = []
+    for i, r in enumerate(top.itertuples(), start=1):
+        desc = FRACCIONES_TYASA_DESCRIPCION.get(r.fraccion, "sin descripción")
+        ant = float(previo.get(r.fraccion, 0)) if previo is not None else None
+        filas.append(f"""
+        <div style="display:grid;grid-template-columns:22px 1fr 150px;align-items:center;gap:10px;padding:7px 0;
+                    border-bottom:1px solid #F1F5F9;">
+          <div style="font-size:0.8rem;font-weight:700;color:{COLORS['text_light']};text-align:center;">{i}</div>
+          <div style="min-width:0;">
+            <div title="{desc}" style="font-size:0.82rem;color:{COLORS['text']};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              <b>{r.fraccion}</b> <span style="color:{COLORS['text_light']};">{desc}</span>
+            </div>
+            <div style="height:6px;background:{COLORS['background']};border-radius:4px;margin-top:5px;overflow:hidden;">
+              <div style="height:100%;width:{max(r.volumen_ton / max_vol * 100, 2):.0f}%;background:{COLORS['primary']};border-radius:4px;"></div>
+            </div>
+          </div>
+          <div style="text-align:right;font-size:0.82rem;font-weight:700;color:{COLORS['text']};">
+            {r.volumen_ton:,.0f} t
+            <div style="font-size:0.7rem;font-weight:500;color:{COLORS['text_light']};">
+              {r.volumen_ton / total * 100:.1f}% del mes {_flecha_pct(r.volumen_ton, ant)}
+            </div>
+          </div>
+        </div>""")
+    return "".join(filas)
+
+
+_PAIS_CORTO = {
+    "CHINA (REPUBLICA POPULAR)": "China",
+    "COREA (REPUBLICA DE) (COREA DEL SUR)": "Corea del Sur",
+    "ESTADOS UNIDOS DE AMERICA": "Estados Unidos",
+    "TAIWAN (REPUBLICA DE CHINA)": "Taiwán",
+    "PAISES BAJOS (REINO DE LOS) (HOLANDA)": "Países Bajos",
+    "JAPON": "Japón",
+}
+
+
+def _pais_corto(pais: str) -> str:
+    return _PAIS_CORTO.get(pais) or pais.split(" (")[0].strip().title()
+
+
+def _empresa_corta(razon_social: str) -> str:
+    nombre = razon_social.strip()
+    for sufijo in (" SA DE CV", " S DE RL DE CV", " SAPI DE CV", " SAB DE CV", " SA"):
+        if nombre.upper().endswith(sufijo):
+            nombre = nombre[: -len(sufijo)]
+            break
+    if razon_social.upper() == RAZON_SOCIAL_TYASA_SNICE.upper():
+        return "TYASA (T A 2000)"
+    return nombre if len(nombre) <= 34 else nombre[:33] + "…"
+
+
+def _periodo_anterior_bronze(periodo: str) -> str | None:
+    """Mes inmediato anterior que todavía tiene detalle por aviso (BRONZE)."""
+    previos = [p for p in periodos if p < periodo and p in periodos_bronze]
+    return max(previos) if previos else None
 
 
 # ---------------------------------------------------------------------------
@@ -622,51 +714,250 @@ with tab_tyasa:
         serie_tyasa["volumen_total"] = serie_tyasa["volumen_total"].fillna(0) / 1000
         serie_tyasa["serie"] = f"SNICE — TYASA ({RAZON_SOCIAL_TYASA_SNICE})"
 
-        serie_comparativa = pd.concat([serie_canacero, serie_snice_total, serie_tyasa], ignore_index=True)
+        serie_comparativa = pd.concat([serie_canacero, serie_snice_total], ignore_index=True)
 
-        col_chart, col_top5 = st.columns([2, 1])
-        with col_chart:
+        col_nac, col_part = st.columns(2)
+        with col_nac:
             st.plotly_chart(
                 linea_temporal(
                     serie_comparativa, x="periodo_mes", y="volumen_total", color="serie",
-                    titulo="Volumen mensual — nacional (catálogo TYASA, Importación) vs. TYASA",
-                    y_label="Ton", height=480,
+                    titulo="Importación nacional del catálogo TYASA",
+                    y_label="Ton", height=400,
                 ),
                 width="stretch",
             )
-        with col_top5:
-            st.markdown("###### Top 5 fracciones por periodo")
+            st.caption("CANACERO: lo que realmente entró. SNICE: lo que se avisó que iba a entrar.")
+
+        with col_part:
+            # TYASA pesa ~5-10% de lo importado: en la misma escala que el total
+            # nacional su línea quedaba pegada al cero, así que va en su propia
+            # gráfica como porcentaje. Siempre contra el catálogo COMPLETO: la serie
+            # de TYASA (GOLD_SNICE_TOP_EMPRESAS) no distingue fracción, así que
+            # dividirla entre un subconjunto filtrado inflaría la participación.
+            if serie_tyasa.empty:
+                st.info("Sin avisos SNICE de TYASA todavía.")
+            else:
+                snice_catalogo = load_serie_tyasa_gold(FRACCIONES_TYASA_T, FRACCIONES_TYASA_PREFIJO_T)
+                part = snice_catalogo.rename(columns={"periodo": "periodo_mes", "volumen_total": "snice_ton"})
+                part = part[["periodo_mes", "snice_ton"]].copy()
+                part["snice_ton"] = part["snice_ton"] / 1000
+                part = part.merge(
+                    serie_tyasa[["periodo_mes", "volumen_total"]].rename(columns={"volumen_total": "tyasa_ton"}),
+                    on="periodo_mes", how="left",
+                )
+                part = part[part["periodo_mes"] >= serie_tyasa["periodo_mes"].min()].copy()
+                part["tyasa_ton"] = part["tyasa_ton"].fillna(0)
+                part["participacion"] = (part["tyasa_ton"] / part["snice_ton"] * 100).where(part["snice_ton"] > 0)
+                part = part.dropna(subset=["participacion"]).sort_values("periodo_mes")
+                # TYASA tramita avisos por lotes (meses en 0 y luego picos), así que
+                # el dato mensual brinca mucho; la tendencia se lee en la
+                # participación anualizada: 12 meses de TYASA / 12 meses del total.
+                part["participacion_12m"] = (
+                    part["tyasa_ton"].rolling(12, min_periods=12).sum()
+                    / part["snice_ton"].rolling(12, min_periods=12).sum() * 100
+                )
+                part["detalle"] = part.apply(
+                    lambda r: f"· {r['tyasa_ton']:,.0f} t de {r['snice_ton']:,.0f} t", axis=1,
+                )
+                st.plotly_chart(
+                    barras_con_tendencia(
+                        part, x="periodo_mes", y_barras="participacion", y_linea="participacion_12m",
+                        titulo="Participación de TYASA en lo importado (SNICE)", y_label="",
+                        nombre_barras="Mes", nombre_linea="Últimos 12 meses", hover_extra="detalle",
+                        sufijo="%", height=400,
+                    ),
+                    width="stretch",
+                )
+                ultimo_part = part.iloc[-1]
+                st.caption(
+                    f"{ultimo_part['periodo_mes']}: TYASA avisó {ultimo_part['tyasa_ton']:,.0f} t de "
+                    f"{ultimo_part['snice_ton']:,.0f} t ({ultimo_part['participacion']:.1f}%)."
+                    + ("" if usa_catalogo_completo else " Se calcula contra todo el catálogo, no solo las fracciones elegidas.")
+                )
+
+        st.markdown("###### Top 5 fracciones del mes")
+        c_top5_sel, _ = st.columns([1, 3])
+        with c_top5_sel:
             periodo_top5_sel = st.selectbox(
                 "Periodo a comparar", periodos_canacero, index=0, key="snice_top5_periodo",
             )
 
-            st.caption(f"CANACERO (nacional, Importación) — {periodo_top5_sel}")
-            top5_canacero = load_top_fracciones_tyasa(
-                periodo_top5_sel, "IMPORTACION", limite=5, fracciones=fracciones_filtro,
+        col_t1, col_t2 = st.columns(2)
+        with col_t1:
+            idx_can = periodos_canacero.index(periodo_top5_sel)
+            prev_can = periodos_canacero[idx_can + 1] if idx_can + 1 < len(periodos_canacero) else None
+            top_can = load_top_fracciones_tyasa(
+                periodo_top5_sel, "IMPORTACION", limite=500, fracciones=fracciones_filtro,
+            ).rename(columns={"volumen_total": "volumen_ton"})
+            prev_can_df = (
+                load_top_fracciones_tyasa(prev_can, "IMPORTACION", limite=500, fracciones=fracciones_filtro)
+                .rename(columns={"volumen_total": "volumen_ton"})
+                if prev_can else None
             )
-            if top5_canacero.empty:
-                st.caption("Sin datos para este periodo.")
-            else:
-                t1 = top5_canacero.copy()
-                t1["Fracción"] = t1["fraccion"].map(
-                    lambda f: f"{f} — {FRACCIONES_TYASA_DESCRIPCION.get(f, 'sin descripción')}"
-                )
-                t1["Volumen (ton)"] = t1["volumen_total"].map(lambda v: f"{v:,.0f}")
-                st.dataframe(t1[["Fracción", "Volumen (ton)"]], hide_index=True, width="stretch", height=210)
+            st.html(
+                _card_open(f"CANACERO — {periodo_top5_sel}",
+                           f"Importación nacional · variación vs. {prev_can or 'mes anterior'}")
+                + _top_fracciones_html(top_can, prev_can_df) + _CARD_CLOSE
+            )
 
-            st.caption(f"SNICE (avisos) — {periodo_top5_sel}")
-            top5_snice = load_top_fracciones_tyasa_gold(
-                periodo_top5_sel, fracciones_exactas_snice, fracciones_prefijo_snice,
-            )
-            if top5_snice.empty:
-                st.caption("Sin datos para este periodo.")
-            else:
-                t2 = top5_snice.sort_values("volumen_total", ascending=False).head(5).copy()
-                t2["Fracción"] = t2["fraccion_arancelaria"].map(
-                    lambda f: f"{f} — {FRACCIONES_TYASA_DESCRIPCION.get(f, 'sin descripción')}"
+        with col_t2:
+            def _snice_por_fraccion(periodo: str) -> pd.DataFrame:
+                df = load_top_fracciones_tyasa_gold(periodo, fracciones_exactas_snice, fracciones_prefijo_snice)
+                if df.empty:
+                    return pd.DataFrame(columns=["fraccion", "volumen_ton"])
+                df = df.assign(fraccion=df["fraccion_arancelaria"].str[:8], volumen_ton=df["volumen_total"] / 1000)
+                return df.groupby("fraccion", as_index=False)["volumen_ton"].sum()
+
+            previos_snice = [p for p in periodos if p < periodo_top5_sel]
+            prev_snice = max(previos_snice) if previos_snice else None
+            st.html(
+                _card_open(f"SNICE (avisos) — {periodo_top5_sel}",
+                           f"Lo que se avisó · variación vs. {prev_snice or 'mes anterior'}")
+                + _top_fracciones_html(
+                    _snice_por_fraccion(periodo_top5_sel),
+                    _snice_por_fraccion(prev_snice) if prev_snice else None,
                 )
-                t2["Volumen (ton)"] = (t2["volumen_total"] / 1000).map(lambda v: f"{v:,.0f}")
-                st.dataframe(t2[["Fracción", "Volumen (ton)"]], hide_index=True, width="stretch", height=210)
+                + _CARD_CLOSE
+            )
+
+        # ── Origen de las importaciones (SNICE, por país) ──────────────────
+        st.divider()
+        st.markdown("##### Origen de las importaciones (SNICE)")
+        prev_bronze = _periodo_anterior_bronze(periodo_sel) if en_ventana else None
+        if not en_ventana:
+            st.info(f"{periodo_sel} ya no tiene detalle por país. Elige un periodo más reciente en el filtro de arriba.")
+        else:
+            st.caption(
+                f"De dónde viene el acero del catálogo TYASA — {periodo_sel}"
+                + (f" contra {prev_bronze}." if prev_bronze else ".")
+            )
+            paises_act = load_paises_fracciones(periodo_sel, fracciones_exactas_snice, fracciones_prefijo_snice)
+            paises_ant = (
+                load_paises_fracciones(prev_bronze, fracciones_exactas_snice, fracciones_prefijo_snice)
+                if prev_bronze else pd.DataFrame()
+            )
+            if paises_act.empty:
+                st.info("Sin avisos con país de origen para este periodo.")
+            else:
+                def _por_pais(df: pd.DataFrame) -> pd.DataFrame:
+                    out = df.assign(pais=df["pais_origen"].map(_pais_corto), volumen_ton=df["volumen_total"] / 1000)
+                    out = out.groupby("pais", as_index=False).agg(
+                        volumen_ton=("volumen_ton", "sum"), empresas=("empresas_distintas", "sum"),
+                    )
+                    out["share"] = out["volumen_ton"] / (out["volumen_ton"].sum() or 1) * 100
+                    return out.sort_values("volumen_ton", ascending=False)
+
+                pa = _por_pais(paises_act)
+                pp = _por_pais(paises_ant) if not paises_ant.empty else pd.DataFrame(columns=pa.columns)
+
+                # El color sigue al país: los 6 principales de ESTE mes, en el
+                # mismo orden y color en ambas barras; el resto se junta en "Otros".
+                principales = pa["pais"].head(6).tolist()
+                filas_estr = []
+                for etiqueta, df_p in ((prev_bronze, pp), (periodo_sel, pa)):
+                    if etiqueta is None or df_p.empty:
+                        continue
+                    tmp = df_p.assign(categoria=df_p["pais"].where(df_p["pais"].isin(principales), "Otros"), fila=etiqueta)
+                    filas_estr.append(tmp)
+                estr = pd.concat(filas_estr, ignore_index=True)
+                estr["orden"] = estr["categoria"].map({p: i for i, p in enumerate(principales)}).fillna(99)
+                estr = estr.sort_values("orden")
+
+                col_estr, col_china = st.columns([1.6, 1])
+                with col_estr:
+                    st.plotly_chart(
+                        estructura_100(
+                            estr, fila="fila", categoria="categoria", valor="volumen_ton",
+                            titulo="Estructura por país de origen (% del volumen)",
+                            orden_filas=[f for f in (prev_bronze, periodo_sel) if f in set(estr["fila"])],
+                            height=260,
+                        ),
+                        width="stretch",
+                    )
+
+                    previo_share = pp.set_index("pais")["share"] if not pp.empty else None
+                    filas_html = []
+                    for r in pa.head(8).itertuples():
+                        ant = float(previo_share.get(r.pais, 0)) if previo_share is not None else None
+                        filas_html.append(
+                            f"<tr><td style='padding:5px 8px;'>{r.pais}</td>"
+                            f"<td style='padding:5px 8px;text-align:right;'>{r.volumen_ton:,.0f} t</td>"
+                            f"<td style='padding:5px 8px;text-align:right;font-weight:700;'>{r.share:.1f}%</td>"
+                            f"<td style='padding:5px 8px;text-align:right;'>{_flecha_pp(r.share, ant)}</td></tr>"
+                        )
+                    st.html(
+                        f"<table style='width:100%;border-collapse:collapse;font-size:0.8rem;color:{COLORS['text']};'>"
+                        f"<tr style='color:{COLORS['text_light']};font-size:0.72rem;text-transform:uppercase;'>"
+                        f"<th style='text-align:left;padding:4px 8px;'>País</th><th style='text-align:right;padding:4px 8px;'>Volumen</th>"
+                        f"<th style='text-align:right;padding:4px 8px;'>Part.</th>"
+                        f"<th style='text-align:right;padding:4px 8px;'>vs. {prev_bronze or '—'}</th></tr>"
+                        + "".join(filas_html) + "</table>"
+                    )
+
+                with col_china:
+                    china = pa[pa["pais"] == "China"]
+                    china_ant = pp[pp["pais"] == "China"] if not pp.empty else pd.DataFrame()
+                    ton_cn = float(china["volumen_ton"].sum())
+                    share_cn = float(china["share"].sum())
+                    ton_cn_ant = float(china_ant["volumen_ton"].sum()) if prev_bronze else None
+                    share_cn_ant = float(china_ant["share"].sum()) if prev_bronze else None
+                    lugar_cn = (pa["pais"].tolist().index("China") + 1) if not china.empty else None
+                    st.html(
+                        _card_open("Acero chino", f"Catálogo TYASA · {periodo_sel}")
+                        + f"<div style='font-size:2rem;font-weight:700;color:{COLORS['primary']};line-height:1.1;'>{ton_cn:,.0f} t</div>"
+                        + f"<div style='font-size:0.82rem;margin:4px 0 14px;'>{_flecha_pct(ton_cn, ton_cn_ant)}"
+                        + (f" <span style='color:{COLORS['text_light']};'>vs. {prev_bronze}</span>" if prev_bronze else "")
+                        + "</div>"
+                        + f"<div style='display:grid;grid-template-columns:1fr 1fr;gap:10px;'>"
+                        + f"<div style='background:{COLORS['background']};border-radius:10px;padding:10px 12px;'>"
+                        + f"<div style='font-size:0.7rem;color:{COLORS['text_light']};text-transform:uppercase;'>Participación</div>"
+                        + f"<div style='font-size:1.25rem;font-weight:700;color:{COLORS['text']};'>{share_cn:.1f}%</div>"
+                        + f"<div style='font-size:0.75rem;'>{_flecha_pp(share_cn, share_cn_ant)}</div></div>"
+                        + f"<div style='background:{COLORS['background']};border-radius:10px;padding:10px 12px;'>"
+                        + f"<div style='font-size:0.7rem;color:{COLORS['text_light']};text-transform:uppercase;'>Lugar</div>"
+                        + f"<div style='font-size:1.25rem;font-weight:700;color:{COLORS['text']};'>{f'#{lugar_cn}' if lugar_cn else '—'}</div>"
+                        + f"<div style='font-size:0.75rem;color:{COLORS['text_light']};'>de {len(pa)} países</div></div>"
+                        + "</div>" + _CARD_CLOSE
+                    )
+
+        # ── Importadores que más cambiaron (SNICE) ─────────────────────────
+        st.divider()
+        st.markdown("##### Importadores que más cambiaron (SNICE)")
+        if not en_ventana or not prev_bronze:
+            st.info("Se necesitan dos meses con detalle por empresa para comparar. Elige el periodo más reciente arriba.")
+        else:
+            st.caption(f"Cambio en toneladas avisadas: {periodo_sel} contra {prev_bronze}.")
+            emp_act = load_empresas_fracciones(periodo_sel, fracciones_exactas_snice, fracciones_prefijo_snice, limite=2000)
+            emp_ant = load_empresas_fracciones(prev_bronze, fracciones_exactas_snice, fracciones_prefijo_snice, limite=2000)
+            comp_emp = (
+                emp_act[["razon_social", "volumen_total"]].rename(columns={"volumen_total": "actual"})
+                .merge(emp_ant[["razon_social", "volumen_total"]].rename(columns={"volumen_total": "anterior"}),
+                       on="razon_social", how="outer")
+                .fillna(0)
+            )
+            comp_emp[["actual", "anterior"]] = comp_emp[["actual", "anterior"]] / 1000
+            comp_emp["delta"] = comp_emp["actual"] - comp_emp["anterior"]
+            comp_emp["empresa"] = comp_emp["razon_social"].map(_empresa_corta)
+
+            ganadores = comp_emp[comp_emp["delta"] > 0].nlargest(8, "delta")
+            perdedores = comp_emp[comp_emp["delta"] < 0].nsmallest(8, "delta")
+            st.plotly_chart(
+                barras_divergentes(
+                    pd.concat([ganadores, perdedores]), x="delta", y="empresa",
+                    titulo="Los 8 que más subieron y los 8 que más bajaron", x_label="Ton (cambio)",
+                    resaltar="TYASA",
+                ),
+                width="stretch",
+            )
+            fila_tyasa = comp_emp[comp_emp["razon_social"].str.upper() == RAZON_SOCIAL_TYASA_SNICE.upper()]
+            if not fila_tyasa.empty:
+                ft = fila_tyasa.iloc[0]
+                st.caption(
+                    f"TYASA: {ft['anterior']:,.0f} t → {ft['actual']:,.0f} t "
+                    f"({'+' if ft['delta'] >= 0 else '−'}{abs(ft['delta']):,.0f} t)."
+                )
+            else:
+                st.caption("TYASA no tuvo avisos en ninguno de los dos meses.")
 
         st.divider()
         st.markdown("##### Consumo aparente en México (Importación − Exportación)")
