@@ -515,6 +515,55 @@ def scatter_cuadrantes(df, x, y, etiqueta, titulo="", x_label="", y_label="", lo
     return fig
 
 
+def trayectoria_ranking(df, x, entidad, rank, resaltar=None, titulo="", height=None):
+    """Gráfica de posiciones (bump chart): una línea por <entidad> con su lugar
+    en el ranking en cada <x>; el #1 va arriba. Todas en gris salvo <resaltar>,
+    para no necesitar un color por entidad."""
+    if df.empty:
+        return _empty_fig(titulo)
+    d = df.sort_values([entidad, x])
+    orden_x = sorted(d[x].unique())
+    fig = go.Figure()
+    # Traza invisible con todas las categorías en orden: fija el orden del eje X
+    # para que las anotaciones puedan ubicarse por índice (ver abajo).
+    fig.add_trace(go.Scatter(x=orden_x, y=[1] * len(orden_x), mode="markers", showlegend=False,
+                             hoverinfo="skip", marker=dict(opacity=0)))
+    entidades =[e for e in d[entidad].unique() if e != resaltar] + ([resaltar] if resaltar in set(d[entidad]) else [])
+    for e in entidades:
+        sub = d[d[entidad] == e]
+        es_sel = e == resaltar
+        color = COLORS["primary"] if es_sel else "#CBD5E1"
+        fig.add_trace(go.Scatter(
+            x=sub[x].tolist(), y=sub[rank].astype(int).tolist(), mode="lines+markers", name=e, showlegend=False,
+            line=dict(color=color, width=3 if es_sel else 1.5),
+            marker=dict(size=9 if es_sel else 6, color=color, line=dict(color="#FFFFFF", width=1.5)),
+            hovertemplate=f"<b>{e}</b><br>%{{x}}: lugar #%{{y}}<extra></extra>",
+        ))
+        ult = sub.iloc[-1]
+        # Solo se rotula al final de la gráfica: una etiqueta a media gráfica (la
+        # entidad dejó de aparecer) se enciman con las líneas. Se ve en el tooltip.
+        if ult[x] != orden_x[-1]:
+            continue
+        # Por índice, no por texto: una categoría como "2025" en una anotación se
+        # toma como la posición 2025 del eje y lo estira hasta allá.
+        fig.add_annotation(
+            x=orden_x.index(ult[x]), y=ult[rank], text=f"<b>{e}</b>" if es_sel else e, showarrow=False,
+            xanchor="left", xshift=8,
+            font=dict(size=10, color="#1E293B" if es_sel else "#64748B"),
+        )
+    max_rank = int(d[rank].max())
+    layout = dict(_LAYOUT_BASE)
+    layout["margin"] = dict(_LAYOUT_BASE["margin"], r=230)
+    fig.update_layout(
+        **layout, height=height or max(320, 22 * min(max_rank, 25) + 90), title=_title(titulo),
+        xaxis=dict(_XAX, title="", type="category"),
+        # Rango invertido a mano: el lugar #1 arriba.
+        yaxis=dict(_YAX, title="Lugar", range=[max_rank + 0.5, 0.5], dtick=1 if max_rank <= 25 else 5,
+                   showgrid=False, zeroline=False),
+    )
+    return fig
+
+
 def scatter(df, x, y, size=None, color=None, hover_name=None, titulo="", x_label="", y_label=""):
     if df.empty:
         return _empty_fig(titulo)

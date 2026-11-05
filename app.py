@@ -295,6 +295,7 @@ PAGINAS = {
     ("aceros_planos", "negros", "apn_forecast"): "pages.ap_negros.04_forecasting",
     ("aceros_planos", "negros", "apn_mix"):      "pages.ap_negros.05_mix_productos",
     ("aceros_planos", "negros", "apn_intel"):    "pages.ap_negros.06_inteligencia_clientes",
+    ("aceros_planos", "negros", "apn_rank"):     "pages.ap_negros.07_power_rank",
     ("aceros_planos", "negros", "apn_mercado"):  "pages.ap_negros.08_mercado_contexto",
     
     # ACEROS PLANOS - Galvanizados
@@ -443,6 +444,7 @@ if seccion == "aceros_planos" and subseccion == "negros":
         "apn_alertas":  "Alertas",
         "apn_resumen":  "Resumen",
         "apn_seg":      "Segmentación",
+        "apn_rank":     "Power Rank",
         "apn_series":   "Series",
         "apn_forecast": "Pronóstico",
         "apn_mix":      "Mix",
