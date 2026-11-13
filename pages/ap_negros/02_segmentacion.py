@@ -18,12 +18,14 @@ from aceros_planos.negros.loaders import (
     load_gold_demanda_cliente,
     load_gold_cliente_producto,
     load_ventas_limpias,
+    get_fecha_corte,
 )
 from aceros_planos.negros.analytics.segmentacion import (
     clasificar_abc,
     resumen_abc,
     calcular_diversificacion,
     clientes_monoproducto,
+    calcular_concentracion_hhi,
 )
 from core.components.kpi_cards import render_kpi_row, seccion_titulo
 from core.components.filters import sidebar_header, filtro_clientes, aplicar_filtro_lista
@@ -85,12 +87,17 @@ n_a = len(df_abc[df_abc["CLASE"] == "A"]) if not df_abc.empty else 0
 n_b = len(df_abc[df_abc["CLASE"] == "B"]) if not df_abc.empty else 0
 n_c = len(df_abc[df_abc["CLASE"] == "C"]) if not df_abc.empty else 0
 pct_a = round(n_a / total_clientes * 100, 1) if total_clientes > 0 else 0
+hhi = calcular_concentracion_hhi(df_abc)
+nivel_hhi = "baja" if hhi < 1500 else "moderada" if hhi <= 2500 else "alta"
 
 render_kpi_row([
     {"label": "Total Clientes",      "value": total_clientes},
     {"label": "Clase A (80% vol.)",  "value": n_a, "suffix": f" ({pct_a}%)"},
     {"label": "Clase B",             "value": n_b},
     {"label": "Clase C",             "value": n_c},
+    {"label": "Concentración (HHI)", "value": hhi, "suffix": f" · {nivel_hhi}",
+     "help_text": "Suma de los cuadrados de la participación % de cada cliente (0 a 10,000). "
+                  "Menos de 1,500: baja; 1,500 a 2,500: moderada; más de 2,500: alta."},
 ])
 st.divider()
 
@@ -194,7 +201,7 @@ _ER  = "#DC2626"; _WA = "#D97706"; _OK = "#16A34A"
 _T1  = "#0F172A"; _T2 = "#64748B"; _T3 = "#94A3B8"
 
 from datetime import date as _date
-_hoy = pd.Timestamp.today()
+_hoy = get_fecha_corte() or pd.Timestamp.today().normalize()  # último día con datos
 
 tab_fuga, tab_enfr, tab_mix = st.tabs(["En Fuga (>60d)", "Enfriándose (vol -30%)", "Cambiando Mix"])
 

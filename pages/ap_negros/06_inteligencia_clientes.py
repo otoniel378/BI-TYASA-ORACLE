@@ -19,8 +19,13 @@ from aceros_planos.negros.loaders import (
     load_gold_cliente_producto,
     load_transacciones_cliente,
     get_catalogo_clientes,
+    get_fecha_corte,
 )
 from mercado_noticias.analytics.ai_analysis import generar_briefing_cliente
+
+# Fecha de referencia para recencia y comparaciones anuales: último día con datos
+# cargados (si los datos están al día, coincide con hoy).
+_CORTE = get_fecha_corte() or pd.Timestamp.today().normalize()
 
 # ── API key ──────────────────────────────────────────────────────────────────
 try:
@@ -110,7 +115,7 @@ def _salud(df_perfil_row) -> tuple:
         uc = pd.to_datetime(df_perfil_row.get("ULTIMA_COMPRA"), errors="coerce")
         if pd.isna(uc):
             return "sin datos", 999, _T3
-        dias = (pd.Timestamp.today() - uc).days
+        dias = (_CORTE - uc).days
         if dias <= 90:
             return "Activo", dias, _OK
         elif dias <= 180:
@@ -130,7 +135,7 @@ def _pred_proximo(df_trans: pd.DataFrame, ultima_compra) -> str:
         gaps = [(periodos[i+1]-periodos[i]).days for i in range(len(periodos)-1)]
         avg  = sum(gaps) / len(gaps)
         pred = pd.to_datetime(ultima_compra) + pd.Timedelta(days=avg)
-        diff = (pred - pd.Timestamp.today()).days
+        diff = (pred - _CORTE).days
         label = f"~{abs(diff)}d {'atrasado' if diff < 0 else 'restantes'}"
         return f"{pred.strftime('%d %b %Y')}  ({label})"
     except Exception:
@@ -220,7 +225,7 @@ def _html_profile(df_row, clase, antiguedad_str, n_prods, estado, dias,
 def _html_yoy(df_mens: pd.DataFrame) -> str:
     if df_mens.empty:
         return '<div class="ic-card"><div class="ic-label">Año vs Año anterior</div><div style="color:#94A3B8;font-size:12px;">Sin datos</div></div>'
-    hoy   = date.today()
+    hoy   = _CORTE.date()
     anio  = hoy.year
     ant   = anio - 1
     t_act = df_mens[df_mens["ANIO"] == anio]["PESO_TON"].sum()
@@ -336,7 +341,7 @@ def _chart_24m(df_mens: pd.DataFrame) -> go.Figure:
 
 
 def _chart_yoy_bars(df_mens: pd.DataFrame) -> go.Figure:
-    hoy  = date.today()
+    hoy  = _CORTE.date()
     anio = hoy.year
     ant  = anio - 1
     def _monthly(yr):
@@ -471,7 +476,7 @@ def render():
 
     try:
         pc = pd.to_datetime(perf.get("PRIMERA_COMPRA"), errors="coerce") if perf else None
-        ant_yrs = (pd.Timestamp.today() - pc).days / 365 if pc and not pd.isna(pc) else 0
+        ant_yrs = (_CORTE - pc).days / 365 if pc and not pd.isna(pc) else 0
         antiguedad_str = f"{ant_yrs:.1f} años"
     except Exception:
         antiguedad_str = "—"
@@ -582,10 +587,10 @@ def render():
         mes_low_n  = int(monthly_by_mes.idxmin()) if not monthly_by_mes.empty else 0
         mes_peak = _MES[mes_peak_n] if 1 <= mes_peak_n <= 12 else "—"
         mes_low  = _MES[mes_low_n]  if 1 <= mes_low_n  <= 12 else "—"
-        mes_act  = _MES[date.today().month]
+        mes_act  = _MES[_CORTE.date().month]
 
         # 3-month avg vs same 3 months last year
-        hoy_m = date.today()
+        hoy_m = _CORTE.date()
         try:
             ultimos3 = df_mens[df_mens["ANIO"] == hoy_m.year].tail(3)["PESO_TON"]
             avg_3m   = float(ultimos3.mean()) if len(ultimos3) > 0 else 0.0

@@ -31,7 +31,12 @@ def _metricas(y_real: np.ndarray, y_pred: np.ndarray) -> dict:
     return {"MAE": round(mae, 2), "MAPE (%)": round(mape, 1), "RMSE": round(rmse, 2)}
 
 
-def _preparar_serie(df, col_periodo="PERIODO", col_val="PESO_TON") -> pd.DataFrame:
+def _preparar_serie(df, col_periodo="PERIODO", col_val="PESO_TON",
+                    fecha_corte=None, rellenar_huecos: bool = False) -> pd.DataFrame:
+    """<fecha_corte>: última fecha con datos (p. ej. MAX(FECHAEMB)). Si no es el
+    último día de su mes, ese mes está incompleto y se excluye, igual que el mes
+    calendario en curso. <rellenar_huecos>: completa con 0 los meses sin
+    registros dentro del rango (en ventas, sin embarques = 0 toneladas)."""
     s = df[[col_periodo, col_val]].copy()
     s.columns = ["ds", "y"]
     s["ds"] = pd.to_datetime(s["ds"])
@@ -42,6 +47,14 @@ def _preparar_serie(df, col_periodo="PERIODO", col_val="PESO_TON") -> pd.DataFra
         current_month_start = today.to_period("M").to_timestamp()
         if s["ds"].max() >= current_month_start:
             s = s[s["ds"] < current_month_start].reset_index(drop=True)
+    if not s.empty and fecha_corte is not None and not pd.isna(fecha_corte):
+        corte = pd.Timestamp(fecha_corte).normalize()
+        if corte < corte + pd.offsets.MonthEnd(0):  # el mes de corte no está cerrado
+            s = s[s["ds"] < corte.to_period("M").to_timestamp()].reset_index(drop=True)
+    if rellenar_huecos and not s.empty:
+        s = s.groupby("ds", as_index=False)["y"].sum()
+        rango = pd.date_range(s["ds"].min(), s["ds"].max(), freq="MS")
+        s = s.set_index("ds").reindex(rango, fill_value=0).rename_axis("ds").reset_index()
     return s
 
 
@@ -61,14 +74,14 @@ def _build_hist_fc(serie, fc_values, lower, upper) -> pd.DataFrame:
     return pd.concat([hist_part, fc_part], ignore_index=True)
 
 
-def _forecast_ets(serie: pd.DataFrame, horizonte: int) -> ForecastResult:
+def _forecast_ets(serie: pd.DataFrame, horizonte: int, n_test: int | None = None) -> ForecastResult:
     from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
     serie = serie[serie["ds"] >= ETS_FECHA_INICIO].reset_index(drop=True)
 
     y = serie["y"].values
     n = len(y)
-    n_test  = min(6, n // 5)
+    n_test  = min(6, n // 5) if n_test is None else min(n_test, max(0, n - 12))
     y_train = y[:-n_test] if n_test > 0 else y
     y_test  = y[-n_test:]  if n_test > 0 else np.array([])
 
@@ -117,13 +130,13 @@ ETS_FECHA_INICIO    = "2023-01-01"
 SARIMA_FECHA_INICIO = "2023-01-01"
 
 
-def _forecast_sarima(serie: pd.DataFrame, horizonte: int) -> ForecastResult:
+def _forecast_sarima(serie: pd.DataFrame, horizonte: int, n_test: int | None = None) -> ForecastResult:
     from statsmodels.tsa.statespace.sarimax import SARIMAX
 
     serie = serie[serie["ds"] >= SARIMA_FECHA_INICIO].reset_index(drop=True)
     y = serie["y"].values
     n = len(y)
-    n_test  = min(4, n // 6)
+    n_test  = min(4, n // 6) if n_test is None else min(n_test, max(0, n - 12))
     y_train = y[:-n_test] if n_test > 0 else y
     y_test  = y[-n_test:]  if n_test > 0 else np.array([])
 
@@ -199,7 +212,7 @@ def _tabla_exog_rezagada(df_exog: pd.DataFrame | None, lags_exog: tuple) -> tupl
 
 
 def _forecast_xgboost(serie: pd.DataFrame, horizonte: int, df_exog: pd.DataFrame | None = None,
-                       lags_exog: tuple = (1, 2, 3)) -> ForecastResult:
+                       lags_exog: tuple = (1, 2, 3), n_test: int | None = None) -> ForecastResult:
     try:
         import xgboost as xgb
     except ImportError:
@@ -249,7 +262,7 @@ def _forecast_xgboost(serie: pd.DataFrame, horizonte: int, df_exog: pd.DataFrame
 
     X_all = make_X(y, ds)
     y_all = y[MAX_LAG:]
-    n_test = min(6, len(X_all) // 4)
+    n_test = min(6, len(X_all) // 4) if n_test is None else min(n_test, max(0, len(X_all) - 12))
     backtest_df, metricas, model = pd.DataFrame(), {}, None
 
     try:
@@ -326,12 +339,12 @@ def _forecast_xgboost(serie: pd.DataFrame, horizonte: int, df_exog: pd.DataFrame
                               metricas={}, backtest=pd.DataFrame(), error_msg=str(e))
 
 
-def _forecast_naive(serie: pd.DataFrame, horizonte: int) -> ForecastResult:
+def _forecast_naive(serie: pd.DataFrame, horizonte: int, n_test: int | None = None) -> ForecastResult:
     y  = serie["y"].values.astype(float)
     ds = pd.to_datetime(serie["ds"].values)
     n  = len(y)
     s  = 12
-    n_test = min(6, n // 4)
+    n_test = min(6, n // 4) if n_test is None else min(n_test, max(0, n - 12))
     backtest_df, metricas = pd.DataFrame(), {}
 
     if n_test > 0 and n >= s + n_test:
@@ -373,12 +386,18 @@ def generar_forecast(
     col_val: str = "PESO_TON",
     modelo: str = "auto",
     df_exog: pd.DataFrame | None = None,
+    fecha_corte=None,
+    ventana_prueba: int | None = None,
+    rellenar_huecos: bool = False,
 ) -> ForecastResult:
-    """<df_exog>: opcional, solo lo usa el modelo XGBoost (columnas: fecha +
+    """<fecha_corte>, <rellenar_huecos>: ver _preparar_serie.
+    <ventana_prueba>: si se indica, los cuatro modelos se validan con los mismos
+    últimos N meses, para que el modo automático compare métricas equivalentes.
+    <df_exog>: opcional, solo lo usa el modelo XGBoost (columnas: fecha +
     una por variable, en ancho, ver _tabla_exog_rezagada). ETS/SARIMA/Naive
     lo ignoran — necesitarían valores FUTUROS de la exógena para pronosticar,
     que no tenemos."""
-    serie = _preparar_serie(df, col_periodo, col_val)
+    serie = _preparar_serie(df, col_periodo, col_val, fecha_corte=fecha_corte, rellenar_huecos=rellenar_huecos)
 
     if len(serie) < MIN_PERIODS_FORECAST:
         return ForecastResult(
@@ -390,7 +409,9 @@ def generar_forecast(
     _fns = {"ets": _forecast_ets, "sarima": _forecast_sarima, "xgb": _forecast_xgboost, "naive": _forecast_naive}
 
     def _correr(key: str) -> ForecastResult:
-        return _forecast_xgboost(serie, horizonte, df_exog=df_exog) if key == "xgb" else _fns[key](serie, horizonte)
+        if key == "xgb":
+            return _forecast_xgboost(serie, horizonte, df_exog=df_exog, n_test=ventana_prueba)
+        return _fns[key](serie, horizonte, n_test=ventana_prueba)
 
     if modelo in _fns:
         return _correr(modelo)
@@ -408,7 +429,7 @@ def generar_forecast(
         resultados.append((mape, key, r))
 
     if not resultados:
-        return _forecast_naive(serie, horizonte)
+        return _forecast_naive(serie, horizonte, n_test=ventana_prueba)
 
     resultados.sort(key=lambda x: x[0])
     mejor_mape, mejor_key, mejor_res = resultados[0]

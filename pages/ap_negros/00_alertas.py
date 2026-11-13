@@ -20,6 +20,8 @@ from aceros_planos.negros.loaders import (
     load_gold_demanda_mensual_total,
     load_serie_mensual_cliente,
     load_ventas_limpias,
+    get_fecha_corte,
+    validar_datos,
 )
 from core.components.filters import sidebar_header
 from core.components.kpi_cards import seccion_titulo
@@ -133,8 +135,13 @@ def _semaforo_color(val, umbral_ok, umbral_warn, mayor_es_mejor=True) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 seccion_titulo("Termómetro del Mes", "Avance actual vs histórico")
 
-hoy = date.today()
+# Fecha de referencia = último día con datos cargados (si los datos están al día, es hoy).
+_corte = get_fecha_corte() or pd.Timestamp.today().normalize()
+hoy = _corte.date()
 anio_act, mes_act = hoy.year, hoy.month
+if (pd.Timestamp.today().normalize() - _corte).days > 7:
+    st.warning(f"Los datos de ventas están cargados hasta el {hoy:%d/%m/%Y}. "
+               "Los indicadores y alertas se calculan a esa fecha.")
 dias_habiles_mes  = 22   # aproximación estándar
 
 if df_mensual.empty:
@@ -218,7 +225,7 @@ seccion_titulo("Semáforo del Área", "4 KPIs con indicador verde / amarillo / r
 if df_mensual.empty:
     st.info("Sin datos para calcular semáforo.")
 else:
-    hoy_dt = pd.Timestamp.today()
+    hoy_dt = _corte
 
     # KPI 1: Velocidad de ventas (este mes vs promedio mismo mes años anteriores)
     vel_act   = ton_act
@@ -367,7 +374,7 @@ st.divider()
 seccion_titulo("Anomalías Detectadas", "Señales automáticas desde los datos")
 
 anomalias: list[dict] = []
-hoy_ts = pd.Timestamp.today()
+hoy_ts = _corte
 
 # A1: Clientes en fuga (> 60 días sin comprar)
 if not df_cliente.empty and "ULTIMA_COMPRA" in df_cliente.columns and "PESO_TON" in df_cliente.columns:
@@ -423,6 +430,15 @@ if not df_cliente.empty and "PRIMERA_COMPRA" in df_cliente.columns:
             "accion": "Hacer seguimiento de segunda compra; incluir en campaña de fidelización",
             "color": _OK,
         })
+
+# A4: Calidad de los datos (core.validators, se ejecuta al abrir la página)
+for _tabla, _res in validar_datos().items():
+    for _msg in _res["errores"]:
+        anomalias.append({"tipo": "Calidad de datos", "desc": _msg,
+                          "accion": "Revisar la carga de datos antes de usar los indicadores", "color": _ER})
+    for _msg in _res["avisos"]:
+        anomalias.append({"tipo": "Calidad de datos", "desc": _msg,
+                          "accion": "Verificar la fuente; los indicadores pueden estar incompletos", "color": _WA})
 
 if not anomalias:
     st.success("Sin anomalías críticas detectadas en este período.")

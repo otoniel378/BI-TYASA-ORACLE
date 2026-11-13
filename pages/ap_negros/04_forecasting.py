@@ -20,6 +20,7 @@ from aceros_planos.negros.loaders import (
     load_gold_demanda_mensual_total,
     load_gold_demanda_mensual,
     load_serie_mensual_proceso,
+    get_fecha_corte,
 )
 from aceros_planos.negros.analytics.forecasting import (
     generar_forecast,
@@ -55,6 +56,12 @@ with st.spinner("Cargando datos..."):
     df_total   = load_gold_demanda_mensual_total()
     df_mensual = load_gold_demanda_mensual()
     df_proceso = load_serie_mensual_proceso()
+    fecha_corte = get_fecha_corte()
+
+# Opciones comunes de pronóstico: se excluye el último mes si está incompleto,
+# los meses sin embarques cuentan como 0 t y los cuatro modelos se validan con
+# los mismos últimos 6 meses (comparación justa en el modo automático).
+_FC_OPC = dict(fecha_corte=fecha_corte, ventana_prueba=6, rellenar_huecos=True)
 
 st.markdown(
     f"""
@@ -201,7 +208,8 @@ def _render_resultado(res, key_prefix: str):
 
 
 def _cache_key(prefix: str, modelo: str, horizonte: int, dim: str = "") -> str:
-    return f"fc_{prefix}_{modelo}_{horizonte}_{dim}"
+    # La fecha de corte entra en la llave: al cargar datos nuevos se recalcula.
+    return f"fc_{prefix}_{modelo}_{horizonte}_{dim}_{fecha_corte}"
 
 
 def _get_or_compute(cache_key: str, fn):
@@ -219,7 +227,7 @@ with tab1:
         st.warning("Sin datos de demanda total.")
     else:
         ck = _cache_key("total", modelo_key, horizonte)
-        res_total = _get_or_compute(ck, lambda: generar_forecast(df_total, horizonte, modelo=modelo_key))
+        res_total = _get_or_compute(ck, lambda: generar_forecast(df_total, horizonte, modelo=modelo_key, **_FC_OPC))
         _render_resultado(res_total, key_prefix="total")
 
 with tab2:
@@ -234,7 +242,7 @@ with tab2:
             for i, mk in enumerate(modelos_eval):
                 ck_c = _cache_key("comp", mk, horizonte)
                 if ck_c not in st.session_state:
-                    st.session_state[ck_c] = generar_forecast(df_total, horizonte, modelo=mk)
+                    st.session_state[ck_c] = generar_forecast(df_total, horizonte, modelo=mk, **_FC_OPC)
                 resultados_comp[mk] = st.session_state[ck_c]
                 prog.progress((i + 1) / len(modelos_eval))
             prog.empty()
@@ -296,7 +304,7 @@ with tab3:
                 st.warning(f"Solo {n_p} meses disponibles — se requieren minimo 12.")
             else:
                 ck_p = _cache_key("proc", modelo_key, horizonte, proc_sel)
-                res_p = _get_or_compute(ck_p, lambda: generar_forecast(df_p, horizonte, modelo=modelo_key))
+                res_p = _get_or_compute(ck_p, lambda: generar_forecast(df_p, horizonte, modelo=modelo_key, **_FC_OPC))
                 _render_resultado(res_p, key_prefix="proc")
 
 with tab4:
@@ -316,7 +324,7 @@ with tab4:
                 st.warning(f"Solo {n_pr} meses — se requieren minimo 12.")
             else:
                 ck_pr = _cache_key("prod", modelo_key, horizonte, prod_sel)
-                res_pr = _get_or_compute(ck_pr, lambda: generar_forecast(df_pr, horizonte, modelo=modelo_key))
+                res_pr = _get_or_compute(ck_pr, lambda: generar_forecast(df_pr, horizonte, modelo=modelo_key, **_FC_OPC))
                 _render_resultado(res_pr, key_prefix="prod")
 
 with tab5:
@@ -332,7 +340,7 @@ with tab5:
     else:
         # Cargar/computar pronóstico base
         ck_base = _cache_key("total", modelo_key, horizonte)
-        res_base = _get_or_compute(ck_base, lambda: generar_forecast(df_total, horizonte, modelo=modelo_key))
+        res_base = _get_or_compute(ck_base, lambda: generar_forecast(df_total, horizonte, modelo=modelo_key, **_FC_OPC))
 
         if res_base.error_msg or res_base.forecast.empty:
             st.error("No se pudo generar el pronóstico base.")

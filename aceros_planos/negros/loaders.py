@@ -1,11 +1,14 @@
 """
-loaders.py — Funciones de carga desde BigQuery para Aceros Planos Negros.
+loaders.py — Funciones de carga desde Oracle ADW para Aceros Planos Negros.
 Usa cache de Streamlit para evitar re-consultas innecesarias.
 """
 
 import pandas as pd
 import streamlit as st
-from core.db_connector import run_query, table_ref
+import logging
+
+from core.db_connector import run_query, run_query_params, table_ref
+from core.validators import validate_all
 
 # Referencias de tablas
 T_BRONZE   = table_ref("bronze_ventas_raw")
@@ -129,7 +132,7 @@ def load_gold_demanda_proceso() -> pd.DataFrame:
 @st.cache_data(ttl=600, show_spinner="Cargando ventas limpias...")
 def load_ventas_limpias() -> pd.DataFrame:
     sql = f"""
-        SELECT FECHAEMB, CLIENTE, PRODUCTO_ORIGINAL,
+        SELECT FECHAEMB, CLIENTE, PRODUCTO_ORIGINAL, PRODUCTO_LIMPIO,
                PROCESO, CALIBRE, ANCHO,
                PESO_KG, PESO_TON,
                ANIO, MES, PERIODO,
@@ -235,15 +238,14 @@ def get_catalogo_anios() -> list[int]:
 @st.cache_data(ttl=600, show_spinner=False)
 def load_transacciones_cliente(cliente: str) -> pd.DataFrame:
     """Todas las transacciones históricas de un cliente — base para Inteligencia de Clientes."""
-    c = cliente.replace("'", "\\'")
     sql = f"""
         SELECT FECHAEMB, PRODUCTO_ORIGINAL, PROCESO,
                PESO_TON, ANIO, MES, PERIODO
         FROM {T_SILVER}
-        WHERE AREA = '{AREA_FILTER}' AND CLIENTE = '{c}'
+        WHERE AREA = :area AND CLIENTE = :cliente
         ORDER BY FECHAEMB
     """
-    df = run_query(sql)
+    df = run_query_params(sql, {"area": AREA_FILTER, "cliente": cliente})
     if df.empty:
         return df
     df["FECHAEMB"] = pd.to_datetime(df["FECHAEMB"], errors="coerce")
@@ -252,3 +254,40 @@ def load_transacciones_cliente(cliente: str) -> pd.DataFrame:
     df["ANIO"]     = pd.to_numeric(df["ANIO"],       errors="coerce").fillna(0).astype(int)
     df["MES"]      = pd.to_numeric(df["MES"],        errors="coerce").fillna(0).astype(int)
     return df
+
+
+# ---------------------------------------------------------------------------
+# Fecha de corte de los datos y validaciones automáticas
+# ---------------------------------------------------------------------------
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_fecha_corte() -> pd.Timestamp | None:
+    """Última fecha de embarque cargada. Es la fecha de referencia para medir
+    recencia (días sin comprar, clientes nuevos) y para detectar si el último mes
+    de la serie está incompleto. Si los datos están al día, coincide con hoy."""
+    df = run_query(f"SELECT MAX(FECHAEMB) AS F FROM {T_SILVER} WHERE AREA = '{AREA_FILTER}'")
+    if df.empty or pd.isna(df.iloc[0, 0]):
+        return None
+    return pd.Timestamp(df.iloc[0, 0]).normalize()
+
+
+_log = logging.getLogger("tyasa.validacion")
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def validar_datos() -> dict[str, dict]:
+    """Ejecuta core.validators sobre las tablas del área y devuelve, por tabla,
+    sus errores y avisos. Los avisos también se registran en el log."""
+    resultados = validate_all({
+        "ventas_limpias":        load_ventas_limpias(),
+        "gold_demanda_cliente":  load_gold_demanda_cliente(),
+        "gold_demanda_producto": load_gold_demanda_producto(),
+        "gold_demanda_mensual":  load_gold_demanda_mensual_total(),
+        "gold_cliente_producto": load_gold_cliente_producto(),
+    })
+    salida = {}
+    for tabla, r in resultados.items():
+        for msg in r.errors + r.warnings:
+            _log.warning("%s: %s", tabla, msg)
+        salida[tabla] = {"errores": list(r.errors), "avisos": list(r.warnings)}
+    return salida
