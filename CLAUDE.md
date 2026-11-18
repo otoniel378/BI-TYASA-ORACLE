@@ -1,95 +1,92 @@
 # TYASA BI — Contexto para Claude Code
+Última actualización: 2026-11-13
 
 ## Proyecto
-Plataforma de Inteligencia Comercial multi-área para TYASA.
-Stack: Python · Streamlit · BigQuery · Plotly · XGBoost · Statsmodels · Gemini API
-GCP Project: project-d0cf2519-d089-47d3-930
-Dataset BQ: tyasa_bi
+Plataforma de Inteligencia Comercial de la Dirección Comercial de TYASA.
+TYASA tiene **solo tres divisiones / áreas de producto**: Aceros Planos, Aceros Largos y Aceros SBQ.
+Mercado Global es una **sección común** a las tres (no es una división).
+Stack: Python · Streamlit · Oracle Autonomous Data Warehouse · Plotly · statsmodels · XGBoost · scikit-learn ·
+sentence-transformers · Gemini API · GitHub Actions.
+Base de datos: **solo Oracle ADW** (región México-Querétaro, Always Free), schema ADMIN. Migrado desde BigQuery en jun 2026;
+BigQuery ya no se usa (el asistente IA y su memoria ya están en Oracle desde 2026-11-13). Lo que queda con BigQuery
+(`cloud_functions/`, `scripts/create_market_tables.py`, `scripts/check_setup.py`, un test) es código obsoleto.
+Autoría: la plataforma común y Aceros Planos los desarrolla Otoniel; Largos y SBQ los adecuarán sus compañeros.
 
 ## Estructura del repo
-app.py                            ← Hub principal, navegación st.navigation()
-config.py                         ← Colores, parámetros, rutas, áreas
+```
+app.py                       ← Hub, login, navegación por sección (aceros_planos | aceros_largos | aceros_sbq | mercado)
+config.py                    ← Colores, parámetros, AREAS (responsable y estado por división)
 core/
-  db_connector.py                 ← Cliente BigQuery singleton
-  validators.py                   ← Validaciones de DataFrames
-  components/
-    charts.py                     ← 8 tipos de gráficos Plotly (paleta TYASA)
-    filters.py                    ← Filtros sidebar
-    kpi_cards.py                  ← Tarjetas KPI ejecutivas
-    tables.py                     ← Tablas exportables a Excel
+  db_connector.py            ← Oracle ADW (wallet; secrets.toml / ORACLE_WALLET_B64 / env). run_query, run_query_params, table_ref
+  auth.py                    ← Roles: director, gerente (todas las secciones) · esp_negros, esp_largos, esp_sbq (tablero de su división)
+  validators.py              ← validate_all (columnas requeridas, % nulos) → anomalías en el Centro de alertas
+  chat_ia.py, chat_widget.py, memoria_ia.py ← Asistente IA (Gemini)
+  components/                ← charts, filters, kpi_cards, tables
 aceros_planos/
-  negros/                         ← COMPLETADO (5 módulos)
-    loaders.py                    ← 12 funciones con @st.cache_data(ttl=600)
-    analytics/
-      kpis.py                     ← KPIResumen dataclass
-      segmentacion.py             ← ABC, Pareto, HHI, Gini
-      series_tiempo.py            ← Variación MoM, volatilidad, heatmap
-      forecasting.py              ← ETS | SARIMA | XGBoost | Naive | Auto
-      mix_productos.py            ← Co-ocurrencia, cross-sell
-  galvanizados/                   ← EN DESARROLLO
-  formados/                       ← EN DESARROLLO
-aceros_largos/                    ← PRÓXIMO (otro equipo)
-aceros_sbq/                       ← PRÓXIMO (otro equipo)
-mercado_noticias/                 ← COMPLETADO
-  loaders.py                      ← Variables, quiebres, noticias desde BQ
-  analytics/
-    detector.py                   ← Detección quiebres estructurales (Chow test)
-    noticias.py                   ← Google News RSS + NewsAPI (31 variables)
-    ai_analysis.py                ← Análisis IA con Gemini 2.0-flash + caché JSON
+  negros/                    ← COMPLETO
+    loaders.py               ← @st.cache_data(ttl=600); get_fecha_corte(), validar_datos()
+    loaders_contexto.py      ← INEGI y quiebres relevantes para Planos
+    analytics/               ← kpis, segmentacion (ABC, Pareto, HHI), series_tiempo, forecasting (ETS|SARIMA|XGBoost|Naive|Auto), mix_productos
+  galvanizados/ formados/    ← EN DESARROLLO
+aceros_largos/  aceros_sbq/  ← otros compañeros
+mercado/ (inegi, snice, canacero) · mercado_noticias/ (detector, rupturas, noticias, categorias, dof_monitor…)
+mercado_fastmarkets/         ← ferroaleaciones, alerta_alzas (semáforo XGBoost)
+ml/categoria_noticias/       ← clasificador de noticias (embeddings + regresión logística)
 pages/
-  hub.py                          ← Bienvenida con estado del proyecto
-  ap_negros/01-05_*.py            ← 5 páginas completas (~62 KB)
-  ap_galvanizados/coming_soon.py
-  ap_formados/coming_soon.py
-  aceros_largos/coming_soon.py
-  aceros_sbq/coming_soon.py
-  mercado/
-    01_monitor.py                 ← Monitor de quiebres + alertas IA (316 líneas)
-    02_variables.py               ← 31 series siderúrgicas históricas
-    03_industria.py               ← Monitor siderúrgico + noticias IA (316 líneas)
-scripts/
-  create_market_tables.py         ← Inicialización tablas BQ (one-time)
-  update_market_data.py           ← Update diario desde yfinance
-cloud_functions/
-  update_market/main.py           ← Cloud Function HTTP (trigger 8:45 AM MX = 14:45 UTC)
+  hub.py, login.py, especialista/dashboard.py, chat_ia/chat.py
+  ap_negros/00_alertas … 08_mercado_contexto  (alertas, resumen, segmentación, series, pronóstico, mix,
+                                                inteligencia de clientes, power rank, contexto de mercado)
+  ap_galvanizados/ ap_formados/ aceros_sbq/  → coming_soon
+  aceros_largos/01–05        ← equipo de Largos
+  mercado/01 monitor · 02 variables · 03 industria · 04 indicadores INEGI · 05 sentimiento · 06 competencia ·
+          07 comercio exterior (SNICE) · 08 pronóstico de importación (CANACERO) · 09 quiebres ferroaleaciones
+scripts/                     ← cargas y transformaciones (load_bronze_from_csv, transform_to_silver, transform_to_gold,
+                               update_*, setup_*_oracle, load_snice_to_oracle, backfill_*, seed_eventos_historicos…)
+.github/workflows/           ← update_market (L–V 8:45 MX), update_sentimiento, update_inegi (día 10),
+                               update_snice (día 5), update_semaforo_ferros (día 5), keep_alive (30 min)
+```
+
+## Tablas Oracle activas
+- Ventas (Medallón): BRONZE_VENTAS_RAW → SILVER_VENTAS_LIMPIAS (dedup por clave física, exclusiones, homologación de espacios)
+  → GOLD_DEMANDA_CLIENTE · GOLD_DEMANDA_PRODUCTO · GOLD_DEMANDA_MENSUAL · GOLD_CLIENTE_PRODUCTO · GOLD_DEMANDA_PROCESO
+  (columnas DIVISION y AREA para separar divisiones/segmentos; hoy solo DIVISION='PLANOS', AREA='NEGROS').
+- Mercado: GOLD_VARIABLES_MERCADO · GOLD_MERCADO_MENSUAL · GOLD_QUIEBRES_DETECTADOS · GOLD_NOTICIAS_VINCULADAS ·
+  GOLD_SENTIMIENTO_NOTICIAS · GOLD_EVENTOS_HISTORICOS · GOLD_ALERTAS_DOF
+- INEGI: GOLD_INDICADORES_INEGI · GOLD_INDICADORES_INEGI_ESTADO
+- Comercio exterior: BRONZE_SNICE_SIDERURGICO (retiene 6 meses; aviso = 123 días de vigencia) · GOLD_SNICE_TOP_FRACCIONES
+  (historial completo) · GOLD_SNICE_TOP_EMPRESAS/PAISES/CATEGORIAS · GOLD_SNICE_RESUMEN_MENSUAL · BRONZE_CANACERO_COMEX
+- Ferroaleaciones: BRONZE_FASTMARKETS_PRECIOS · GOLD_PRECIOS_FASTMARKETS · GOLD_SEMAFORO_FERROS · GOLD_SEMAFORO_METRICAS
 
 ## Convenciones
-- Naming tablas BQ: bronze_ | silver_ | gold_ + descripción
-- Columnas clave: PESO_TON, CLIENTE, PRODUCTO_LIMPIO, PERIODO, AREA, DIVISION
-- AREA_FILTER por loader: "NEGROS" | "GALVANIZADOS" | "FORMADOS"
-- Paleta: primary=#1B3A5C | secondary=#4A7BA7 | success=#2E7D32 | danger=#C62828
-- Todos los loaders usan @st.cache_data(ttl=600)
-- BQ client usa @st.cache_resource (una sola conexión por sesión)
-- Nuevas páginas siguen el patrón de pages/ap_negros/01_resumen.py
-- Caché IA en cache/ai_summaries/<hash>.json (no repetir llamadas a Gemini)
+- Nombres de tabla: BRONZE_ | SILVER_ | GOLD_ + descripción; siempre referenciarlas con table_ref().
+- Columnas clave: PESO_TON, CLIENTE, PRODUCTO_LIMPIO, PERIODO, AREA, DIVISION.
+- AREA_FILTER por loader: "NEGROS" | "GALVANIZADOS" | "FORMADOS".
+- Paleta: primary=#1B3A5C | secondary=#4A7BA7 | success=#2E7D32 | danger=#C62828.
+- Loaders con @st.cache_data(ttl=600); conexión con @st.cache_resource. Consultas con valores de usuario: run_query_params (binds).
+- Fechas de referencia: usar get_fecha_corte() (última FECHAEMB cargada), no date.today().
+- Pronóstico: excluir mes incompleto, rellenar meses sin embarques con 0, ventana de prueba común de 6 meses. Meta MAPE aceptable ≤ 30 %.
+- Nuevas páginas siguen el patrón de pages/ap_negros/01_resumen.py.
+- Caché IA en cache/ai_summaries/<hash>.json (no repetir llamadas a Gemini).
 
 ## Estado actual
-- Aceros Planos Negros:     ✅ COMPLETADO (5 módulos, ~62 KB)
-- Mercado Global:           ✅ COMPLETADO (3 páginas, 31 variables, IA)
-- Aceros Planos Galvanizados: 🚧 EN DESARROLLO
-- Aceros Planos Formados:     🚧 EN DESARROLLO
-- Aceros Largos:              🔜 PRÓXIMO (otro equipo)
-- Aceros SBQ:                 🔜 PRÓXIMO (otro equipo)
-
-## Tablas BigQuery activas
-- silver_ventas_limpias         ← Datos completos de ventas (fuente principal)
-- gold_demanda_cliente          ← Agrupado por cliente
-- gold_demanda_producto         ← Agrupado por producto
-- gold_demanda_mensual          ← Serie temporal mensual
-- gold_cliente_producto         ← Matriz cliente × producto
-- gold_demanda_proceso          ← Agrupado por proceso productivo
-- gold_variables_mercado        ← 31 series siderúrgicas diarias (yfinance)
-- gold_quiebres_detectados      ← Quiebres estructurales (Chow test)
-- gold_noticias_vinculadas      ← Noticias enlazadas a variables
+- Aceros Planos Negros: ✅ completo (9 módulos)
+- Mercado Global: ✅ completo (monitor, variables, industria, INEGI, sentimiento, competencia, comercio exterior, pronóstico de importación, ferroaleaciones)
+- Aceros Planos Galvanizados / Formados: 🚧 en desarrollo
+- Aceros Largos: equipo de Largos · Aceros SBQ: pendiente (compañero)
+- Copiloto de negociación con motor del experto: 🧭 en diseño (ver bitácora de la tesis)
 
 ## Reglas
-1. Nunca hardcodear credenciales — usar get_bq_client() y secrets.toml
-2. Siempre usar table_ref() para referenciar tablas BQ
-3. Nuevas páginas importan desde core/ y siguen estructura existente
-4. Al agregar área nueva: actualizar config.py → AREAS y app.py → st.navigation()
-5. Nuevos loaders van en aceros_planos/<subseccion>/loaders.py con AREA_FILTER propio
-6. Cada página nueva tiene sidebar_header() + st.spinner() en carga de datos
-7. Caché de análisis IA en JSON — nunca llamar Gemini si ya existe la respuesta
+1. Nunca hardcodear credenciales — secrets.toml / secretos de GitHub y Streamlit.
+2. Siempre usar table_ref() para referenciar tablas.
+3. Nuevas páginas importan desde core/ y siguen la estructura existente.
+4. Al agregar área nueva: actualizar config.py → AREAS y app.py → navegación.
+5. Nuevos loaders van en aceros_planos/<subseccion>/loaders.py con AREA_FILTER propio.
+6. Cada página nueva tiene sidebar_header() + indicador de carga.
+7. Caché de análisis IA en JSON — nunca llamar Gemini si ya existe la respuesta.
+8. Claude puede hacer SELECT en Oracle libremente. Las escrituras las corre Otoniel, salvo los 4 comandos de
+   regeneración de Plata/Oro, ya permitidos en ~/.claude/settings.json (ver Pendientes).
+9. Al subir cambios a loaders/módulos compartidos, Streamlit Cloud necesita "Reboot app".
+10. No hacer commit sin que Otoniel lo pida.
 
 ## Patrón obligatorio para HTML dinámico (FIX DEFINITIVO 2026-04-28)
 
@@ -132,18 +129,68 @@ El selector broad .block-container ES el correcto para tabs. NO intentar :has() 
 }
 ```
 
+## Tesis de maestría (alcance: solo Aceros Planos)
+- Archivo de trabajo: `C:\Users\OTONIEL\Documents\semestre 2\toma\TECNOLÓGICO NACIONAL DE MÉXICO borrador1.docx`
+  (es borrador: los cambios se aplican directo, con respaldo previo en `revision\`). Cap. 4 y Conclusiones se reescribirán.
+- Estructura "de lo general a lo particular" (asesor): primero la plataforma común (Hub, Oracle, roles, asistente IA,
+  Mercado Global), después Aceros Planos. De Mercado Global NO entran competencia ni sentimiento de noticias.
+- Carpeta de apoyo: `...\toma\revision\` (estado_avance.md con "Decisiones del autor", guía de estilo, scripts de cifras,
+  capturas y figuras, reportes). Agente revisor: `revisor-tesis`.
+- La tesis está "en pausa de redacción": la parte de Planos seguirá cambiando; la corrección final se hace antes de la entrega.
+
+### Regla de bitácora para la tesis (desde 2026-11-13)
+Al terminar cualquier cambio funcional al sistema de Aceros Planos o a un componente común que use Planos
+(módulo nuevo, modelo, regla de datos, cambio de cifras, tabla nueva en Oracle, flujo nuevo), agregar una entrada en:
+C:\Users\OTONIEL\Documents\semestre 2\toma\revision\bitacora_cambios_sistema.md
+(sección "Pendientes de redactar", con el formato que indica el archivo: qué cambió, por qué,
+archivos, cifras con su fuente y secciones de la tesis afectadas). Avisar al usuario en una línea
+que se anotó. No redactar la tesis en ese momento: se integra cuando el usuario lo pida.
+
+## Pendientes (retomar después)
+Sistema / datos:
+1. **Regenerar Plata y Oro** (permiso ya dado en ~/.claude/settings.json). Desde `proyecto-tyasaBI`, como comandos sueltos:
+   `python scripts/transform_to_silver.py --truncate` y luego `python scripts/transform_to_gold.py --truncate`.
+   Después: correr `revision\obtener_cifras_tesis.py`, confirmar 703 productos en Plata/Oro, y anotar en la bitácora
+   (afecta la Tabla 4.1 de la tesis).
+2. Cargar a Bronce la exportación de SAP posterior al 10/03/2026 (cambian casi todas las cifras de la tesis).
+3. Desarrollar Galvanizados y Formados (actualizar alcance §1.5 de la tesis).
+4. Mejorar el pronóstico: validación de origen móvil y por horizonte, ventanas recientes, variables de mercado como
+   regresores; comparar el pronóstico mar–ago 2026 contra la venta real (MAPE actual 40.6 %, meta ≤ 30 %).
+5. Copiloto de negociación con motor del experto: entrevistas (10–20 reglas) → motor de reglas difusas → registro de casos
+   en Oracle → casos similares → ML (diseño en la bitácora).
+6. Revisar y hacer commit de los cambios del 2026-11-13 (forecasting.py, loaders.py, páginas 00/02/04/06, transform_to_silver.py,
+   core/chat_ia.py, core/memoria_ia.py, scripts/setup_memoria_ia_oracle.py). Al subirlos: "Reboot app" en Streamlit Cloud.
+7. Limpiar archivos temporales `*.py.tmp.*` en pages/ (decenas en pages/mercado/ y pages/login.py) — confirmar antes de borrar.
+8. Crear la tabla de memoria del asistente: `python scripts/setup_memoria_ia_oracle.py` (escribe en Oracle → lo corre Otoniel).
+   Opcional: borrar el código obsoleto de BigQuery (cloud_functions/, create_market_tables.py, check_setup.py).
+9. Seguridad: `TYASA-BI - copia\.claude\settings.local.json` tenía un token de GitHub y una API key de Google en texto plano
+   → borrar esas líneas y revocar/regenerar las credenciales.
+9b. Contraseñas individuales por usuario (hoy `core/auth.py` tiene una sola `_PASS` para los 5): Otoniel lo hará.
+    La tesis ya lo documenta así (§3.7 y Recomendaciones); al cambiarlo, anotar en la bitácora y ajustar §3.7.
+9c. Vista de especialistas: hoy van a `pages/especialista/dashboard.py` (provisional). Otoniel actualizará esas secciones;
+    la tesis dice que "su vista se habilita conforme se liberan los módulos de su división" (§3.5.1, §3.7). Al cambiarlo → bitácora.
+9e. Textos de la app que todavía dicen "31 variables" (`pages/mercado/02_variables.py`): son 35.
+9f. Lo común depende de Planos: el pronóstico de importación (Mercado Global) importa `aceros_planos/negros/analytics/forecasting.py`;
+    considerar moverlo a un paquete común.
+Tesis:
+10. Datos personales (portada, agradecimientos), sesiones de validación con usuarios, tiempo de elaboración de reportes
+    (hipótesis), motivos de la migración, referencias incompletas (en amarillo), confirmar con TYASA los nombres de clientes en capturas.
+11. Pendientes en amarillo nuevos: cita de la vigencia de 123 días de los avisos del SNICE (§3.6.1.3).
+    (Las observaciones del revisor del 2026-11-13 ya se aplicaron en el borrador1.)
+12. Reescribir Cap. 4 y Conclusiones con el orden plataforma común → Aceros Planos; integrar la bitácora; pasar el revisor.
+
 ## Notas de sesiones
 Las notas de cada sesión se guardan en:
 C:\Users\OTONIEL\Desktop\obsidian\sesiones\
 Plantilla: templates/sesion-claude.md
-Última sesión: 2026-04-28 — Rediseño Power BI + Fix removeChild definitivo
+Última nota en Obsidian: 2026-04-28 — Rediseño Power BI + Fix removeChild definitivo
 
 ## Regla de documentación en Obsidian
 Cuando el usuario pida "anota esto en Obsidian" o "actualiza Obsidian" al final de una tarea:
 1. Crear o actualizar C:\Users\OTONIEL\Desktop\obsidian\sesiones\YYYY-MM-DD-<tema>.md
 2. Actualizar la sección correspondiente en C:\Users\OTONIEL\Desktop\obsidian\proyectos\bi-principal.md
    - Módulos completados / en desarrollo
-   - Tablas BQ nuevas
+   - Tablas nuevas
    - Decisiones arquitectónicas nuevas
    - Log de sesiones
-3. Si hay una nueva tabla BQ, decisión de arquitectura o módulo nuevo → reflejar en este CLAUDE.md también
+3. Si hay una nueva tabla, decisión de arquitectura o módulo nuevo → reflejar en este CLAUDE.md también

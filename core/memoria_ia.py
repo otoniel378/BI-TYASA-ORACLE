@@ -1,8 +1,10 @@
 """
 memoria_ia.py — Memoria de contexto persistente entre sesiones del Chat IA.
 
-Guarda en BigQuery (gold_memoria_ia) los insights clave extraídos de cada
+Guarda en Oracle (ADMIN.GOLD_MEMORIA_IA) los insights clave extraídos de cada
 conversación. El chat los inyecta al inicio de cada sesión como contexto previo.
+La tabla se crea una sola vez con: python scripts/setup_memoria_ia_oracle.py
+Si la tabla no existe, cargar devuelve [] y guardar devuelve 0 (el chat sigue funcionando).
 """
 
 from __future__ import annotations
@@ -13,111 +15,70 @@ from datetime import date, datetime
 
 import pandas as pd
 
-PROJECT  = "project-d0cf2519-d089-47d3-930"
-DATASET  = "tyasa_bi"
-TABLE    = f"{PROJECT}.{DATASET}.gold_memoria_ia"
-STAGING  = f"{PROJECT}.{DATASET}._staging_memoria_ia"
+TABLE = "GOLD_MEMORIA_IA"
 
 _MAX_MEMORIAS_CONTEXTO = 8   # cuántas memorias recientes inyectar al chat
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-def _get_client():
-    from google.cloud import bigquery
-    return bigquery.Client(project=PROJECT)
-
-
-def crear_tabla_si_no_existe():
-    from google.cloud import bigquery
-    client = _get_client()
-    schema = [
-        bigquery.SchemaField("id_memoria",    "STRING", mode="REQUIRED"),
-        bigquery.SchemaField("fecha",          "DATE"),
-        bigquery.SchemaField("usuario",        "STRING"),
-        bigquery.SchemaField("tipo",           "STRING"),
-        bigquery.SchemaField("tema",           "STRING"),
-        bigquery.SchemaField("contenido",      "STRING"),
-        bigquery.SchemaField("relevancia",     "STRING"),
-        bigquery.SchemaField("fuente_sesion",  "STRING"),
-    ]
-    table = bigquery.Table(TABLE, schema=schema)
-    client.create_table(table, exists_ok=True)
-
-
 def guardar_memorias(memorias: list[dict], usuario: str = "sistema") -> int:
-    """Guarda una lista de memorias en BigQuery (upsert por id_memoria)."""
+    """Guarda una lista de memorias en Oracle (upsert por ID_MEMORIA con MERGE)."""
     if not memorias:
         return 0
-
-    from google.cloud import bigquery
+    from core.db_connector import run_executemany, table_ref
 
     rows = []
     for m in memorias:
-        contenido = m.get("contenido", "")
+        contenido = m.get("contenido", "") or ""
         id_mem = hashlib.md5(
             f"{usuario}|{m.get('tema','')}|{contenido[:80]}".encode()
         ).hexdigest()[:20]
-        rows.append({
-            "id_memoria":   id_mem,
-            "fecha":        date.today().isoformat(),
-            "usuario":      usuario,
-            "tipo":         m.get("tipo", "insight"),
-            "tema":         (m.get("tema", "") or "")[:100],
-            "contenido":    (contenido or "")[:1000],
-            "relevancia":   m.get("relevancia", "Media"),
-            "fuente_sesion": m.get("fuente_sesion", "chat"),
-        })
+        rows.append((
+            id_mem,
+            datetime.combine(date.today(), datetime.min.time()),
+            usuario,
+            (m.get("tipo", "insight") or "insight")[:30],
+            (m.get("tema", "") or "")[:100],
+            contenido[:1000],
+            (m.get("relevancia", "Media") or "Media")[:10],
+            (m.get("fuente_sesion", "chat") or "chat")[:50],
+        ))
 
-    df = pd.DataFrame(rows)
-    client = _get_client()
-
-    job_cfg = bigquery.LoadJobConfig(
-        write_disposition="WRITE_TRUNCATE",
-        schema=[
-            bigquery.SchemaField("id_memoria",    "STRING"),
-            bigquery.SchemaField("fecha",          "DATE"),
-            bigquery.SchemaField("usuario",        "STRING"),
-            bigquery.SchemaField("tipo",           "STRING"),
-            bigquery.SchemaField("tema",           "STRING"),
-            bigquery.SchemaField("contenido",      "STRING"),
-            bigquery.SchemaField("relevancia",     "STRING"),
-            bigquery.SchemaField("fuente_sesion",  "STRING"),
-        ],
-    )
-    df["fecha"] = pd.to_datetime(df["fecha"]).dt.date
-    client.load_table_from_dataframe(df, STAGING, job_config=job_cfg).result()
-
-    merge_sql = f"""
-    MERGE `{TABLE}` T
-    USING `{STAGING}` S ON T.id_memoria = S.id_memoria
-    WHEN NOT MATCHED THEN INSERT ROW
-    WHEN MATCHED THEN UPDATE SET
-        fecha        = S.fecha,
-        contenido    = S.contenido,
-        relevancia   = S.relevancia,
-        fuente_sesion = S.fuente_sesion
+    sql = f"""
+        MERGE INTO {table_ref(TABLE)} T
+        USING (SELECT :1 AS ID_MEMORIA, :2 AS FECHA, :3 AS USUARIO, :4 AS TIPO, :5 AS TEMA,
+                      :6 AS CONTENIDO, :7 AS RELEVANCIA, :8 AS FUENTE_SESION FROM DUAL) S
+        ON (T.ID_MEMORIA = S.ID_MEMORIA)
+        WHEN MATCHED THEN UPDATE SET
+            T.FECHA = S.FECHA, T.CONTENIDO = S.CONTENIDO,
+            T.RELEVANCIA = S.RELEVANCIA, T.FUENTE_SESION = S.FUENTE_SESION
+        WHEN NOT MATCHED THEN INSERT
+            (ID_MEMORIA, FECHA, USUARIO, TIPO, TEMA, CONTENIDO, RELEVANCIA, FUENTE_SESION)
+            VALUES (S.ID_MEMORIA, S.FECHA, S.USUARIO, S.TIPO, S.TEMA, S.CONTENIDO, S.RELEVANCIA, S.FUENTE_SESION)
     """
-    client.query(merge_sql).result()
-    client.delete_table(STAGING, not_found_ok=True)
-    return len(rows)
+    try:
+        return run_executemany(sql, rows)
+    except Exception:
+        return 0
 
 
 def cargar_memorias_contexto(usuario: str = "sistema", n: int = _MAX_MEMORIAS_CONTEXTO) -> list[dict]:
     """Carga las N memorias más recientes para inyectar como contexto al chat."""
     try:
-        from core.db_connector import run_query
+        from core.db_connector import run_query_params, table_ref
         sql = f"""
-            SELECT tema, contenido, tipo, relevancia, fecha
-            FROM `{TABLE}`
-            WHERE usuario = '{usuario}'
+            SELECT TEMA, CONTENIDO, TIPO, RELEVANCIA, FECHA
+            FROM {table_ref(TABLE)}
+            WHERE USUARIO = :usuario
             ORDER BY
-                CASE relevancia WHEN 'Alta' THEN 1 WHEN 'Media' THEN 2 ELSE 3 END,
-                fecha DESC
-            LIMIT {n}
+                CASE RELEVANCIA WHEN 'Alta' THEN 1 WHEN 'Media' THEN 2 ELSE 3 END,
+                FECHA DESC
+            FETCH FIRST {int(n)} ROWS ONLY
         """
-        df = run_query(sql)
+        df = run_query_params(sql, {"usuario": usuario})
         if df.empty:
             return []
+        df.columns = [c.lower() for c in df.columns]
         return df.to_dict(orient="records")
     except Exception:
         return []

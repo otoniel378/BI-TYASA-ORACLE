@@ -7,56 +7,70 @@ from __future__ import annotations
 import re
 from datetime import date
 import pandas as pd
-from core.db_connector import run_query
-
-_PROJECT = "project-d0cf2519-d089-47d3-930"
-_DATASET = "tyasa_bi"
+from core.db_connector import run_query, run_query_params, table_ref
 
 _SCHEMA = """
-Tablas en BigQuery (proyecto: project-d0cf2519-d089-47d3-930, dataset: tyasa_bi):
+Tablas en Oracle Autonomous Data Warehouse (schema ADMIN; nombres en MAYÚSCULAS):
 
-1. silver_ventas_limpias — Ventas detalladas
-   PERIODO DATE, CLIENTE STRING, PRODUCTO_LIMPIO STRING, AREA STRING,
-   DIVISION STRING, PESO_TON FLOAT64, IMPORTE_MXN FLOAT64
-   AREA: 'NEGROS' | 'GALVANIZADOS' | 'FORMADOS'
+1. SILVER_VENTAS_LIMPIAS — Ventas detalladas (un registro por bobina o paquete embarcado)
+   FECHAEMB DATE, CLIENTE VARCHAR2, PRODUCTO_ORIGINAL VARCHAR2, PRODUCTO_LIMPIO VARCHAR2,
+   PROCESO VARCHAR2, CALIBRE NUMBER, ANCHO NUMBER, PESO_KG NUMBER, PESO_TON NUMBER,
+   COLADA VARCHAR2, PIEZAS NUMBER, ANIO NUMBER, MES NUMBER, PERIODO DATE,
+   AREA VARCHAR2 ('NEGROS' | 'GALVANIZADOS' | 'FORMADOS'), DIVISION VARCHAR2 ('PLANOS')
 
-2. gold_demanda_mensual — Serie mensual de ventas
-   PERIODO DATE, AREA STRING, PESO_TON FLOAT64, IMPORTE_MXN FLOAT64,
-   N_CLIENTES INT64, N_PRODUCTOS INT64
+2. GOLD_DEMANDA_MENSUAL — Serie mensual de ventas
+   PERIODO DATE, ANIO NUMBER, MES NUMBER, PRODUCTO_LIMPIO VARCHAR2, AREA VARCHAR2,
+   DIVISION VARCHAR2, PESO_TON NUMBER, N_CLIENTES NUMBER, N_EMBARQUES NUMBER
 
-3. gold_demanda_cliente — Agrupado por cliente
-   CLIENTE STRING, AREA STRING, PESO_TON FLOAT64, IMPORTE_MXN FLOAT64,
-   N_PEDIDOS INT64, ULTIMA_COMPRA DATE
+3. GOLD_DEMANDA_CLIENTE — Agrupado por cliente
+   CLIENTE VARCHAR2, AREA VARCHAR2, DIVISION VARCHAR2, PESO_TON NUMBER, N_EMBARQUES NUMBER,
+   PRIMERA_COMPRA DATE, ULTIMA_COMPRA DATE
 
-4. gold_demanda_producto — Agrupado por producto
-   PRODUCTO_LIMPIO STRING, AREA STRING, PESO_TON FLOAT64,
-   IMPORTE_MXN FLOAT64, N_CLIENTES INT64
+4. GOLD_DEMANDA_PRODUCTO — Agrupado por producto
+   PRODUCTO_LIMPIO VARCHAR2, AREA VARCHAR2, DIVISION VARCHAR2, PESO_TON NUMBER, N_CLIENTES NUMBER
 
-5. gold_variables_mercado — Variables de mercado diarias (31 series)
-   fecha DATE, ticker STRING, nombre STRING, categoria STRING, valor FLOAT64
+5. GOLD_DEMANDA_PROCESO — Agrupado por proceso productivo
+   PROCESO VARCHAR2, AREA VARCHAR2, DIVISION VARCHAR2, PESO_TON NUMBER, N_CLIENTES NUMBER, N_EMBARQUES NUMBER
 
-6. gold_sentimiento_noticias — Sentimiento IA de noticias
-   hash_url STRING, fecha_pub DATE, titulo STRING, fuente STRING,
-   sentimiento STRING, score FLOAT64, variable_principal STRING,
-   señal STRING, razon STRING, confianza STRING
+6. GOLD_CLIENTE_PRODUCTO — Matriz cliente × producto
+   CLIENTE VARCHAR2, PRODUCTO_LIMPIO VARCHAR2, AREA VARCHAR2, DIVISION VARCHAR2, PESO_TON NUMBER, N_EMBARQUES NUMBER
 
-7. gold_quiebres_detectados — Quiebres estructurales (Chow test)
-   ticker STRING, nombre STRING, categoria STRING, fecha_corte DATE,
-   fecha_detect DATE, cambio_pct FLOAT64, activo BOOL,
-   F_stat FLOAT64, p_value FLOAT64, media_pre FLOAT64, media_post FLOAT64
+7. GOLD_VARIABLES_MERCADO — Variables de mercado diarias (35 series)
+   FECHA DATE, TICKER VARCHAR2, NOMBRE VARCHAR2, CATEGORIA VARCHAR2, VALOR NUMBER
+   Ejemplos de NOMBRE: HRC_CME_USD (bobina laminada en caliente), USD_MXN, Mineral_Hierro, Zinc_USD,
+   Ternium_MX, ArcelorMittal, Brent_USD, Gas_HenryHub_USD, VIX, SP500.
 
-8. gold_memoria_ia — Insights guardados del asistente IA
-   id_memoria STRING, fecha DATE, tipo STRING, tema STRING,
-   contenido STRING, relevancia STRING
+8. GOLD_QUIEBRES_DETECTADOS — Quiebres estructurales en variables de mercado
+   ID VARCHAR2, VARIABLE VARCHAR2, CATEGORIA VARCHAR2, FECHA_CORTE DATE, FECHA_DETECT DATE,
+   F_STAT NUMBER, P_VALUE NUMBER, SIGMA NUMBER, CAMBIO_PCT NUMBER, MEDIA_PRE NUMBER,
+   MEDIA_POST NUMBER, SEVERIDAD VARCHAR2, ACTIVO NUMBER (1 = activo)
+
+9. GOLD_SENTIMIENTO_NOTICIAS — Noticias del sector clasificadas
+   ID VARCHAR2, TITULO VARCHAR2, FUENTE VARCHAR2, URL VARCHAR2, FECHA_PUB DATE,
+   SENTIMIENTO VARCHAR2, SCORE NUMBER, VARIABLE_PRINCIPAL VARCHAR2, CATEGORIA VARCHAR2, RAZON VARCHAR2
+
+10. GOLD_INDICADORES_INEGI — Indicadores económicos del INEGI
+    CLAVE VARCHAR2, NOMBRE VARCHAR2, FECHA VARCHAR2, VALOR NUMBER
+
+11. GOLD_SNICE_RESUMEN_MENSUAL — Avisos automáticos de importación siderúrgica (SNICE)
+    PERIODO VARCHAR2, VOLUMEN_TOTAL NUMBER, AVISOS_TOTAL NUMBER, EMPRESAS_DISTINTAS NUMBER,
+    PAISES_DISTINTOS NUMBER, FRACCIONES_DISTINTAS NUMBER
+
+12. GOLD_PRECIOS_FASTMARKETS — Precios de ferroaleaciones
+    SIMBOLO VARCHAR2, DESCRIPCION VARCHAR2, FECHA DATE, VALOR NUMBER, MONEDA VARCHAR2, UNIDAD VARCHAR2
+
+13. GOLD_SEMAFORO_FERROS — Semáforo de alzas de ferroaleaciones
+    SERIE VARCHAR2, FECHA DATE, TIPO VARCHAR2 ('actual' | 'backtest'), PROB NUMBER, SEMAFORO VARCHAR2
 """
 
-_SYSTEM = f"""Eres el asistente inteligente de TYASA BI. TYASA es una acería mexicana que produce \
-acero plano (HRC, CRC, galvanizado) con horno eléctrico de arco (EAF).
+_SYSTEM = f"""Eres el asistente inteligente de TYASA BI, la plataforma de inteligencia comercial de \
+TYASA, siderúrgica mexicana con tres divisiones: Aceros Planos (Negros, Galvanizados y Formados), \
+Aceros Largos y Aceros SBQ. Hoy la base de ventas contiene solo Aceros Planos Negros.
 
 CAPACIDADES:
-1. ejecutar_sql — Consultas SELECT a BigQuery (datos históricos de ventas, mercado, etc.)
+1. ejecutar_sql — Consultas SELECT a Oracle (datos históricos de ventas, mercado, etc.)
 2. buscar_noticias — Google News en tiempo real (mañaneras, aranceles, precios globales)
-3. obtener_precios_mercado — Precios recientes de BigQuery (HRC, chatarra, USD/MXN, etc.)
+3. obtener_precios_mercado — Precios recientes de las variables de mercado (HRC, USD/MXN, metales, energía…)
 4. ejecutar_analisis — Corre análisis del sistema TYASA:
    • mananera: transcribe y analiza la conferencia presidencial de hoy con IA
    • quiebres_mercado: detecta cambios estructurales activos en precios
@@ -65,17 +79,21 @@ CAPACIDADES:
 
 REGLAS:
 - Solo SELECT en SQL. Nunca INSERT/UPDATE/DELETE/DROP
+- SQL de Oracle: sin comillas invertidas ni punto y coma final; límites con FETCH FIRST n ROWS ONLY;
+  fechas con TRUNC(SYSDATE), ADD_MONTHS(fecha, n), fecha - n (días); TO_CHAR para formatear
+- La última fecha de ventas cargada es MAX(FECHAEMB) de SILVER_VENTAS_LIMPIAS: úsala como "hoy"
+  para recencia de clientes (los datos de SAP pueden tener desfase)
 - Responde siempre en español, con insights accionables para TYASA
+- Responde solo con los datos que devuelven las herramientas; no inventes cifras
 - Cuando el usuario pida "corre", "analiza", "ejecuta" o "dame los datos de", usa ejecutar_analisis
 - Cuando pregunten sobre la presidenta, mañanera o conferencia, usa ejecutar_analisis(mananera) Y buscar_noticias
 - PESO_TON es el volumen de ventas (métrica principal)
-- EAF usa chatarra como insumo principal: SCRAP_HMS impacta directamente los costos
-- HRC_FUTURES es el precio de referencia internacional del acero plano
+- HRC_CME_USD es el precio de referencia internacional del acero plano (bobina laminada en caliente)
 
 CONTEXTO DEL NEGOCIO:
-- Clientes NEGROS: automotriz, construcción, manufactura, electrodomésticos
-- Competencia: Ternium MX + importaciones chinas (dumping)
-- Riesgo principal: chatarra cara + dumping chino + alza energía eléctrica
+- Clientes de Aceros Planos Negros: automotriz, construcción, manufactura, electrodomésticos
+- Competencia: Ternium MX + importaciones (ver avisos del SNICE)
+- Riesgos: precio internacional del acero, importaciones, alza de energía e insumos (ferroaleaciones)
 - Oportunidad: nearshoring, infraestructura gobierno, T-MEC
 
 Esquema de tablas:
@@ -86,13 +104,13 @@ _TOOLS_DECL = [
     {
         "name": "ejecutar_sql",
         "description": (
-            "Ejecuta una consulta SQL SELECT en BigQuery de TYASA BI. "
+            "Ejecuta una consulta SQL SELECT en Oracle (TYASA BI). "
             "Usa para datos históricos de ventas, clientes, productos y mercado."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "sql":    {"type": "string", "description": "Consulta SQL SELECT válida para BigQuery."},
+                "sql":    {"type": "string", "description": "Consulta SQL SELECT válida para Oracle (sin punto y coma)."},
                 "titulo": {"type": "string", "description": "Título breve de la consulta."},
             },
             "required": ["sql"],
@@ -117,13 +135,13 @@ _TOOLS_DECL = [
     {
         "name": "obtener_precios_mercado",
         "description": (
-            "Obtiene precios recientes de variables siderúrgicas desde BigQuery. "
-            "Usa para preguntas sobre HRC, chatarra, zinc, USD/MXN y otras commodities."
+            "Obtiene precios recientes de las variables de mercado (tabla GOLD_VARIABLES_MERCADO). "
+            "Usa para preguntas sobre HRC, mineral de hierro, zinc, USD/MXN, energía y otras commodities."
         ),
         "parameters": {
             "type": "object",
             "properties": {
-                "variable": {"type": "string", "description": "Nombre de variable. Ej: HRC_FUTURES, SCRAP_HMS. Vacío = todas."},
+                "variable": {"type": "string", "description": "Nombre (o parte del nombre) de la variable. Ej: HRC_CME_USD, USD_MXN, Zinc. Vacío = todas."},
                 "dias":     {"type": "integer", "description": "Días hacia atrás (1-60). Default: 14."},
             },
             "required": [],
@@ -175,7 +193,7 @@ def _es_select_seguro(sql: str) -> bool:
 
 
 def _tool_ejecutar_sql(args: dict) -> dict:
-    sql    = args.get("sql", "").strip()
+    sql    = args.get("sql", "").strip().rstrip(";").strip()   # Oracle rechaza el ';' final
     titulo = args.get("titulo", "Consulta SQL")
     if not sql:
         return {"error": "SQL vacío."}
@@ -237,18 +255,22 @@ def _tool_buscar_noticias(args: dict) -> dict:
 
 def _tool_obtener_precios_mercado(args: dict) -> dict:
     variable = (args.get("variable") or "").strip()
-    dias     = min(int(args.get("dias", 14)), 60)
-    where    = f"AND nombre = '{variable}'" if variable else ""
+    dias     = max(1, min(int(args.get("dias", 14) or 14), 60))
+    params: dict = {"dias": dias}
+    where = ""
+    if variable:
+        where = "AND (UPPER(NOMBRE) LIKE :var OR UPPER(TICKER) LIKE :var)"
+        params["var"] = f"%{variable.upper()}%"
     sql = f"""
-        SELECT nombre, categoria, valor, fecha
-        FROM `{_PROJECT}.{_DATASET}.gold_variables_mercado`
-        WHERE fecha >= DATE_SUB(CURRENT_DATE(), INTERVAL {dias} DAY)
+        SELECT NOMBRE, CATEGORIA, VALOR, FECHA
+        FROM {table_ref('GOLD_VARIABLES_MERCADO')}
+        WHERE FECHA >= TRUNC(SYSDATE) - :dias
         {where}
-        ORDER BY nombre, fecha DESC
-        LIMIT 200
+        ORDER BY NOMBRE, FECHA DESC
+        FETCH FIRST 200 ROWS ONLY
     """
     try:
-        df = run_query(sql)
+        df = run_query_params(sql, params)
         return {
             "variable": variable or "todas",
             "dias":     dias,
