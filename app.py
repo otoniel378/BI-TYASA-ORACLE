@@ -250,6 +250,7 @@ SUBSECCIONES = {
     "inicio": {
         "bienvenida": "Bienvenida",
         "alertas": "Bandeja de alertas",
+        "datos": "Estado de los datos",
     },
     "aceros_planos": {
         "negros": "Aceros Negros",
@@ -288,6 +289,7 @@ PAGINAS = {
     # INICIO
     "bienvenida": "pages.hub",
     "alertas": "pages.alertas_bandeja",
+    "datos": "pages.estado_datos",
     
     # ACEROS PLANOS - Negros
     ("aceros_planos", "negros", "apn_alertas"):  "pages.ap_negros.00_alertas",
@@ -369,6 +371,10 @@ with st.sidebar:
             first_sub = list(SUBSECCIONES[seccion_id].keys())[0]
             st.session_state.nav_subseccion = first_sub
             st.rerun()
+
+    # ── Datos al día de la sección abierta (core/calidad_datos.FUENTES) ─────
+    from core.components.frescura import indicador_sidebar
+    indicador_sidebar(st.session_state.nav_seccion)
 
     # ── Botón Asistente IA (siempre visible en sidebar) ──────────────────────
     st.markdown("---")

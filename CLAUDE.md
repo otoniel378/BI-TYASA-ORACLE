@@ -25,9 +25,13 @@ core/
   alertas.py                 ← Bandeja única de alertas (ventas, clientes, DOF, semáforo, quiebres, noticias,
                                datos desactualizados); sin tabla: se calcula con lo vigente. Umbrales al inicio.
   resumen_semanal.py         ← Correo semanal (alertas + ventas del último mes completo + mercado 7 días)
+  calidad_datos.py           ← Reglas de calidad y frescura (catálogo FUENTES con umbrales por fuente; cuadre
+                               Bronce→Plata→Oro, toneladas válidas, meses vacíos/atípicos, variables que dejan
+                               de llegar, INEGI rezagado, cargas que fallan en silencio). Alimenta la página
+                               "Estado de los datos", el indicador de la barra lateral y la bandeja.
   validators.py              ← validate_all (columnas requeridas, % nulos) → anomalías en el Centro de alertas
   chat_ia.py, chat_widget.py, memoria_ia.py ← Asistente IA (Gemini)
-  components/                ← charts, filters, kpi_cards, tables
+  components/                ← charts, filters, kpi_cards, tables, aciertos, frescura (DATOS AL DÍA en la barra)
 aceros_planos/
   negros/                    ← COMPLETO
     loaders.py               ← @st.cache_data(ttl=600); get_fecha_corte(), validar_datos()
@@ -40,7 +44,8 @@ mercado/ (inegi, snice, canacero) · mercado_noticias/ (detector, rupturas, noti
 mercado_fastmarkets/         ← ferroaleaciones, alerta_alzas (semáforo XGBoost)
 ml/categoria_noticias/       ← clasificador de noticias (embeddings + regresión logística)
 pages/
-  hub.py (con contador de alertas), alertas_bandeja.py (INICIO → Bandeja de alertas), login.py,
+  hub.py (con contador de alertas), alertas_bandeja.py (INICIO → Bandeja de alertas),
+  estado_datos.py (INICIO → Estado de los datos), login.py,
   especialista/dashboard.py, chat_ia/chat.py
   ap_negros/00_alertas … 08_mercado_contexto  (alertas, resumen, segmentación, series, pronóstico, mix,
                                                 inteligencia de clientes, power rank, contexto de mercado)
@@ -82,6 +87,9 @@ scripts/                     ← cargas y transformaciones (load_bronze_from_csv
   Las páginas pronostican con core/seleccion_modelos.generar(df, h, modelo, serie_id, ...) — serie_id tipo
   "NEGROS|PROCESO|<x>" o "CANACERO|IMPORTACION|FRACCION|<f>" (mismo formato en scripts/update_seleccion_modelos.py).
 - Nuevas páginas siguen el patrón de pages/ap_negros/01_resumen.py.
+- Fuente de datos nueva → agregarla a core/calidad_datos.FUENTES (consulta de último dato, cada cuánto se
+  actualiza, umbrales de aviso/falla, secciones donde se muestra). Los loaders no deben tragarse errores en
+  silencio sin una regla que lo detecte.
 - Caché IA en cache/ai_summaries/<hash>.json (no repetir llamadas a Gemini).
 
 ## Estado actual
