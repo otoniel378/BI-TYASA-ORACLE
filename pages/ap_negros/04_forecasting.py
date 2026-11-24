@@ -27,6 +27,8 @@ from aceros_planos.negros.analytics.forecasting import (
     filtrar_por_dimension,
     MODELOS_DISPONIBLES,
 )
+from aceros_planos.negros.analytics.escenarios import VARIABLES as VARIABLES_ESC, efecto_pct, estimar, preajuste, simular
+from aceros_planos.negros.loaders_contexto import load_indicadores_escenarios
 from core.components.aciertos import aviso_confiabilidad, render_aciertos
 from core.seleccion_modelos import generar
 from core.components.kpi_cards import seccion_titulo
@@ -224,8 +226,16 @@ def _get_or_compute(cache_key: str, fn):
     return st.session_state[cache_key]
 
 
+_MESES_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _modelo_escenarios(venta: pd.Series, indicadores: pd.DataFrame, _corte: str):
+    return estimar(venta, indicadores)
+
+
 tab1, tab2, tab6, tab3, tab4, tab5 = st.tabs(["Demanda Total", "Comparar Modelos", "¿Qué tan bien acierta?",
-                                              "Por Proceso", "Por Familia", "Escenarios"])
+                                              "Por Proceso", "Por Familia", "Simulador de escenarios"])
 
 with tab1:
     seccion_titulo("Demanda Total", f"{horizonte} meses proyectados")
@@ -338,164 +348,153 @@ with tab4:
                 _render_resultado(res_pr, key_prefix="prod")
 
 with tab5:
-    seccion_titulo("Escenarios de Demanda", "Proyecciones ajustadas por supuestos del mercado")
-    st.markdown(
-        "<p style='color:#64748B;font-size:0.85rem;'>Aplica factores de ajuste sobre el pronóstico base "
-        "para simular escenarios Adverso, Base y Positivo.</p>",
-        unsafe_allow_html=True,
-    )
+    seccion_titulo("Simulador de escenarios", "¿Qué pasa con la venta si cambia el mercado?")
+    st.caption("Mueve los indicadores y mira cómo cambiaría la venta. La sensibilidad de cada uno "
+               "se midió con la historia de Negros, no es un supuesto.")
 
     if df_total.empty:
         st.warning("Sin datos para generar pronóstico base.")
     else:
-        # Cargar/computar pronóstico base
         ck_base = _cache_key("total", modelo_key, horizonte)
         res_base = _get_or_compute(ck_base, lambda: generar(df_total, horizonte, modelo_key, "NEGROS|TOTAL", **_FC_OPC))
+        hist = res_base.historico
+        indicadores = load_indicadores_escenarios()
 
-        if res_base.error_msg or res_base.forecast.empty:
-            st.error("No se pudo generar el pronóstico base.")
+        if res_base.error_msg or hist.empty or indicadores.empty:
+            st.error("No se pudo preparar el simulador (sin pronóstico base o sin indicadores de INEGI).")
         else:
-            hist   = res_base.historico
-            fc_fut = res_base.forecast[res_base.forecast["ds"] > hist["ds"].max()].copy()
-
-            if fc_fut.empty:
-                st.info("Sin períodos futuros en el pronóstico.")
+            venta_hist = hist.set_index("ds")["y"]
+            mod = _modelo_escenarios(venta_hist, indicadores, str(fecha_corte))
+            if mod.error_msg:
+                st.warning(mod.error_msg)
             else:
+                fc_fut = res_base.forecast[res_base.forecast["ds"] > hist["ds"].max()].copy()
+                meses = list(fc_fut["ds"])
+                coefs = mod.coefs.set_index("clave")
+                actual = mod.actual.set_index("clave") if not mod.actual.empty else pd.DataFrame()
+
+                def _aplicar_preajuste():
+                    nombre = {"Sin cambios": "base", "Como van hoy": "actual",
+                              "Adverso": "adverso", "Positivo": "positivo"}[st.session_state["esc_preajuste"]]
+                    for clave, pct in preajuste(mod, nombre).items():
+                        st.session_state[f"esc_{clave}"] = float(max(-30.0, min(30.0, pct)))
+                    st.session_state["esc_propio"] = 0.0
+
+                for v in VARIABLES_ESC:
+                    st.session_state.setdefault(f"esc_{v.clave}", 0.0)
+                st.session_state.setdefault("esc_propio", 0.0)
+
+                st.radio("Punto de partida", ["Sin cambios", "Como van hoy", "Adverso", "Positivo"],
+                         horizontal=True, key="esc_preajuste", on_change=_aplicar_preajuste,
+                         help="Adverso y Positivo usan los peores y mejores años de cada indicador desde 2022.")
+
+                caja_kpis = st.container()
+                col_ctrl, col_res = st.columns([1, 1], gap="large")
+                cambios = {}
+                with col_ctrl:
+                    for v in VARIABLES_ESC:
+                        r = coefs.loc[v.clave]
+                        cambios[v.clave] = st.slider(f"{v.etiqueta} (% vs año anterior)", -30.0, 30.0,
+                                                     step=0.5, key=f"esc_{v.clave}")
+                        hoy = ""
+                        if v.clave in actual.index:
+                            a = actual.loc[v.clave]
+                            hoy = f" · hoy va {a['pct']:+.1f} % ({_MESES_ES[a['fecha'].month - 1]} {a['fecha'].year})"
+                        certeza = "" if r["claro"] else " · efecto incierto"
+                        st.caption(f"Si sube 1 %, la venta cambia {r['beta']:+.1f} %{certeza}{hoy}")
+                    propio = st.slider("Ajuste propio (%)", -30.0, 30.0, step=1.0, key="esc_propio",
+                                       help="Lo que la historia no mide: aranceles nuevos, precio del HRC, "
+                                            "un cliente grande que entra o sale…")
+
+                ef = efecto_pct(mod, cambios, propio)
+                sim = simular(mod, venta_hist, meses, cambios, propio)
+                ton_sim = float(sim["ton"].sum())
+                ton_prev = float(sim["mismo_mes_anio_previo"].sum())
                 ton_base = float(fc_fut["yhat"].sum())
+                vs_pron = (ton_sim / ton_base - 1) * 100 if ton_base else 0.0
 
-                st.markdown("#### Supuestos por escenario")
+                with caja_kpis:
+                    color = COLORS["success"] if ef["total"] >= 0 else COLORS["danger"]
+                    _caja = (f"background:{COLORS['surface']};border:1px solid #E5E7EB;"
+                             f"border-radius:8px;padding:12px;")
+                    st.html(f"""
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:4px 0 14px;">
+                      <div style="{_caja}border-left:4px solid {color};">
+                        <div style="font-size:11px;font-weight:700;color:#64748B;">VENTA DEL ESCENARIO</div>
+                        <div style="font-size:20px;font-weight:800;color:{color};">{ton_sim:,.0f} t</div>
+                        <div style="font-size:11px;color:#64748B;">próximos {len(meses)} meses</div></div>
+                      <div style="{_caja}">
+                        <div style="font-size:11px;font-weight:700;color:#64748B;">VS. AÑO ANTERIOR</div>
+                        <div style="font-size:20px;font-weight:800;color:{color};">{ef['total']:+.1f} %</div>
+                        <div style="font-size:11px;color:#64748B;">mismos meses: {ton_prev:,.0f} t</div></div>
+                      <div style="{_caja}">
+                        <div style="font-size:11px;font-weight:700;color:#64748B;">VS. PRONÓSTICO</div>
+                        <div style="font-size:20px;font-weight:800;color:{COLORS['primary']};">{vs_pron:+.1f} %</div>
+                        <div style="font-size:11px;color:#64748B;">pronóstico: {ton_base:,.0f} t</div></div>
+                    </div>""")
 
-                _T2 = "#64748B"
-                col_adv, col_b, col_pos = st.columns(3)
-
-                with col_adv:
-                    st.markdown(f"<div style='text-align:center;font-weight:700;color:#DC2626;"
-                                f"font-size:13px;margin-bottom:6px;'>Escenario Adverso</div>",
-                                unsafe_allow_html=True)
-                    pct_adv_mkt  = st.slider("Mercado acero (% ajuste)", -30, 0, -10,
-                                              step=5, key="esc_adv_mkt")
-                    pct_adv_tipo = st.slider("Tipo de cambio (% ajuste)", -10, 10, -5,
-                                              step=5, key="esc_adv_tipo")
-                    pct_adv_dem  = st.slider("Demanda industria (% ajuste)", -20, 0, -8,
-                                              step=2, key="esc_adv_dem")
-
-                with col_b:
-                    st.markdown(f"<div style='text-align:center;font-weight:700;color:#D97706;"
-                                f"font-size:13px;margin-bottom:6px;'>Escenario Base</div>",
-                                unsafe_allow_html=True)
-                    pct_b_mkt  = st.slider("Mercado acero (% ajuste)", -10, 10, 0,
-                                            step=5, key="esc_b_mkt", disabled=True)
-                    pct_b_tipo = st.slider("Tipo de cambio (% ajuste)", -5, 5, 0,
-                                            step=5, key="esc_b_tipo", disabled=True)
-                    pct_b_dem  = st.slider("Demanda industria (% ajuste)", -5, 5, 0,
-                                            step=1, key="esc_b_dem", disabled=True)
-
-                with col_pos:
-                    st.markdown(f"<div style='text-align:center;font-weight:700;color:#16A34A;"
-                                f"font-size:13px;margin-bottom:6px;'>Escenario Positivo</div>",
-                                unsafe_allow_html=True)
-                    pct_pos_mkt  = st.slider("Mercado acero (% ajuste)", 0, 30, 10,
-                                              step=5, key="esc_pos_mkt")
-                    pct_pos_tipo = st.slider("Tipo de cambio (% ajuste)", 0, 15, 5,
-                                              step=5, key="esc_pos_tipo")
-                    pct_pos_dem  = st.slider("Demanda industria (% ajuste)", 0, 20, 8,
-                                              step=2, key="esc_pos_dem")
-
-                # Factor neto = promedio ponderado de los 3 ajustes
-                def _factor(mkt, tipo, dem):
-                    return 1.0 + (mkt * 0.5 + tipo * 0.2 + dem * 0.3) / 100
-
-                f_adv = _factor(pct_adv_mkt, pct_adv_tipo, pct_adv_dem)
-                f_b   = 1.0
-                f_pos = _factor(pct_pos_mkt, pct_pos_tipo, pct_pos_dem)
-
-                ton_adv = ton_base * f_adv
-                ton_pos = ton_base * f_pos
-
-                # Gráfico de barras comparativo
-                st.markdown("#### Proyección total del período (ton)")
-                escenarios = ["Adverso", "Base", "Positivo"]
-                toneladas  = [ton_adv, ton_base, ton_pos]
-                colores    = [COLORS["danger"], COLORS["warning"], COLORS["success"]]
-
-                fig_esc = go.Figure(go.Bar(
-                    x=escenarios, y=toneladas,
-                    marker_color=colores,
-                    text=[f"{t:,.0f} ton" for t in toneladas],
-                    textposition="outside",
-                    textfont=dict(size=12, color=COLORS["text"]),
-                    hovertemplate="%{x}<br>Pronóstico: %{y:,.1f} ton<extra></extra>",
-                ))
-                fig_esc.update_layout(
-                    paper_bgcolor=COLORS["surface"], plot_bgcolor=COLORS["background"],
-                    font=dict(family="Inter, Arial, sans-serif", color=COLORS["text"]),
-                    margin=dict(l=40, r=20, t=20, b=40), showlegend=False, height=320,
-                    xaxis=dict(showgrid=False),
-                    yaxis=dict(gridcolor="#E5E7EB", title="Toneladas totales proyectadas",
-                               range=[0, max(toneladas) * 1.18]),
-                )
-                st.plotly_chart(fig_esc, width="stretch", config={"displayModeBar": False})
-
-                # Cards de resumen
-                _ER = "#DC2626"; _WA = "#D97706"; _OK2 = "#16A34A"; _T1 = "#0F172A"
-                st.html(f"""
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:4px;">
-                  <div style="background:#FEE2E2;border-radius:10px;padding:14px;border-left:4px solid {_ER};">
-                    <div style="font-size:10px;font-weight:700;color:#991B1B;text-transform:uppercase;
-                         margin-bottom:4px;">Adverso</div>
-                    <div style="font-size:20px;font-weight:800;color:{_ER};">{ton_adv:,.0f} ton</div>
-                    <div style="font-size:11px;color:#991B1B;margin-top:3px;">
-                      {(f_adv - 1) * 100:+.1f}% vs base
-                    </div>
-                  </div>
-                  <div style="background:#FEF3C7;border-radius:10px;padding:14px;border-left:4px solid {_WA};">
-                    <div style="font-size:10px;font-weight:700;color:#92400E;text-transform:uppercase;
-                         margin-bottom:4px;">Base</div>
-                    <div style="font-size:20px;font-weight:800;color:{_WA};">{ton_base:,.0f} ton</div>
-                    <div style="font-size:11px;color:#92400E;margin-top:3px;">
-                      Modelo: {MODELOS_DISPONIBLES[modelo_key]}
-                    </div>
-                  </div>
-                  <div style="background:#DCFCE7;border-radius:10px;padding:14px;border-left:4px solid {_OK2};">
-                    <div style="font-size:10px;font-weight:700;color:#166534;text-transform:uppercase;
-                         margin-bottom:4px;">Positivo</div>
-                    <div style="font-size:20px;font-weight:800;color:{_OK2};">{ton_pos:,.0f} ton</div>
-                    <div style="font-size:11px;color:#166534;margin-top:3px;">
-                      {(f_pos - 1) * 100:+.1f}% vs base
-                    </div>
-                  </div>
-                </div>""")
-
-                # Serie temporal por escenario
-                st.markdown("#### Evolución mensual por escenario")
-                fig_sc_ts = go.Figure()
-                fig_sc_ts.add_trace(go.Scatter(
-                    x=hist["ds"], y=hist["y"], name="Histórico",
-                    line=dict(color=COLORS["primary"], width=2),
-                    hovertemplate="%{x|%b %Y}: %{y:,.1f} ton<extra></extra>",
-                ))
-                for nombre, factor, color in [
-                    ("Adverso",  f_adv, COLORS["danger"]),
-                    ("Base",     f_b,   COLORS["warning"]),
-                    ("Positivo", f_pos, COLORS["success"]),
-                ]:
-                    fig_sc_ts.add_trace(go.Scatter(
-                        x=fc_fut["ds"], y=fc_fut["yhat"] * factor,
-                        name=nombre, mode="lines+markers",
-                        line=dict(color=color, width=2, dash="dot"),
-                        marker=dict(size=6),
-                        hovertemplate=f"{nombre}: %{{x|%b %Y}}<br>%{{y:,.1f}} ton<extra></extra>",
+                with col_res:
+                    # De dónde sale el cambio
+                    etiquetas = ["Tendencia propia"] + [v.corto or v.etiqueta for v in VARIABLES_ESC] + ["Ajuste propio"]
+                    valores = [ef["tendencia"]] + [ef["aportes"][v.clave] for v in VARIABLES_ESC] + [ef["ajuste_propio"]]
+                    fig_ap = go.Figure(go.Bar(
+                        y=etiquetas[::-1], x=valores[::-1], orientation="h",
+                        marker_color=[COLORS["success"] if x >= 0 else COLORS["danger"] for x in valores[::-1]],
+                        text=[f"{x:+.1f} %" for x in valores[::-1]], textposition="outside", cliponaxis=False,
+                        hovertemplate="%{y}: %{x:+.1f} %<extra></extra>",
                     ))
-                corte = str(hist["ds"].max())
-                fig_sc_ts.add_shape(type="line", x0=corte, x1=corte, y0=0, y1=1,
-                                    xref="x", yref="paper",
-                                    line=dict(color=COLORS["neutral"], width=1.5, dash="dot"))
-                fig_sc_ts.update_layout(
+                    lim = max(5.0, max(abs(x) for x in valores) * 2.0)
+                    fig_ap.update_layout(
+                        paper_bgcolor=COLORS["surface"], plot_bgcolor=COLORS["background"],
+                        font=dict(family="Inter, Arial, sans-serif", color=COLORS["text"], size=12),
+                        margin=dict(l=10, r=30, t=40, b=20), height=320, showlegend=False,
+                        xaxis=dict(range=[-lim, lim], zeroline=True, zerolinecolor="#94A3B8",
+                                   showgrid=False, showticklabels=False),
+                        title=dict(text="De dónde sale el cambio vs. año anterior",
+                                   font=dict(size=13, color=COLORS["primary"]), x=0),
+                    )
+                    st.plotly_chart(fig_ap, width="stretch", config={"displayModeBar": False})
+
+                fig_sc = go.Figure()
+                h24 = hist[hist["ds"] >= hist["ds"].max() - pd.DateOffset(months=24)]
+                fig_sc.add_trace(go.Scatter(
+                    x=pd.concat([sim["ds"], sim["ds"][::-1]]), y=pd.concat([sim["hi"], sim["lo"][::-1]]),
+                    fill="toself", fillcolor="rgba(74,123,167,0.13)", line=dict(color="rgba(0,0,0,0)"),
+                    name="Rango probable (80 %)", hoverinfo="skip"))
+                fig_sc.add_trace(go.Scatter(x=h24["ds"], y=h24["y"], name="Venta real",
+                                            line=dict(color=COLORS["primary"], width=2.5),
+                                            hovertemplate="%{x|%b %Y}: %{y:,.0f} t<extra></extra>"))
+                fig_sc.add_trace(go.Scatter(x=fc_fut["ds"], y=fc_fut["yhat"], name="Pronóstico",
+                                            line=dict(color=COLORS["neutral"], width=2, dash="dot"),
+                                            hovertemplate="%{x|%b %Y}: %{y:,.0f} t<extra></extra>"))
+                fig_sc.add_trace(go.Scatter(x=sim["ds"], y=sim["ton"], name="Escenario", mode="lines+markers",
+                                            line=dict(color=COLORS["secondary"], width=2.5),
+                                            hovertemplate="%{x|%b %Y}: %{y:,.0f} t<extra></extra>"))
+                fig_sc.update_layout(
                     paper_bgcolor=COLORS["surface"], plot_bgcolor=COLORS["background"],
                     font=dict(family="Inter, Arial, sans-serif", color=COLORS["text"]),
-                    margin=dict(l=40, r=20, t=20, b=40), height=340,
+                    margin=dict(l=40, r=20, t=20, b=40), height=360,
                     xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#E5E7EB", title="Toneladas"),
-                    legend=dict(orientation="h", y=-0.22, x=0.5, xanchor="center"),
+                    legend=dict(orientation="h", y=-0.2, x=0.5, xanchor="center"),
                 )
-                st.plotly_chart(fig_sc_ts, width="stretch",
-                                config={"displayModeBar": False})
+                st.plotly_chart(fig_sc, width="stretch", config={"displayModeBar": False})
+
+                with st.expander("¿Cómo se calcula?"):
+                    st.markdown(
+                        f"Cada mes del escenario = venta del mismo mes del año anterior × el cambio que "
+                        f"resulta de los indicadores. La sensibilidad se midió con {mod.n} meses "
+                        f"({_MESES_ES[mod.desde.month - 1]} {mod.desde.year} – {_MESES_ES[mod.hasta.month - 1]} "
+                        f"{mod.hasta.year}); los indicadores explican {mod.r2 * 100:.0f} % de los cambios "
+                        f"de la venta. El resto depende de cada cliente, por eso el rango es amplio.")
+                    tabla = pd.DataFrame({
+                        "Indicador": mod.coefs["etiqueta"],
+                        "Si sube 1 %": mod.coefs["beta"].map(lambda b: f"{b:+.1f} %"),
+                        "Rango": [f"{lo:+.1f} a {hi:+.1f} %" for lo, hi in zip(mod.coefs["lo"], mod.coefs["hi"])],
+                        "Tarda": mod.coefs["rezago"].map(lambda r: f"{r} mes" + ("es" if r > 1 else "")),
+                        "Efecto": mod.coefs["claro"].map({True: "claro", False: "incierto"}),
+                        "Fuente": mod.coefs["fuente"],
+                    })
+                    st.dataframe(tabla, hide_index=True, width="stretch")
+                    st.caption("Precio del HRC y tipo de cambio: solo hay historia desde 2024, aún no alcanza "
+                               "para medir su efecto. Construcción no mostró relación con la venta. "
+                               "Para esos casos usa el ajuste propio.")
