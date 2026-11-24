@@ -274,6 +274,7 @@ SUBSECCIONES = {
         "mkt_comercio": "Comercio Exterior",
         "mkt_pronostico": "Pronóstico",
         "mkt_ferros": "Quiebres Ferroaleaciones",
+        "mkt_rutas": "Rutas y Puertos",
     },
     "mas_info": {
         "mi_vars": "Variables Globales",
@@ -325,6 +326,7 @@ PAGINAS = {
     "mkt_comercio": "pages.mercado.07_comercio_exterior",
     "mkt_pronostico": "pages.mercado.08_pronostico_comercio",
     "mkt_ferros": "pages.mercado.09_quiebres_ferroaleaciones",
+    "mkt_rutas": "pages.mercado.10_rutas_puertos",
 
     # MÁS INFORMACIÓN
     "mi_vars": "pages.mercado.02_variables",

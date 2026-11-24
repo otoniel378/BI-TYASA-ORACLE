@@ -84,6 +84,18 @@ PATRON_GRAVE = (
     r"sanci[oó]n|sanction|\bban\b|prohib|guerra|\bwar\b|hurac[aá]n|hurricane|cicl[oó]n|cyclone|sismo|terremoto|"
     r"earthquake|inundaci|flood|incendio|wildfire|desv[ií]|divert|reroute|cancel|derrumbe|collapse"
 )
+# Noticias de alivio: mencionan prohibiciones o ataques pero para decir que se
+# levantan o se pausan ("China Halts Critical Minerals Ban"). No son graves.
+PATRON_ALIVIO = (
+    r"lift(s|ed)?|eases?|paus(e|es|ed)|halts?.*ban|suspends?.*ban|ends?.*(ban|war|strike)|"
+    r"levanta|suspende.*prohib|tregua|truce|ceasefire|alto al fuego|reabre|reopen|resume|reanuda"
+)
+
+
+def _severidad(titulo: str) -> str:
+    t = titulo.lower()
+    return "alta" if re.search(PATRON_GRAVE, t) and not re.search(PATRON_ALIVIO, t) else "media"
+
 
 
 def _lugares(titulo: str) -> list[tuple[str, str]]:
@@ -121,14 +133,16 @@ def alertas_rutas(noticias: pd.DataFrame, hoy=None, dias: int = DIAS_VIGENCIA,
                 "titulo": titulo[:300],
                 "url": r.url, "fuente": r.fuente or "",
                 "fecha": pd.Timestamp(r.fecha_pub).strftime("%Y-%m-%d"),
-                "severidad": "alta" if re.search(PATRON_GRAVE, titulo.lower()) else "media",
+                "severidad": _severidad(titulo),
                 "tipo_impacto": r.tipo_impacto or "Logística",
                 "razon": (r.razon or "")[:400],
             })
     if not filas:
         return pd.DataFrame(columns=cols)
     out = pd.DataFrame(filas)
-    out = out.drop_duplicates(subset=["nodo", "titulo"])
+    # La misma nota llega de varios medios con títulos casi iguales: cuenta una vez
+    out = (out.assign(_clave=out["titulo"].str.lower().str.replace(r"[^a-z0-9áéíóúñ ]", "", regex=True).str[:60])
+           .drop_duplicates(subset=["nodo", "_clave"]).drop(columns="_clave"))
     out["_orden"] = out["severidad"].map({"alta": 0, "media": 1})
     out = (out.sort_values(["nodo", "_orden", "fecha"], ascending=[True, True, False])
            .groupby("nodo").head(max_por_lugar))

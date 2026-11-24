@@ -24,7 +24,7 @@ core/
   metricas.py                ← Catálogo único de métricas de ventas (definición, unidad, SQL), umbrales de cliente,
                                meses completos; lo usan páginas y el asistente IA (herramienta consultar_metrica)
   seleccion_modelos.py       ← Modelo del modo Automático por serie (GOLD_SELECCION_MODELO)
-  alertas.py                 ← Bandeja única de alertas (ventas, clientes, DOF, semáforo, quiebres, noticias,
+  alertas.py                 ← Bandeja única de alertas (ventas, clientes, DOF, semáforo, quiebres, noticias, rutas y puertos,
                                datos desactualizados); sin tabla: se calcula con lo vigente. Umbrales al inicio.
   resumen_semanal.py         ← Correo semanal (alertas + ventas del último mes completo + mercado 7 días)
   calidad_datos.py           ← Reglas de calidad y frescura (catálogo FUENTES con umbrales por fuente; cuadre
@@ -48,6 +48,9 @@ mercado_noticias/ (detector, rupturas, noticias, categorias, dof_monitor, vistas
   Las páginas grandes delegan sus piezas: 03_industria → mercado_noticias/vistas_industria.py;
   07_comercio_exterior → mercado/snice/vistas.py y mercado/canacero/vista_participacion.py (pestaña Participación TYASA).
 mercado_fastmarkets/         ← ferroaleaciones, alerta_alzas (semáforo XGBoost)
+mercado_rutas/               ← Rutas y puertos: red (planta, puertos MX, pasos marítimos, orígenes, corredores),
+                               riesgo (rutas, tráfico vs. normal, nivel de cada punto y ruta), fuentes (PortWatch,
+                               NOAA, Open-Meteo), datos (cargadores), vistas (mapa, tarjetas, tablas)
 ml/categoria_noticias/       ← clasificador de noticias (embeddings + regresión logística)
 pages/
   hub.py (con contador de alertas), alertas_bandeja.py (INICIO → Bandeja de alertas),
@@ -58,11 +61,12 @@ pages/
   ap_galvanizados/ ap_formados/ aceros_sbq/  → coming_soon
   aceros_largos/01–05        ← equipo de Largos
   mercado/01 monitor · 02 variables · 03 industria · 04 indicadores INEGI · 05 sentimiento · 06 competencia ·
-          07 comercio exterior (SNICE) · 08 pronóstico de importación (CANACERO) · 09 quiebres ferroaleaciones
+          07 comercio exterior (SNICE) · 08 pronóstico de importación (CANACERO) · 09 quiebres ferroaleaciones ·
+          10 rutas y puertos
 scripts/                     ← cargas y transformaciones (load_bronze_from_csv, transform_to_silver, transform_to_gold,
                                update_*, setup_*_oracle, load_snice_to_oracle, backfill_*, seed_eventos_historicos…)
 .github/workflows/           ← update_market (L–V 8:45 MX), update_sentimiento, update_inegi (día 10),
-                               update_snice (día 5), update_semaforo_ferros (día 5),
+                               update_snice (día 5), update_semaforo_ferros (día 5), update_trafico_maritimo (L–V 10:00 MX),
                                update_seleccion_modelos (día 6), resumen_semanal (lunes 8:00 MX),
                                keep_alive (30 min)
 ```
@@ -77,6 +81,8 @@ scripts/                     ← cargas y transformaciones (load_bronze_from_csv
 - Comercio exterior: BRONZE_SNICE_SIDERURGICO (retiene 6 meses; aviso = 123 días de vigencia) · GOLD_SNICE_TOP_FRACCIONES
   (historial completo) · GOLD_SNICE_TOP_EMPRESAS/PAISES/CATEGORIAS · GOLD_SNICE_RESUMEN_MENSUAL · BRONZE_CANACERO_COMEX
 - Ferroaleaciones: BRONZE_FASTMARKETS_PRECIOS · GOLD_PRECIOS_FASTMARKETS · GOLD_SEMAFORO_FERROS · GOLD_SEMAFORO_METRICAS
+- Rutas y puertos: GOLD_TRAFICO_PASOS · GOLD_TRAFICO_PUERTOS (IMF PortWatch, 2 años; scripts/setup_rutas_oracle.py +
+  update_trafico_maritimo.py). Si no existen, la página descarga PortWatch directo (~45 s, caché 12 h).
 - Pronóstico: GOLD_SELECCION_MODELO (modelo del modo Automático por serie + firma de los datos; core/seleccion_modelos.py)
 
 ## Convenciones
@@ -102,7 +108,7 @@ scripts/                     ← cargas y transformaciones (load_bronze_from_csv
 
 ## Estado actual
 - Aceros Planos Negros: ✅ completo (9 módulos)
-- Mercado Global: ✅ completo (monitor, variables, industria, INEGI, sentimiento, competencia, comercio exterior, pronóstico de importación, ferroaleaciones)
+- Mercado Global: ✅ completo (monitor, variables, industria, INEGI, sentimiento, competencia, comercio exterior, pronóstico de importación, ferroaleaciones, rutas y puertos)
 - Aceros Planos Galvanizados / Formados: 🚧 en desarrollo
 - Aceros Largos: equipo de Largos · Aceros SBQ: pendiente (compañero)
 - Copiloto de negociación con motor del experto: 🧭 en diseño (ver bitácora de la tesis)

@@ -1,0 +1,48 @@
+name: Tráfico Marítimo (PortWatch)
+
+on:
+  schedule:
+    # Lunes a viernes, 10:00 AM México (16:00 UTC). PortWatch publica cada semana
+    # con ~10 días de retraso; a diario se toma la publicación en cuanto sale.
+    - cron: "0 16 * * 1-5"
+  workflow_dispatch:  # permite correrlo manualmente desde GitHub
+
+jobs:
+  update-trafico:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: pip install oracledb pandas numpy python-dotenv requests
+
+      - name: Extraer wallet de Oracle
+        run: |
+          mkdir -p /tmp/oracle_wallet
+          echo "${{ secrets.ORACLE_WALLET_B64 }}" | base64 -d > /tmp/oracle_wallet.zip
+          unzip -o /tmp/oracle_wallet.zip -d /tmp/oracle_wallet
+
+      - name: Actualizar tráfico de pasos marítimos y puertos
+        env:
+          ORACLE_USER:            ${{ secrets.ORACLE_USER }}
+          ORACLE_PASSWORD:        ${{ secrets.ORACLE_PASSWORD }}
+          ORACLE_DSN:             ${{ secrets.ORACLE_DSN }}
+          ORACLE_WALLET_DIR:      /tmp/oracle_wallet
+          ORACLE_WALLET_PASSWORD: ${{ secrets.ORACLE_WALLET_PASSWORD }}
+        run: python scripts/update_trafico_maritimo.py
+
+      - name: Avisar por correo si falló
+        if: failure()
+        env:
+          GMAIL_USER:         ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          DIGEST_EMAIL_TO:    ${{ secrets.DIGEST_EMAIL_TO }}
+        run: python scripts/notify_failure.py

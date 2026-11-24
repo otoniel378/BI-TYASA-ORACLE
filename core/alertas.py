@@ -3,8 +3,8 @@ alertas.py — Bandeja única de alertas de TYASA BI.
 
 Reúne en una sola lista las señales que hoy viven en distintas páginas y
 correos: ventas de Aceros Planos (clientes que dejaron de comprar, caída del
-mes), ferroaleaciones (semáforo de alza), quiebres de mercado, decretos del
-DOF, sentimiento de noticias y calidad / frescura de los datos (core/calidad_datos.py). La usan la página
+mes), ferroaleaciones (semáforo de alza), quiebres de mercado, rutas y puertos
+(pasos marítimos y puertos en riesgo), decretos del DOF, sentimiento de noticias y calidad / frescura de los datos (core/calidad_datos.py). La usan la página
 pages/alertas_bandeja.py, el contador del Hub y el resumen semanal por correo
 (scripts/enviar_resumen_semanal.py).
 
@@ -39,6 +39,7 @@ DESTINO_MONITOR = ("mercado", "mkt_monitor", None)
 DESTINO_COMERCIO = ("mercado", "mkt_comercio", None)
 DESTINO_SENTIMIENTO = ("mas_info", "mi_sentimiento", None)
 DESTINO_ESTADO_DATOS = ("inicio", "datos", None)
+DESTINO_RUTAS = ("mercado", "mkt_rutas", None)
 
 
 @dataclass
@@ -197,6 +198,45 @@ def alertas_sentimiento(hoy: date) -> list[Alerta]:
     return []
 
 
+def _primera_mayuscula(t: str) -> str:
+    return t[:1].upper() + t[1:]
+
+
+def alertas_rutas(hoy: date) -> list[Alerta]:
+    """Pasos marítimos y puertos de llegada en riesgo (mercado_rutas): tráfico
+    muy reducido de PortWatch o noticias graves de los últimos 21 días. Sin
+    tormentas ni oleaje (se consultan en vivo en la página, no en Oracle)."""
+    from mercado_noticias.analytics.rutas_alertas import DIAS_VIGENCIA, alertas_rutas as avisos_de
+    from mercado_rutas.riesgo import estado_red
+
+    pasos = _q(f"SELECT FECHA, PASO, TRANSITOS FROM {table_ref('GOLD_TRAFICO_PASOS')}")
+    puertos = _q(f"SELECT FECHA, PUERTO, LLAMADAS FROM {table_ref('GOLD_TRAFICO_PUERTOS')}")
+    for df in (pasos, puertos):
+        df.columns = [c.lower() for c in df.columns]
+        if not df.empty:
+            df["fecha"] = pd.to_datetime(df["fecha"])
+    noticias = _q(f"""SELECT FECHA_PUB, TITULO, FUENTE, URL, VARIABLE_PRINCIPAL, GRUPO_TEMATICO, RAZON
+                      FROM {table_ref('GOLD_SENTIMIENTO_NOTICIAS')} WHERE FECHA_PUB >= :desde""",
+                  {"desde": (pd.Timestamp(hoy) - pd.Timedelta(days=DIAS_VIGENCIA)).to_pydatetime()})
+    noticias.columns = [c.lower() for c in noticias.columns]
+    if not noticias.empty:
+        noticias["fecha_pub"] = pd.to_datetime(noticias["fecha_pub"])
+        noticias = noticias.drop_duplicates(subset="titulo")
+    avisos = avisos_de(noticias, hoy=hoy, max_por_lugar=12)
+    red = estado_red(pasos, puertos, avisos, pd.DataFrame(), pd.DataFrame())
+    riesgo = red[(red["nivel"] == "riesgo") & red["tipo"].isin(["Paso marítimo", "Puerto de llegada"])]
+    out = [Alerta("media", "Mercado Global", "Rutas y puertos", f"{r['nombre']} en riesgo",
+                  _primera_mayuscula("; ".join(t for _, t in r["motivos"])) + ".", hoy, DESTINO_RUTAS,
+                  clave=f"rutas_{r['nodo']}")
+           for _, r in riesgo.iterrows()]
+    paises = red[(red["nivel"] == "riesgo") & (red["tipo"] == "País de origen")]
+    if not paises.empty:
+        out.append(Alerta("info", "Mercado Global", "Rutas y puertos",
+                          f"Noticias graves en {len(paises)} país{'es' if len(paises) > 1 else ''} de origen",
+                          ", ".join(paises["nombre"]) + ".", hoy, DESTINO_RUTAS, clave="rutas_paises"))
+    return out
+
+
 FUENTES = {
     "Calidad de datos": alertas_calidad,
     "Clientes": alertas_clientes,
@@ -204,6 +244,7 @@ FUENTES = {
     "DOF": alertas_dof,
     "Ferroaleaciones": alertas_semaforo,
     "Quiebres de mercado": alertas_quiebres,
+    "Rutas y puertos": alertas_rutas,
     "Noticias": alertas_sentimiento,
 }
 _AREA_FUENTE = {"Clientes": "Aceros Planos", "Ventas": "Aceros Planos"}

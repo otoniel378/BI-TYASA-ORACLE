@@ -73,6 +73,9 @@ FUENTES = (
            "fecha", "manual (Fastmarkets)", 45, 90, "media", ("mercado",)),
     Fuente("Semáforo de ferroaleaciones", "Mercado Global", f"SELECT MAX(CARGADO_EN) F FROM {_t('GOLD_SEMAFORO_FERROS')}",
            "fecha", "mensual (día 5)", 40, 70, "media", ()),
+    # PortWatch publica cada semana con ~10 días de retraso
+    Fuente("Tráfico marítimo (PortWatch)", "Mercado Global", f"SELECT MAX(FECHA) F FROM {_t('GOLD_TRAFICO_PASOS')}",
+           "fecha", "diaria (L–V 10:00; PortWatch publica semanal)", 21, 35, "media", ("mercado",)),
     Fuente("Selección de modelos", "Sistema", f"SELECT MAX(CALCULADO_EN) F FROM {_t('GOLD_SELECCION_MODELO')}",
            "fecha", "mensual (día 6)", 40, 70, "media", ()),
 )
