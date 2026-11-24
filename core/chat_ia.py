@@ -8,6 +8,7 @@ import re
 from datetime import date
 import pandas as pd
 from core.db_connector import run_query, run_query_params, table_ref
+from core import metricas
 
 _SCHEMA = """
 Tablas en Oracle Autonomous Data Warehouse (schema ADMIN; nombres en MAYÚSCULAS):
@@ -63,12 +64,17 @@ Tablas en Oracle Autonomous Data Warehouse (schema ADMIN; nombres en MAYÚSCULAS
     SERIE VARCHAR2, FECHA DATE, TIPO VARCHAR2 ('actual' | 'backtest'), PROB NUMBER, SEMAFORO VARCHAR2
 """
 
+_GLOSARIO = "\n".join(f"- {r['Métrica']} ({r['Clave']}): {r['Qué significa']}"
+                      for _, r in metricas.glosario().iterrows())
+
 _SYSTEM = f"""Eres el asistente inteligente de TYASA BI, la plataforma de inteligencia comercial de \
 TYASA, siderúrgica mexicana con tres divisiones: Aceros Planos (Negros, Galvanizados y Formados), \
 Aceros Largos y Aceros SBQ. Hoy la base de ventas contiene solo Aceros Planos Negros.
 
 CAPACIDADES:
-1. ejecutar_sql — Consultas SELECT a Oracle (datos históricos de ventas, mercado, etc.)
+0. consultar_metrica — Cifras oficiales de ventas (toneladas, clientes, productos…) con las
+   definiciones del catálogo. Úsala primero para cualquier cifra de ventas.
+1. ejecutar_sql — Consultas SELECT a Oracle (lo que no cubra consultar_metrica: mercado, SNICE, noticias…)
 2. buscar_noticias — Google News en tiempo real (mañaneras, aranceles, precios globales)
 3. obtener_precios_mercado — Precios recientes de las variables de mercado (HRC, USD/MXN, metales, energía…)
 4. ejecutar_analisis — Corre análisis del sistema TYASA:
@@ -88,6 +94,9 @@ REGLAS:
 - Cuando el usuario pida "corre", "analiza", "ejecuta" o "dame los datos de", usa ejecutar_analisis
 - Cuando pregunten sobre la presidenta, mañanera o conferencia, usa ejecutar_analisis(mananera) Y buscar_noticias
 - PESO_TON es el volumen de ventas (métrica principal)
+- Para cifras de ventas usa consultar_metrica; usa ejecutar_sql con ventas solo si la pregunta no cabe
+  en una métrica y, si lo haces, respeta las definiciones de abajo
+- Al comparar meses usa solo meses completos (el último mes cargado puede estar a medias)
 - HRC_CME_USD es el precio de referencia internacional del acero plano (bobina laminada en caliente)
 
 CONTEXTO DEL NEGOCIO:
@@ -96,11 +105,37 @@ CONTEXTO DEL NEGOCIO:
 - Riesgos: precio internacional del acero, importaciones, alza de energía e insumos (ferroaleaciones)
 - Oportunidad: nearshoring, infraestructura gobierno, T-MEC
 
+MÉTRICAS OFICIALES (catálogo; dilo así al usuario):
+{_GLOSARIO}
+
 Esquema de tablas:
 {_SCHEMA}"""
 
 # ── Declaraciones de herramientas ─────────────────────────────────────────────
 _TOOLS_DECL = [
+    {
+        "name": "consultar_metrica",
+        "description": (
+            "Cifras oficiales de ventas de TYASA BI con las definiciones del catálogo. Úsala antes que "
+            "ejecutar_sql para toneladas, clientes, productos, piezas o toneladas por cliente, en total o "
+            "desglosadas por cliente, producto, proceso, mes o año. clientes_activos = compra en los "
+            "últimos 90 días a la fecha de corte (ignora desde/hasta/por)."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "metrica":  {"type": "string", "enum": list(metricas.METRICAS) + ["clientes_activos"]},
+                "desde":    {"type": "string", "description": "Fecha inicial YYYY-MM-DD (incluida). Vacío = desde el inicio."},
+                "hasta":    {"type": "string", "description": "Fecha final YYYY-MM-DD (incluida). Vacío = fecha de corte."},
+                "por":      {"type": "string", "enum": list(metricas.DIMENSIONES), "description": "Desglose opcional."},
+                "filtro_dimension": {"type": "string", "enum": list(metricas.DIMENSIONES)},
+                "filtro_valor":     {"type": "string", "description": "Valor exacto para filtro_dimension (p. ej. un cliente)."},
+                "top":      {"type": "integer", "description": "Máximo de filas al desglosar (default 20)."},
+                "area":     {"type": "string", "description": "NEGROS (default), GALVANIZADOS o FORMADOS."},
+            },
+            "required": ["metrica"],
+        },
+    },
     {
         "name": "ejecutar_sql",
         "description": (
@@ -211,6 +246,40 @@ def _tool_ejecutar_sql(args: dict) -> dict:
         }
     except Exception as e:
         return {"error": str(e), "sql": sql}
+
+
+def _tool_consultar_metrica(args: dict) -> dict:
+    metrica = args.get("metrica", "")
+    area = (args.get("area") or "NEGROS").upper()
+    try:
+        corte = metricas.fecha_corte(area)
+        if metrica == "clientes_activos":
+            return {"metrica": "Clientes activos", "fecha_corte": str(corte.date()),
+                    "valor": metricas.clientes_activos(area),
+                    "definicion": f"Compra en los últimos {metricas.DIAS_CLIENTE_ACTIVO} días a la fecha de corte."}
+        if metrica not in metricas.METRICAS:
+            return {"error": f"Métrica desconocida: {metrica}. Opciones: {list(metricas.METRICAS)}"}
+        por = args.get("por") or None
+        if por is not None and por not in metricas.DIMENSIONES:
+            return {"error": f"Dimensión desconocida: {por}"}
+        filtros = ({args["filtro_dimension"]: args["filtro_valor"]}
+                   if args.get("filtro_dimension") in metricas.DIMENSIONES and args.get("filtro_valor") else None)
+        df = metricas.calcular(metrica, args.get("desde") or None, args.get("hasta") or None, por=por, area=area,
+                               filtros=filtros, top=min(int(args.get("top") or 20), 100) if por else None)
+        m = metricas.METRICAS[metrica]
+        datos = df.round(2)
+        for c in datos.columns:
+            if c != "VALOR":
+                datos[c] = datos[c].astype(str)
+        return {
+            "metrica": m.nombre, "definicion": m.descripcion, "unidad": m.unidad,
+            "fecha_corte": str(corte.date()),
+            "ultimo_mes_completo": f"{metricas.ultimo_mes_completo(corte):%Y-%m}",
+            "filas": len(df), "datos": datos.to_dict(orient="records"),
+            "_df": df,
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 def _buscar_noticias_rss(query: str, max_resultados: int = 5) -> list[dict]:
@@ -338,26 +407,25 @@ def _tool_ejecutar_analisis(args: dict, gemini_key: str = "") -> dict:
     elif analisis == "kpis_ventas":
         area = (args.get("area") or "NEGROS").upper()
         try:
-            from aceros_planos.negros.loaders import (
-                load_gold_demanda_cliente,
-                load_gold_demanda_producto,
-                load_gold_demanda_mensual,
-            )
-            from aceros_planos.negros.analytics.kpis import calcular_kpis_resumen
-            df_c = load_gold_demanda_cliente()
-            df_p = load_gold_demanda_producto()
-            df_m = load_gold_demanda_mensual()
-            kpis = calcular_kpis_resumen(df_c, df_p, df_m)
+            corte = metricas.fecha_corte(area)
+            inicio_anio = corte.replace(month=1, day=1)
+            var_m = metricas.variacion("toneladas", "mes_anterior", area=area)
+            var_a = metricas.variacion("toneladas", "anio_anterior", area=area)
+            top = metricas.calcular("toneladas", inicio_anio, corte, por="cliente", area=area, top=5)
+            _pct = lambda v: round(v, 1) if v is not None else None  # noqa: E731
             return {
                 **resultado_base,
-                "area":              area,
-                "toneladas_totales": round(float(kpis.toneladas_totales or 0), 1),
-                "clientes_activos":  int(kpis.clientes_activos or 0),
-                "productos_activos": int(kpis.productos_activos or 0),
-                "ticket_promedio":   round(float(kpis.ticket_promedio or 0), 1),
-                "variacion_mom_pct": round(float(kpis.variacion_mom or 0), 1),
-                "top_cliente":       kpis.top_cliente or "",
-                "top_producto":      kpis.top_producto or "",
+                "area":                         area,
+                "fecha_corte":                  str(corte.date()),
+                "toneladas_anio_en_curso":      round(metricas.valor("toneladas", inicio_anio, corte, area), 1),
+                "toneladas_historico":          round(metricas.valor("toneladas", area=area), 1),
+                "clientes_activos_90d":         metricas.clientes_activos(area),
+                "clientes_con_compra_anio":     int(metricas.valor("clientes_con_compra", inicio_anio, corte, area)),
+                "ultimo_mes_completo":          f"{var_m['mes']:%Y-%m}",
+                "toneladas_ultimo_mes":         round(var_m["actual"], 1),
+                "variacion_vs_mes_anterior_pct": _pct(var_m["pct"]),
+                "variacion_vs_mismo_mes_anio_anterior_pct": _pct(var_a["pct"]),
+                "top_clientes_anio":            top.round(1).to_dict(orient="records"),
             }
         except Exception as e:
             return {**resultado_base, "error": str(e)}
@@ -395,6 +463,8 @@ def _tool_ejecutar_analisis(args: dict, gemini_key: str = "") -> dict:
 
 
 def ejecutar_herramienta(nombre: str, args: dict, gemini_key: str = "") -> dict:
+    if nombre == "consultar_metrica":
+        return _tool_consultar_metrica(args)
     if nombre == "ejecutar_sql":
         return _tool_ejecutar_sql(args)
     if nombre == "buscar_noticias":

@@ -74,7 +74,12 @@ def load_gold_demanda_mensual_total() -> pd.DataFrame:
     df["PERIODO"]  = pd.to_datetime(df["PERIODO"], errors="coerce")
     df["ANIO"]     = df["ANIO"].astype(int)
     df["MES"]      = df["MES"].astype(int)
-    return df
+    # N_CLIENTES de GOLD_DEMANDA_MENSUAL es por producto: sumarlo cuenta varias veces al
+    # cliente que compra varios productos en el mes. Se usa el conteo distinto del catálogo.
+    from core.metricas import calcular
+    cli = calcular("clientes_con_compra", por="mes", area=AREA_FILTER)
+    cli = cli.rename(columns={"MES": "PERIODO", "VALOR": "N_CLIENTES"}).astype({"N_CLIENTES": int})
+    return df.drop(columns="N_CLIENTES").merge(cli, on="PERIODO", how="left")
 
 
 @st.cache_data(ttl=600, show_spinner="Cargando serie mensual...")

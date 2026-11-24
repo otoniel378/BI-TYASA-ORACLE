@@ -67,15 +67,12 @@ def _construir_contexto(seccion_label: str, subseccion: str) -> str:
         partes.append("\nDATA DEL SISTEMA TYASA BI (cargada mientras el usuario navega):")
 
     # KPIs de ventas
+    # Los exportan la página de Resumen y la herramienta kpis_ventas; las claves ya dicen qué es cada cifra.
     kpis = sys_ctx.get("negros_kpis") or sys_ctx.get("page_context", {})
-    if kpis and kpis.get("toneladas_totales"):
-        partes.append(
-            f"  Aceros Negros — KPIs: {kpis['toneladas_totales']:,.1f} ton | "
-            f"{kpis.get('clientes_activos','?')} clientes | "
-            f"Top cliente: {kpis.get('top_cliente','?')} | "
-            f"Top producto: {kpis.get('top_producto','?')} | "
-            f"MoM: {kpis.get('variacion_mom_pct', 0):+.1f}%"
-        )
+    datos = " | ".join(f"{k}: {v}" for k, v in kpis.items()
+                       if isinstance(v, (int, float, str)) and k not in ("analisis", "ejecutado", "pagina"))
+    if datos:
+        partes.append(f"  Aceros Negros — KPIs: {datos[:700]}")
 
     # Mañanera
     man = sys_ctx.get("mananera") or {}

@@ -25,6 +25,7 @@ from aceros_planos.negros.loaders import (
 )
 from core.components.filters import sidebar_header
 from core.components.kpi_cards import seccion_titulo
+from core.metricas import DIAS_ALERTA_SIN_COMPRA, DIAS_CLIENTE_ACTIVO, variacion
 
 # ── Gemini key ────────────────────────────────────────────────────────────────
 try:
@@ -233,12 +234,13 @@ else:
     vel_pct   = (vel_act / vel_hist * 100) if vel_hist > 0 else 100
     col_vel   = _OK if vel_pct >= 90 else _WA if vel_pct >= 70 else _ER
 
-    # KPI 2: Clientes activos este mes vs histórico
+    # KPI 2: Clientes con compra este mes vs mismo mes de años anteriores
+    # (N_CLIENTES de load_gold_demanda_mensual_total = clientes distintos, catálogo core/metricas.py)
     cli_act_count = 0
     cli_hist_avg  = 0
     if not df_mensual.empty and "N_CLIENTES" in df_mensual.columns:
         row_m = df_mensual[(df_mensual["ANIO"] == anio_act) & (df_mensual["MES"] == mes_act)]
-        cli_act_count = int(row_m["N_CLIENTES"].sum()) if not row_m.empty else 0
+        cli_act_count = int(row_m["N_CLIENTES"].iloc[0]) if not row_m.empty else 0
         hist_rows = df_mensual[(df_mensual["MES"] == mes_act) & (df_mensual["ANIO"] < anio_act)]
         cli_hist_avg = float(hist_rows["N_CLIENTES"].mean()) if not hist_rows.empty else cli_act_count
     cli_pct   = (cli_act_count / cli_hist_avg * 100) if cli_hist_avg > 0 else 100
@@ -257,20 +259,18 @@ else:
             conc_pct = top3 / total_m * 100 if total_m > 0 else 0
     col_conc = _OK if conc_pct <= 50 else _WA if conc_pct <= 70 else _ER
 
-    # KPI 4: Variación MoM
-    mes_ant = mes_act - 1 if mes_act > 1 else 12
-    anio_ant_mom = anio_act if mes_act > 1 else anio_act - 1
-    row_ant = df_mensual[(df_mensual["ANIO"] == anio_ant_mom) & (df_mensual["MES"] == mes_ant)]
-    ton_ant = float(row_ant["PESO_TON"].sum()) if not row_ant.empty else 0.0
-    mom_pct = ((ton_act - ton_ant) / ton_ant * 100) if ton_ant > 0 else 0.0
+    # KPI 4: Variación MoM — último mes completo vs el anterior (el mes en curso está a medias)
+    _var = variacion("toneladas")
+    ton_ant = _var["base"]
+    mom_pct = _var["pct"] if _var["pct"] is not None else 0.0
     col_mom = _OK if mom_pct >= 0 else _WA if mom_pct >= -10 else _ER
 
     c1, c2, c3, c4 = st.columns(4)
     for col_st, lbl, val_str, sub, col in [
         (c1, "Velocidad de Ventas", f"{vel_pct:.0f}%",    f"{_fmt(vel_act)} ton vs hist. {_fmt(vel_hist)} ton", col_vel),
-        (c2, "Clientes Activos",    f"{cli_act_count}",   f"{cli_pct:.0f}% del histórico ({cli_hist_avg:.0f} prom.)", col_cli),
+        (c2, "Clientes con compra", f"{cli_act_count}",   f"{cli_pct:.0f}% del histórico ({cli_hist_avg:.0f} prom.)", col_cli),
         (c3, "Conc. Top 3",         f"{conc_pct:.0f}%",   "del volumen en solo 3 clientes", col_conc),
-        (c4, "Variación MoM",       f"{mom_pct:+.1f}%",   f"vs mes anterior ({_fmt(ton_ant)} ton)", col_mom),
+        (c4, "Variación MoM",       f"{mom_pct:+.1f}%",   f"{MESES[_var['mes'].month]} vs {MESES[_var['mes_base'].month]} ({_fmt(_var['actual'])} vs {_fmt(ton_ant)} ton)", col_mom),
     ]:
         with col_st:
             st.html(f"""<div class="al-card" style="border-left:4px solid {col};">
@@ -376,15 +376,15 @@ seccion_titulo("Anomalías Detectadas", "Señales automáticas desde los datos")
 anomalias: list[dict] = []
 hoy_ts = _corte
 
-# A1: Clientes en fuga (> 60 días sin comprar)
+# A1: Clientes en fuga (más de DIAS_ALERTA_SIN_COMPRA días sin comprar)
 if not df_cliente.empty and "ULTIMA_COMPRA" in df_cliente.columns and "PESO_TON" in df_cliente.columns:
     df_c = df_cliente.copy()
     df_c["ULTIMA_COMPRA"] = pd.to_datetime(df_c["ULTIMA_COMPRA"], errors="coerce")
     df_c["dias_sin_compra"] = (hoy_ts - df_c["ULTIMA_COMPRA"]).dt.days
-    en_fuga = df_c[df_c["dias_sin_compra"] > 60].sort_values("PESO_TON", ascending=False)
+    en_fuga = df_c[df_c["dias_sin_compra"] > DIAS_ALERTA_SIN_COMPRA].sort_values("PESO_TON", ascending=False)
     for _, row in en_fuga.head(5).iterrows():
         dias = int(row["dias_sin_compra"])
-        col  = _ER if dias > 90 else _WA
+        col  = _ER if dias > DIAS_CLIENTE_ACTIVO else _WA
         anomalias.append({
             "tipo": "Cliente en fuga",
             "desc": f"{row.get('CLIENTE','?')} — {dias} días sin comprar",
@@ -497,9 +497,9 @@ Máximo 20 palabras por bullet. No uses emojis. Sin introducción.
 Estado del mes:
 - Toneladas actuales: {_fmt(ton_act)} ton
 - Proyección de cierre: {_fmt(ton_proy)} ton ({pct_vs_hist:+.1f}% vs histórico)
-- Clientes activos: {cli_act_count}
+- Clientes con compra en el mes en curso: {cli_act_count}
 - Concentración top 3: {conc_pct:.0f}%
-- Variación MoM: {mom_pct:+.1f}%
+- Variación último mes completo vs anterior: {mom_pct:+.1f}%
 
 Anomalías detectadas:
 {anom_txt}
@@ -522,4 +522,6 @@ def _render_ia(txt: str | None) -> str:
       <ul style="margin:0;padding-left:18px;">{items}</ul>
     </div>"""
 
-st.html(_render_ia(st.session_state.get(_IA_KEY)))
+_html_ia = _render_ia(st.session_state.get(_IA_KEY))
+if _html_ia:  # st.html no acepta cadena vacía
+    st.html(_html_ia)

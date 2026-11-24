@@ -19,6 +19,9 @@ config.py                    ← Colores, parámetros, AREAS (responsable y esta
 core/
   db_connector.py            ← Oracle ADW (wallet; secrets.toml / ORACLE_WALLET_B64 / env). run_query, run_query_params, table_ref
   auth.py                    ← Roles: director, gerente (todas las secciones) · esp_negros, esp_largos, esp_sbq (tablero de su división)
+  metricas.py                ← Catálogo único de métricas de ventas (definición, unidad, SQL), umbrales de cliente,
+                               meses completos; lo usan páginas y el asistente IA (herramienta consultar_metrica)
+  seleccion_modelos.py       ← Modelo del modo Automático por serie (GOLD_SELECCION_MODELO)
   validators.py              ← validate_all (columnas requeridas, % nulos) → anomalías en el Centro de alertas
   chat_ia.py, chat_widget.py, memoria_ia.py ← Asistente IA (Gemini)
   components/                ← charts, filters, kpi_cards, tables
@@ -66,6 +69,9 @@ scripts/                     ← cargas y transformaciones (load_bronze_from_csv
 - Paleta: primary=#1B3A5C | secondary=#4A7BA7 | success=#2E7D32 | danger=#C62828.
 - Loaders con @st.cache_data(ttl=600); conexión con @st.cache_resource. Consultas con valores de usuario: run_query_params (binds).
 - Fechas de referencia: usar get_fecha_corte() (última FECHAEMB cargada), no date.today().
+- Métricas de ventas: SIEMPRE desde core/metricas.py (calcular/valor/variacion/clientes_activos y constantes
+  DIAS_CLIENTE_ACTIVO=90, DIAS_CLIENTE_EN_RIESGO=180, DIAS_ALERTA_SIN_COMPRA=60). No sumar N_CLIENTES de tablas por
+  producto (cuenta doble). Comparaciones entre meses: solo meses completos (metricas.ultimo_mes_completo).
 - Pronóstico: excluir mes incompleto, rellenar meses sin embarques con 0, ventana de prueba común de 6 meses. Meta MAPE aceptable ≤ 30 %.
   Las páginas pronostican con core/seleccion_modelos.generar(df, h, modelo, serie_id, ...) — serie_id tipo
   "NEGROS|PROCESO|<x>" o "CANACERO|IMPORTACION|FRACCION|<f>" (mismo formato en scripts/update_seleccion_modelos.py).

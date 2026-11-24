@@ -20,7 +20,8 @@ from aceros_planos.negros.loaders import (
     load_gold_demanda_mensual,
     load_gold_demanda_mensual_total,
 )
-from aceros_planos.negros.analytics.kpis import calcular_kpis_resumen, calcular_top_n, calcular_participacion
+from aceros_planos.negros.analytics.kpis import KPIResumen, calcular_top_n, calcular_participacion
+from core import metricas
 from aceros_planos.negros.analytics.series_tiempo import preparar_serie_mensual
 from core.components.kpi_cards import render_kpi_row, seccion_titulo
 from core.components.filters import sidebar_header, filtro_rango_fechas, aplicar_filtro_fechas
@@ -73,26 +74,46 @@ st.divider()
 # ---------------------------------------------------------------------------
 # KPIs principales
 # ---------------------------------------------------------------------------
-kpis_data = calcular_kpis_resumen(df_cliente, df_producto, df_mensual_f)
+# KPIs del periodo seleccionado con las definiciones del catálogo (core/metricas.py).
+# La variación compara el último mes completo contra el anterior.
+# El filtro es mensual (PERIODO = día 1): "hasta" cubre el mes completo.
+_periodo = dict(desde=fecha_inicio, hasta=pd.Timestamp(fecha_fin) + pd.offsets.MonthEnd(0))
+_top_cli = metricas.calcular("toneladas", por="cliente", top=1, **_periodo)
+_top_prod = metricas.calcular("toneladas", por="producto", top=1, **_periodo)
+_var = metricas.variacion("toneladas")
+kpis_data = KPIResumen(
+    toneladas_totales=round(metricas.valor("toneladas", **_periodo), 1),
+    clientes_activos=int(metricas.valor("clientes_con_compra", **_periodo)),
+    productos_activos=int(metricas.valor("productos_vendidos", **_periodo)),
+    ticket_promedio=round(metricas.valor("ton_por_cliente", **_periodo), 1),
+    variacion_mom=round(_var["pct"], 1) if _var["pct"] is not None else None,
+    top_cliente=_top_cli["CLIENTE"].iloc[0] if not _top_cli.empty else "",
+    top_producto=_top_prod["PRODUCTO"].iloc[0] if not _top_prod.empty else "",
+)
+_MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
 
 render_kpi_row([
     {"label": "Toneladas Totales",     "value": kpis_data.toneladas_totales, "suffix": " ton",
-     "help_text": "Suma total de toneladas en el periodo seleccionado."},
-    {"label": "Clientes Activos",      "value": kpis_data.clientes_activos,
-     "help_text": "Numero de clientes con al menos un embarque."},
-    {"label": "Productos Activos",     "value": kpis_data.productos_activos,
-     "help_text": "Numero de productos unicos vendidos."},
-    {"label": "Ticket Prom. / Cliente","value": kpis_data.ticket_promedio,   "suffix": " ton",
-     "delta": kpis_data.variacion_mom, "delta_label": "vs mes anterior",
-     "help_text": "Toneladas promedio por cliente activo."},
+     "delta": kpis_data.variacion_mom,
+     "delta_label": f"{_MESES_CORTOS[_var['mes'].month - 1]} vs {_MESES_CORTOS[_var['mes_base'].month - 1]}",
+     "help_text": "Toneladas del periodo seleccionado. La variación compara el último mes completo con el anterior."},
+    {"label": "Clientes con compra",   "value": kpis_data.clientes_activos,
+     "help_text": "Clientes distintos que compraron en el periodo seleccionado."},
+    {"label": "Productos vendidos",    "value": kpis_data.productos_activos,
+     "help_text": "Productos distintos vendidos en el periodo seleccionado."},
+    {"label": "Toneladas por cliente", "value": kpis_data.ticket_promedio,   "suffix": " ton",
+     "help_text": "Toneladas del periodo ÷ clientes con compra."},
 ])
 
 st.markdown("")
 col1, col2 = st.columns(2)
 with col1:
-    st.metric("Top cliente",  kpis_data.top_cliente  or "—")
+    st.metric("Top cliente del periodo",  kpis_data.top_cliente  or "—")
 with col2:
-    st.metric("Top producto", kpis_data.top_producto or "—")
+    st.metric("Top producto del periodo", kpis_data.top_producto or "—")
+with st.expander("¿Cómo se calculan estas cifras?"):
+    st.dataframe(metricas.glosario().drop(columns="Clave"), hide_index=True, width="stretch")
+    st.caption(f"Datos al {metricas.fecha_corte():%d/%m/%Y}.")
 
 # Exportar KPIs al contexto acumulativo del sistema
 try:
@@ -100,10 +121,11 @@ try:
     actualizar_contexto_sistema("negros_kpis", {
         "pagina":            "Resumen Ejecutivo — Aceros Planos Negros",
         "toneladas_totales": round(float(kpis_data.toneladas_totales or 0), 1),
-        "clientes_activos":  int(kpis_data.clientes_activos or 0),
-        "productos_activos": int(kpis_data.productos_activos or 0),
-        "ticket_promedio":   round(float(kpis_data.ticket_promedio or 0), 1),
-        "variacion_mom_pct": round(float(kpis_data.variacion_mom or 0), 1),
+        "periodo":           f"{fecha_inicio} a {fecha_fin}",
+        "clientes_con_compra": int(kpis_data.clientes_activos or 0),
+        "productos_vendidos":  int(kpis_data.productos_activos or 0),
+        "toneladas_por_cliente": round(float(kpis_data.ticket_promedio or 0), 1),
+        "variacion_ultimo_mes_completo_pct": round(float(kpis_data.variacion_mom or 0), 1),
         "top_cliente":       kpis_data.top_cliente or "",
         "top_producto":      kpis_data.top_producto or "",
     })

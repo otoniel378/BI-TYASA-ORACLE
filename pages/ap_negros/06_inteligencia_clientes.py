@@ -22,6 +22,7 @@ from aceros_planos.negros.loaders import (
     get_fecha_corte,
 )
 from mercado_noticias.analytics.ai_analysis import generar_briefing_cliente
+from core.metricas import DIAS_CLIENTE_ACTIVO, DIAS_CLIENTE_EN_RIESGO
 
 # Fecha de referencia para recencia y comparaciones anuales: último día con datos
 # cargados (si los datos están al día, coincide con hoy).
@@ -116,9 +117,9 @@ def _salud(df_perfil_row) -> tuple:
         if pd.isna(uc):
             return "sin datos", 999, _T3
         dias = (_CORTE - uc).days
-        if dias <= 90:
+        if dias <= DIAS_CLIENTE_ACTIVO:
             return "Activo", dias, _OK
-        elif dias <= 180:
+        elif dias <= DIAS_CLIENTE_EN_RIESGO:
             return "En riesgo", dias, _WA
         else:
             return "Inactivo", dias, _ER
