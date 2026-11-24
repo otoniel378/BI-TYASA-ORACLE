@@ -20,17 +20,20 @@ T_SELECCION = table_ref("GOLD_SELECCION_MODELO")
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_selecciones() -> pd.DataFrame:
     try:
-        df = run_query(f"SELECT SERIE_ID, FIRMA, MODELO FROM {T_SELECCION}")
+        df = run_query(f"SELECT SERIE_ID, FIRMA, MODELO, WAPE FROM {T_SELECCION}")
     except RuntimeError:  # tabla aún no creada (scripts/setup_seleccion_modelos_oracle.py)
-        return pd.DataFrame(columns=["serie_id", "firma", "modelo"])
+        return pd.DataFrame(columns=["serie_id", "firma", "modelo", "wape"])
     df.columns = [c.lower() for c in df.columns]
     return df
 
 
-def modelo_precalculado(serie_id: str, firma: str) -> str | None:
+def modelo_precalculado(serie_id: str, firma: str) -> tuple[str | None, float | None]:
+    """(modelo, WAPE %) guardados para la serie si siguen vigentes."""
     sel = load_selecciones()
     m = sel[(sel["serie_id"] == serie_id) & (sel["firma"] == firma)]
-    return m["modelo"].iloc[0] if not m.empty else None
+    if m.empty:
+        return None, None
+    return m["modelo"].iloc[0], (float(m["wape"].iloc[0]) if pd.notna(m["wape"].iloc[0]) else None)
 
 
 def forecast_auto(df: pd.DataFrame, horizonte: int, serie_id: str, **kw):
@@ -38,7 +41,11 @@ def forecast_auto(df: pd.DataFrame, horizonte: int, serie_id: str, **kw):
     sigue vigente. <kw>: mismos argumentos de generar_forecast."""
     firma = firma_serie(df, kw.get("col_periodo", "PERIODO"), kw.get("col_val", "PESO_TON"),
                         fecha_corte=kw.get("fecha_corte"), rellenar_huecos=kw.get("rellenar_huecos", False))
-    return generar_forecast(df, horizonte, modelo="auto", seleccion=modelo_precalculado(serie_id, firma), **kw)
+    modelo, wape = modelo_precalculado(serie_id, firma)
+    res = generar_forecast(df, horizonte, modelo="auto", seleccion=modelo, **kw)
+    if modelo is not None and res.error_origen_movil is None:
+        res.error_origen_movil = wape
+    return res
 
 
 def generar(df: pd.DataFrame, horizonte: int, modelo: str, serie_id: str, **kw):

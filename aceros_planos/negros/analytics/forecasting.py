@@ -19,6 +19,7 @@ class ForecastResult:
     backtest: pd.DataFrame
     error_msg: str | None = None
     contribuciones: pd.DataFrame | None = None
+    error_origen_movil: float | None = None  # WAPE (%) del modelo en la validación de origen móvil (modo auto)
 
 
 def _metricas(y_real: np.ndarray, y_pred: np.ndarray) -> dict:
@@ -462,6 +463,8 @@ def generar_forecast(
             detalle = (" | ".join(f"{k}: {v:.0f}%" for k, v in wape.items())
                        if wape is not None and len(wape) else "precalculado")
             r.modelo = f"{r.modelo}  [auto, origen móvil: {detalle}]"
+            if wape is not None and len(wape):
+                r.error_origen_movil = float(wape.iloc[0])
             return r
 
     # Respaldo (serie muy corta para el origen móvil): mejor MAPE en el corte único

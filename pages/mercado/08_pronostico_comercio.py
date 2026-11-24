@@ -49,7 +49,7 @@ from aceros_planos.negros.analytics.forecasting import (
 )
 from core.components.kpi_cards import seccion_titulo
 from core.components.tables import tabla_ejecutiva
-from core.components.aciertos import render_aciertos
+from core.components.aciertos import aviso_confiabilidad, render_aciertos
 from core.seleccion_modelos import generar
 from core.components.charts import barras_horizontales
 
@@ -480,6 +480,7 @@ def _render_resultado(res, key_prefix: str, familia: str | None, df_ctx: pd.Data
                 unsafe_allow_html=True,
             )
 
+    aviso_confiabilidad(res)
     fig = _grafico_forecast(res, titulo=f"Histórico + Pronóstico {horizonte} meses")
     st.plotly_chart(fig, width="stretch", key=f"{key_prefix}_chart_forecast")
 

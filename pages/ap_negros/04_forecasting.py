@@ -27,7 +27,7 @@ from aceros_planos.negros.analytics.forecasting import (
     filtrar_por_dimension,
     MODELOS_DISPONIBLES,
 )
-from core.components.aciertos import render_aciertos
+from core.components.aciertos import aviso_confiabilidad, render_aciertos
 from core.seleccion_modelos import generar
 from core.components.kpi_cards import seccion_titulo
 from core.components.filters import sidebar_header
@@ -179,6 +179,7 @@ def _render_resultado(res, key_prefix: str):
         if res.metricas:
             tabla_metricas(res.metricas, titulo="Metricas de backtesting")
 
+    aviso_confiabilidad(res)
     fig = _grafico_forecast(res, titulo=f"Historico + Pronostico {horizonte} meses")
     st.plotly_chart(fig, width="stretch")
 

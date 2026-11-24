@@ -19,6 +19,24 @@ _COLORES = {"combo": COLORS["primary"], "ets": COLORS["success"], "sarima": COLO
             "xgb": COLOR_SEQUENCE[1], "naive": COLORS["neutral"]}
 
 
+LIMITE_POCO_CONFIABLE = 50
+
+
+def aviso_confiabilidad(res) -> None:
+    """Aviso corto bajo el pronóstico según qué tanto se equivoca el modelo en
+    esta serie (validación de origen móvil; solo modo Automático)."""
+    err = getattr(res, "error_origen_movil", None)
+    if err is None:
+        return
+    if err > LIMITE_POCO_CONFIABLE:
+        st.warning(f"Pronóstico poco confiable: en esta serie se equivoca en promedio {err:.0f} %. "
+                   "Úsalo solo como referencia.")
+    elif err > META_MAPE:
+        st.caption(f"En esta serie el pronóstico se equivoca en promedio {err:.0f} % (meta ≤ {META_MAPE} %).")
+    else:
+        st.caption(f"En esta serie el pronóstico se equivoca en promedio {err:.0f} % (dentro de la meta).")
+
+
 def render_aciertos(df: pd.DataFrame, key: str, referencia: str = "lo real", **kw_backtest) -> None:
     """<key>: único por página y serie (incluir la fecha de corte para recalcular
     al cargar datos nuevos). <kw_backtest>: col_periodo, col_val, fecha_corte,
