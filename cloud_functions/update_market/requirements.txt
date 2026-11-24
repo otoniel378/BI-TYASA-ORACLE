@@ -1,5 +1,0 @@
-functions-framework==3.*
-yfinance>=1.2.0
-pandas>=2.0.0
-numpy>=1.24.0
-oracledb>=2.0.0

@@ -7,7 +7,7 @@ import pandas as pd
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from aceros_planos.negros.analytics.forecasting import (  # noqa: E402
+from core.forecasting import (  # noqa: E402
     backtest_origen_movil, generar_forecast, resumen_origen_movil,
 )
 
@@ -67,7 +67,7 @@ def test_auto_usa_la_seleccion_precalculada():
 
 
 def test_auto_sin_seleccion_elige_el_menor_error_de_origen_movil():
-    from aceros_planos.negros.analytics.forecasting import error_global, seleccionar_modelo, CANDIDATOS_AUTO
+    from core.forecasting import error_global, seleccionar_modelo, CANDIDATOS_AUTO
     df = _demanda()
     clave, wape = seleccionar_modelo(df)
     bt = backtest_origen_movil(df, horizonte=6, n_origenes=6, modelos=CANDIDATOS_AUTO)
@@ -82,9 +82,16 @@ def test_backtest_combo_es_el_promedio_de_ets_y_sarima():
 
 
 def test_firma_cambia_si_cambian_los_datos():
-    from aceros_planos.negros.analytics.forecasting import firma_serie
+    from core.forecasting import firma_serie
     df = _demanda()
     otra = df.copy()
     otra.loc[otra.index[-1], "PESO_TON"] += 100
     assert firma_serie(df) != firma_serie(otra)
     assert firma_serie(df) == firma_serie(df.copy())
+
+
+def test_ruta_anterior_apunta_al_motor_comun():
+    # El motor vive en core/forecasting.py; la ruta de Planos se conserva para código de otros equipos.
+    from aceros_planos.negros.analytics import forecasting as viejo
+    from core import forecasting as comun
+    assert viejo is comun and viejo.generar_forecast is comun.generar_forecast

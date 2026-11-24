@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from config import COLORS, COLOR_SEQUENCE
-from aceros_planos.negros.analytics.forecasting import (
+from core.forecasting import (
     CANDIDATOS_AUTO as MODELOS, backtest_origen_movil, error_global, resumen_origen_movil,
 )
 

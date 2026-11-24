@@ -36,7 +36,7 @@ warnings.filterwarnings("ignore")
 logging.getLogger("streamlit").setLevel(logging.ERROR)
 load_dotenv()
 
-from aceros_planos.negros.analytics.forecasting import filtrar_por_dimension, firma_serie, seleccionar_modelo
+from core.forecasting import filtrar_por_dimension, firma_serie, seleccionar_modelo
 from setup_seleccion_modelos_oracle import get_conn
 
 MESES_MIN_PRODUCTO = 24   # productos con menos historia se calculan al abrirlos en la app

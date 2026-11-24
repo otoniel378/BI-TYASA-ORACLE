@@ -8,8 +8,8 @@ Mercado Global es una **sección común** a las tres (no es una división).
 Stack: Python · Streamlit · Oracle Autonomous Data Warehouse · Plotly · statsmodels · XGBoost · scikit-learn ·
 sentence-transformers · Gemini API · GitHub Actions.
 Base de datos: **solo Oracle ADW** (región México-Querétaro, Always Free), schema ADMIN. Migrado desde BigQuery en jun 2026;
-BigQuery ya no se usa (el asistente IA y su memoria ya están en Oracle desde 2026-11-13). Lo que queda con BigQuery
-(`cloud_functions/`, `scripts/create_market_tables.py`, `scripts/check_setup.py`, un test) es código obsoleto.
+BigQuery ya no se usa (el asistente IA y su memoria ya están en Oracle desde 2026-11-13). El código obsoleto de BigQuery
+se borró el 2026-11-24; solo Aceros Largos (equipo de Largos) sigue usando `get_bq_client` y por eso falla hasta que lo migren.
 Autoría: la plataforma común y Aceros Planos los desarrolla Otoniel; Largos y SBQ los adecuarán sus compañeros.
 
 ## Estructura del repo
@@ -19,6 +19,8 @@ config.py                    ← Colores, parámetros, AREAS (responsable y esta
 core/
   db_connector.py            ← Oracle ADW (wallet; secrets.toml / ORACLE_WALLET_B64 / env). run_query, run_query_params, table_ref
   auth.py                    ← Roles: director, gerente (todas las secciones) · esp_negros, esp_largos, esp_sbq (tablero de su división)
+  forecasting.py             ← Motor de pronóstico común (ETS|SARIMA|XGBoost|Naive|Combo|Auto, origen móvil):
+                               lo usan Aceros Planos y Mercado Global (importación CANACERO)
   metricas.py                ← Catálogo único de métricas de ventas (definición, unidad, SQL), umbrales de cliente,
                                meses completos; lo usan páginas y el asistente IA (herramienta consultar_metrica)
   seleccion_modelos.py       ← Modelo del modo Automático por serie (GOLD_SELECCION_MODELO)
@@ -36,11 +38,15 @@ aceros_planos/
   negros/                    ← COMPLETO
     loaders.py               ← @st.cache_data(ttl=600); get_fecha_corte(), validar_datos()
     loaders_contexto.py      ← INEGI y quiebres relevantes para Planos
-    analytics/               ← kpis, segmentacion (ABC, Pareto, HHI), series_tiempo, forecasting (ETS|SARIMA|XGBoost|Naive|Auto), mix_productos,
+    analytics/               ← kpis, segmentacion (ABC, Pareto, HHI), series_tiempo, mix_productos,
+                               (forecasting.py aquí solo apunta a core/forecasting.py, que es el motor común)
                                escenarios (simulador: sensibilidad de la venta a indicadores INEGI estimada con la historia)
   galvanizados/ formados/    ← EN DESARROLLO
 aceros_largos/  aceros_sbq/  ← otros compañeros
-mercado/ (inegi, snice, canacero) · mercado_noticias/ (detector, rupturas, noticias, categorias, dof_monitor…)
+mercado/ (inegi, snice [+ vistas.py], canacero [+ vista_participacion.py]) ·
+mercado_noticias/ (detector, rupturas, noticias, categorias, dof_monitor, vistas_industria.py…)
+  Las páginas grandes delegan sus piezas: 03_industria → mercado_noticias/vistas_industria.py;
+  07_comercio_exterior → mercado/snice/vistas.py y mercado/canacero/vista_participacion.py (pestaña Participación TYASA).
 mercado_fastmarkets/         ← ferroaleaciones, alerta_alzas (semáforo XGBoost)
 ml/categoria_noticias/       ← clasificador de noticias (embeddings + regresión logística)
 pages/
@@ -86,7 +92,9 @@ scripts/                     ← cargas y transformaciones (load_bronze_from_csv
 - Pronóstico: excluir mes incompleto, rellenar meses sin embarques con 0, ventana de prueba común de 6 meses. Meta MAPE aceptable ≤ 30 %.
   Las páginas pronostican con core/seleccion_modelos.generar(df, h, modelo, serie_id, ...) — serie_id tipo
   "NEGROS|PROCESO|<x>" o "CANACERO|IMPORTACION|FRACCION|<f>" (mismo formato en scripts/update_seleccion_modelos.py).
-- Nuevas páginas siguen el patrón de pages/ap_negros/01_resumen.py.
+- Nuevas páginas siguen el patrón de pages/ap_negros/01_resumen.py. Si una página pasa de ~600 líneas, sus piezas
+  (HTML, tarjetas, pestañas completas) van a un módulo vistas*.py junto a sus loaders.
+- Antes de subir cambios grandes: `python scripts/probar_paginas.py` (abre cada página con datos reales y mide tiempos).
 - Fuente de datos nueva → agregarla a core/calidad_datos.FUENTES (consulta de último dato, cada cuánto se
   actualiza, umbrales de aviso/falla, secciones donde se muestra). Los loaders no deben tragarse errores en
   silencio sin una regla que lo detecte.
@@ -190,9 +198,8 @@ Sistema / datos:
 5. Copiloto de negociación con motor del experto: entrevistas (10–20 reglas) → motor de reglas difusas → registro de casos
    en Oracle → casos similares → ML (diseño en la bitácora).
 6. ✅ Cambios del 2026-11-13 ya subidos (commit 4ef8b4f).
-7. Limpiar archivos temporales `*.py.tmp.*` en pages/ (decenas en pages/mercado/ y pages/login.py) — confirmar antes de borrar.
+7. ✅ Archivos `*.tmp.*` borrados (69) y código obsoleto de BigQuery borrado (2026-11-24).
 8. Crear la tabla de memoria del asistente: `python scripts/setup_memoria_ia_oracle.py` (escribe en Oracle → lo corre Otoniel).
-   Opcional: borrar el código obsoleto de BigQuery (cloud_functions/, create_market_tables.py, check_setup.py).
 9. Seguridad: `TYASA-BI - copia\.claude\settings.local.json` tenía un token de GitHub y una API key de Google en texto plano
    → borrar esas líneas y revocar/regenerar las credenciales.
 9b. Contraseñas individuales por usuario (hoy `core/auth.py` tiene una sola `_PASS` para los 5): Otoniel lo hará.
@@ -200,8 +207,7 @@ Sistema / datos:
 9c. Vista de especialistas: hoy van a `pages/especialista/dashboard.py` (provisional). Otoniel actualizará esas secciones;
     la tesis dice que "su vista se habilita conforme se liberan los módulos de su división" (§3.5.1, §3.7). Al cambiarlo → bitácora.
 9e. Textos de la app que todavía dicen "31 variables" (`pages/mercado/02_variables.py`): son 35.
-9f. Lo común depende de Planos: el pronóstico de importación (Mercado Global) importa `aceros_planos/negros/analytics/forecasting.py`;
-    considerar moverlo a un paquete común.
+9f. ✅ El motor de pronóstico ya es común (core/forecasting.py, 2026-11-24).
 Tesis:
 10. Datos personales (portada, agradecimientos), sesiones de validación con usuarios, tiempo de elaboración de reportes
     (hipótesis), motivos de la migración, referencias incompletas (en amarillo), confirmar con TYASA los nombres de clientes en capturas.

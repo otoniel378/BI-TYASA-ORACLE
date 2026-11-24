@@ -87,11 +87,22 @@ def get_oracle_pool() -> oracledb.ConnectionPool:
     return oracledb.create_pool(min=1, max=5, increment=1, **params)
 
 
+# Filas por viaje a Oracle. El valor por defecto de oracledb (100) obliga a ~1,000 viajes
+# para traer las ventas de Plata (102 mil filas): ~90 s desde Streamlit Cloud.
+FILAS_POR_LOTE = 5000
+
+
+def _lotes_grandes(cursor) -> None:
+    cursor.arraysize = FILAS_POR_LOTE
+    cursor.prefetchrows = FILAS_POR_LOTE + 1
+
+
 def run_query(sql: str) -> pd.DataFrame:
     """Ejecuta SQL en Oracle ADW y devuelve un DataFrame."""
     pool = get_oracle_pool()
     with pool.acquire() as conn:
         cursor = conn.cursor()
+        _lotes_grandes(cursor)
         try:
             cursor.execute(sql)
             cols = [d[0] for d in cursor.description]
@@ -109,6 +120,7 @@ def run_query_params(sql: str, params: list | dict) -> pd.DataFrame:
     pool = get_oracle_pool()
     with pool.acquire() as conn:
         cursor = conn.cursor()
+        _lotes_grandes(cursor)
         try:
             cursor.execute(sql, params)
             cols = [d[0] for d in cursor.description]

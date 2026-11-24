@@ -85,18 +85,6 @@ def barras_horizontales(df, x, y, titulo="", x_label="Ton", max_items=12):
     return fig
 
 
-def barras_verticales(df, x, y, titulo="", x_label="", y_label="Ton", max_items=12):
-    if df.empty:
-        return _empty_fig(titulo)
-    df_plot = df.nlargest(max_items, y)
-    fig = px.bar(df_plot, x=x, y=y, color_discrete_sequence=[COLORS["primary"]], text=y)
-    fig.update_traces(texttemplate="%{text:,.0f}", textposition="outside", textfont=dict(size=9, color="#64748B"), marker_line_width=0, marker_opacity=0.88)
-    xax = dict(_XAX, title=x_label, tickangle=-45, tickfont=dict(size=9, color="#334155"))
-    yax = dict(_YAX, title=y_label, showgrid=True, gridcolor=_GRID)
-    fig.update_layout(**_LAYOUT_BASE, title=_title(titulo), xaxis=xax, yaxis=yax, showlegend=False)
-    return fig
-
-
 def donut(df, names, values, titulo="", hole=0.55):
     if df.empty:
         return _empty_fig(titulo)

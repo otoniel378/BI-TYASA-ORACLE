@@ -607,4 +607,6 @@ def _render_ia_noticias(txt: str | None) -> str:
     </div>"""
 
 with col_ia:
-    st.html(_render_ia_noticias(st.session_state.get(_IA_KEY)))
+    _html_ia = _render_ia_noticias(st.session_state.get(_IA_KEY))
+    if _html_ia:  # st.html no acepta contenido vacío (aún no hay análisis)
+        st.html(_html_ia)
