@@ -22,6 +22,9 @@ core/
   metricas.py                ← Catálogo único de métricas de ventas (definición, unidad, SQL), umbrales de cliente,
                                meses completos; lo usan páginas y el asistente IA (herramienta consultar_metrica)
   seleccion_modelos.py       ← Modelo del modo Automático por serie (GOLD_SELECCION_MODELO)
+  alertas.py                 ← Bandeja única de alertas (ventas, clientes, DOF, semáforo, quiebres, noticias,
+                               datos desactualizados); sin tabla: se calcula con lo vigente. Umbrales al inicio.
+  resumen_semanal.py         ← Correo semanal (alertas + ventas del último mes completo + mercado 7 días)
   validators.py              ← validate_all (columnas requeridas, % nulos) → anomalías en el Centro de alertas
   chat_ia.py, chat_widget.py, memoria_ia.py ← Asistente IA (Gemini)
   components/                ← charts, filters, kpi_cards, tables
@@ -36,7 +39,8 @@ mercado/ (inegi, snice, canacero) · mercado_noticias/ (detector, rupturas, noti
 mercado_fastmarkets/         ← ferroaleaciones, alerta_alzas (semáforo XGBoost)
 ml/categoria_noticias/       ← clasificador de noticias (embeddings + regresión logística)
 pages/
-  hub.py, login.py, especialista/dashboard.py, chat_ia/chat.py
+  hub.py (con contador de alertas), alertas_bandeja.py (INICIO → Bandeja de alertas), login.py,
+  especialista/dashboard.py, chat_ia/chat.py
   ap_negros/00_alertas … 08_mercado_contexto  (alertas, resumen, segmentación, series, pronóstico, mix,
                                                 inteligencia de clientes, power rank, contexto de mercado)
   ap_galvanizados/ ap_formados/ aceros_sbq/  → coming_soon
@@ -47,7 +51,8 @@ scripts/                     ← cargas y transformaciones (load_bronze_from_csv
                                update_*, setup_*_oracle, load_snice_to_oracle, backfill_*, seed_eventos_historicos…)
 .github/workflows/           ← update_market (L–V 8:45 MX), update_sentimiento, update_inegi (día 10),
                                update_snice (día 5), update_semaforo_ferros (día 5),
-                               update_seleccion_modelos (día 6), keep_alive (30 min)
+                               update_seleccion_modelos (día 6), resumen_semanal (lunes 8:00 MX),
+                               keep_alive (30 min)
 ```
 
 ## Tablas Oracle activas

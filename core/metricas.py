@@ -140,6 +140,23 @@ def clientes_activos(area: str = "NEGROS", dias: int = DIAS_CLIENTE_ACTIVO) -> i
     return int(valor("clientes_con_compra", corte - pd.Timedelta(days=dias - 1), corte, area))
 
 
+def ultima_compra_por_cliente(area: str = "NEGROS", meses_volumen: int = 12) -> pd.DataFrame:
+    """Por cliente: última compra, días sin compra y estado a la fecha de corte,
+    y toneladas de los últimos <meses_volumen> meses (para priorizar)."""
+    corte = fecha_corte(area)
+    desde = (corte - pd.DateOffset(months=meses_volumen)).to_pydatetime()
+    df = _consulta(f"""
+        SELECT CLIENTE, MAX(FECHAEMB) AS ULTIMA_COMPRA,
+               SUM(CASE WHEN FECHAEMB > :desde THEN PESO_TON ELSE 0 END) AS TON_RECIENTE
+        FROM {T_VENTAS} WHERE AREA = :area GROUP BY CLIENTE
+    """, (("area", area), ("desde", desde)))
+    df["ULTIMA_COMPRA"] = pd.to_datetime(df["ULTIMA_COMPRA"])
+    df["TON_RECIENTE"] = pd.to_numeric(df["TON_RECIENTE"], errors="coerce").fillna(0.0)
+    df["DIAS_SIN_COMPRA"] = (corte - df["ULTIMA_COMPRA"].dt.normalize()).dt.days
+    df["ESTADO"] = df["DIAS_SIN_COMPRA"].map(estado_cliente)
+    return df.sort_values("TON_RECIENTE", ascending=False).reset_index(drop=True)
+
+
 def glosario() -> pd.DataFrame:
     """Definiciones para mostrar en la app y dar al asistente IA."""
     filas = [{"Métrica": m.nombre, "Clave": m.id, "Qué significa": m.descripcion, "Unidad": m.unidad}

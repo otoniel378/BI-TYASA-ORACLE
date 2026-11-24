@@ -249,6 +249,7 @@ SECCIONES = {
 SUBSECCIONES = {
     "inicio": {
         "bienvenida": "Bienvenida",
+        "alertas": "Bandeja de alertas",
     },
     "aceros_planos": {
         "negros": "Aceros Negros",
@@ -286,6 +287,7 @@ SUBSECCIONES = {
 PAGINAS = {
     # INICIO
     "bienvenida": "pages.hub",
+    "alertas": "pages.alertas_bandeja",
     
     # ACEROS PLANOS - Negros
     ("aceros_planos", "negros", "apn_alertas"):  "pages.ap_negros.00_alertas",
@@ -410,7 +412,7 @@ subseccion = st.session_state.nav_subseccion
 modulo = "pages.hub"
 
 if seccion == "inicio":
-    modulo = "pages.hub"
+    modulo = PAGINAS.get(subseccion, "pages.hub")
 
 elif seccion == "aceros_planos":
     if subseccion == "negros":

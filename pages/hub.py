@@ -17,6 +17,28 @@ def main():
     """Funcion principal para compatibilidad con app.py"""
     render()
 
+def _contador_alertas():
+    """Resumen de la bandeja de alertas (core/alertas.py) con liga a ella."""
+    try:
+        from core.alertas import alertas_vigentes
+        df = alertas_vigentes()
+    except Exception:
+        return
+    altas, medias = int((df["prioridad"] == "alta").sum()), int((df["prioridad"] == "media").sum())
+    color = "#C62828" if altas else ("#D97706" if medias else "#2E7D32")
+    texto = (f"<b>{altas}</b> alertas de prioridad alta · <b>{medias}</b> de prioridad media"
+             if altas or medias else "Sin alertas que requieran atención")
+    col_t, col_b = st.columns([5, 1])
+    with col_t:
+        st.html(f"""<div style="border-left:4px solid {color};background:#F8FAFC;border-radius:8px;
+                    padding:10px 14px;font-size:14px;color:#1F2937;">{texto}</div>""")
+    with col_b:
+        if st.button("Ver alertas", key="hub_ver_alertas", width="stretch"):
+            st.session_state.nav_seccion = "inicio"
+            st.session_state.nav_subseccion = "alertas"
+            st.rerun()
+
+
 def render():
     """Render del contenido del hub"""
     col1, col2 = st.columns([5, 1])
@@ -29,6 +51,8 @@ def render():
             "<p style='color:#6B7280;'>Selecciona un modulo en el menu lateral para comenzar el analisis.</p>",
             unsafe_allow_html=True,
         )
+
+    _contador_alertas()
 
     st.divider()
 

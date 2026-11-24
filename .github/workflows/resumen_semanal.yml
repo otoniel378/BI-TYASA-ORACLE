@@ -1,0 +1,47 @@
+name: Resumen Semanal por Correo
+
+on:
+  schedule:
+    # Lunes 8:00 AM México (14:00 UTC; México ya no cambia de horario).
+    - cron: "0 14 * * 1"
+  workflow_dispatch:  # permite mandarlo manualmente desde GitHub
+
+jobs:
+  resumen-semanal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        # streamlit: lo importan core/metricas.py y core/alertas.py (cachés de la app)
+        run: |
+          pip install oracledb pandas numpy python-dotenv streamlit
+
+      - name: Armar y enviar el resumen
+        env:
+          ORACLE_USER:            ${{ secrets.ORACLE_USER }}
+          ORACLE_PASSWORD:        ${{ secrets.ORACLE_PASSWORD }}
+          ORACLE_DSN:             ${{ secrets.ORACLE_DSN }}
+          ORACLE_WALLET_PASSWORD: ${{ secrets.ORACLE_WALLET_PASSWORD }}
+          ORACLE_WALLET_B64:      ${{ secrets.ORACLE_WALLET_B64 }}
+          GMAIL_USER:             ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD:     ${{ secrets.GMAIL_APP_PASSWORD }}
+          DIGEST_EMAIL_TO:        ${{ secrets.DIGEST_EMAIL_TO }}
+          APP_URL:                ${{ secrets.APP_URL }}   # opcional: liga a la app en el correo
+        run: python scripts/enviar_resumen_semanal.py
+
+      - name: Avisar por correo si falló
+        if: failure()
+        env:
+          GMAIL_USER:         ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          DIGEST_EMAIL_TO:    ${{ secrets.DIGEST_EMAIL_TO }}
+        run: python scripts/notify_failure.py
