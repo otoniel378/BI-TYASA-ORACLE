@@ -54,6 +54,10 @@ _DEPENDENCIAS_RELEVANTES = (
 
 # Respaldo por palabra clave — por si el título no trae la dependencia exacta
 # (acuerdos conjuntos, publicados por Presidencia, organismos descentralizados).
+# "acero"/"siderurg" ya cubren la mayoría de los casos; se agregan términos de
+# producto específico (2026-11-24, a partir del catálogo de fracciones por
+# división — ver scripts/fracciones_tyasa.linea_tyasa) por si un decreto usa
+# solo el nombre del producto sin decir "acero" en el mismo título/resumen.
 _KEYWORDS_RESPALDO = (
     "arancel", "comercio exterior", "importacion", "importaciones",
     "exportacion", "exportaciones", "antidumping", "dumping",
@@ -61,6 +65,13 @@ _KEYWORDS_RESPALDO = (
     "fraccion arancelaria", "fracciones arancelarias", "t-mec", "tmec",
     "siderurg", "acero", "tarifa electrica", "tarifas electricas", "cfe",
     "gas natural", "tipo de cambio", "tasa de interes", "banxico",
+    # Aceros Planos
+    "lamina", "galvanizad", "hrc", "crc",
+    # Aceros Largos
+    "perfil estructural", "varilla", "alambron", "viga de acero",
+    # Aceros SBQ
+    "acero aleado", "acero especial", "bolas de molienda", "barra de calidad especial",
+    "forjado", "forjas",
 )
 
 _FRACCION_RE = re.compile(r"\b\d{4}\.\d{2}\.\d{2}\b|\b\d{8}\b")
