@@ -32,7 +32,8 @@ aceros_planos/
   negros/                    ← COMPLETO
     loaders.py               ← @st.cache_data(ttl=600); get_fecha_corte(), validar_datos()
     loaders_contexto.py      ← INEGI y quiebres relevantes para Planos
-    analytics/               ← kpis, segmentacion (ABC, Pareto, HHI), series_tiempo, forecasting (ETS|SARIMA|XGBoost|Naive|Auto), mix_productos
+    analytics/               ← kpis, segmentacion (ABC, Pareto, HHI), series_tiempo, forecasting (ETS|SARIMA|XGBoost|Naive|Auto), mix_productos,
+                               escenarios (simulador: sensibilidad de la venta a indicadores INEGI estimada con la historia)
   galvanizados/ formados/    ← EN DESARROLLO
 aceros_largos/  aceros_sbq/  ← otros compañeros
 mercado/ (inegi, snice, canacero) · mercado_noticias/ (detector, rupturas, noticias, categorias, dof_monitor…)
@@ -175,6 +176,9 @@ Sistema / datos:
    `python scripts/update_seleccion_modelos.py` (o el workflow): sin la tabla, la app calcula la selección al abrir
    cada serie (~10 s c/u; la página 08 tarda ~2 min la primera vez). Falta: ventanas recientes, variables de mercado
    como regresores; comparar el pronóstico mar–ago 2026 contra la venta real.
+   Simulador de escenarios (04_forecasting, 2026-11-23): sensibilidades por regresión de variaciones anuales
+   (productos metálicos, autos ligeros, importaciones de acero). Al cargar venta nueva se re-estiman solas;
+   HRC y tipo de cambio entran cuando tengan ≥ 3 años de historia.
 5. Copiloto de negociación con motor del experto: entrevistas (10–20 reglas) → motor de reglas difusas → registro de casos
    en Oracle → casos similares → ML (diseño en la bitácora).
 6. ✅ Cambios del 2026-11-13 ya subidos (commit 4ef8b4f).

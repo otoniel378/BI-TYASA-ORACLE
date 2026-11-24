@@ -7,3 +7,7 @@ primaryColor = "#1B3A5C"
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F3F4F6"
 textColor = "#1F2937"
+
+[client]
+# La navegación es propia (app.py); sin esto Streamlit lista los archivos de pages/ en la barra lateral.
+showSidebarNavigation = false

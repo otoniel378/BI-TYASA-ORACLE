@@ -76,6 +76,20 @@ def load_sparklines_inegi_planos() -> dict:
         return {}
 
 
+@st.cache_data(ttl=3600, show_spinner="Cargando indicadores para escenarios...")
+def load_indicadores_escenarios() -> pd.DataFrame:
+    """Indicadores del simulador de escenarios (analytics/escenarios.VARIABLES):
+    índice = mes, una columna por indicador."""
+    from aceros_planos.negros.analytics.escenarios import VARIABLES
+    from mercado.inegi.loaders import load_serie_por_nombre
+    partes = []
+    for v in VARIABLES:
+        s = load_serie_por_nombre(v.clave)
+        if not s.empty:
+            partes.append(s.dropna(subset=["fecha"]).set_index("fecha")["valor"].astype(float).rename(v.clave))
+    return pd.concat(partes, axis=1).sort_index() if partes else pd.DataFrame()
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def load_quiebres_relevantes_planos() -> pd.DataFrame:
     """Quiebres activos en variables de mercado relevantes para Aceros Planos."""
