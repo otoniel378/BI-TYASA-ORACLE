@@ -370,9 +370,40 @@ def _forecast_naive(serie: pd.DataFrame, horizonte: int, n_test: int | None = No
     )
 
 
+def _forecast_combo(serie: pd.DataFrame, horizonte: int, n_test: int | None = None) -> ForecastResult:
+    """Promedio simple de ETS y SARIMA (pronóstico, bandas y backtest). En la
+    validación de origen móvil de Negros (corte mar-2026) bajó el WAPE de los
+    6 horizontes a 27.9 % contra 34.1 % de SARIMA y 38.2 % de ETS solos."""
+    r_e = _forecast_ets(serie, horizonte, n_test=n_test)
+    r_s = _forecast_sarima(serie, horizonte, n_test=n_test)
+    if r_e.error_msg or r_e.forecast.empty:
+        return r_s
+    if r_s.error_msg or r_s.forecast.empty:
+        return r_e
+    hist = serie[["ds", "y"]].rename(columns={"y": "yhat"}).assign(yhat_lower=np.nan, yhat_upper=np.nan)
+    fut_e = r_e.forecast[r_e.forecast["ds"] > serie["ds"].max()].set_index("ds")
+    fut_s = r_s.forecast[r_s.forecast["ds"] > serie["ds"].max()].set_index("ds")
+    fut = ((fut_e[["yhat", "yhat_lower", "yhat_upper"]] + fut_s[["yhat", "yhat_lower", "yhat_upper"]]) / 2).reset_index()
+
+    backtest_df, metricas = pd.DataFrame(), {}
+    if not r_e.backtest.empty and not r_s.backtest.empty:
+        bt = r_e.backtest.merge(r_s.backtest[["ds", "y_pred"]], on="ds", suffixes=("_e", "_s"))
+        if not bt.empty:
+            bt["y_pred"] = (bt["y_pred_e"] + bt["y_pred_s"]) / 2
+            backtest_df = bt[["ds", "y_real", "y_pred"]]
+            metricas = _metricas(backtest_df["y_real"].values, backtest_df["y_pred"].values)
+
+    return ForecastResult(
+        modelo="Combinado (ETS + SARIMA)",
+        historico=serie, forecast=pd.concat([hist, fut], ignore_index=True),
+        metricas=metricas, backtest=backtest_df,
+    )
+
+
 MODELOS_DISPONIBLES = {
-    "ets":    "Holt-Winters ETS (recomendado)",
-    "auto":   "Automatico (mejor MAPE en backtesting)",
+    "auto":   "Automático (el que mejor acierta en esta serie)",
+    "combo":  "Combinado ETS + SARIMA",
+    "ets":    "Holt-Winters ETS",
     "sarima": "SARIMA",
     "xgb":    "XGBoost (ML)",
     "naive":  "Naive Estacional",
@@ -389,8 +420,12 @@ def generar_forecast(
     fecha_corte=None,
     ventana_prueba: int | None = None,
     rellenar_huecos: bool = False,
+    seleccion: str | None = None,
 ) -> ForecastResult:
     """<fecha_corte>, <rellenar_huecos>: ver _preparar_serie.
+    <modelo>="auto": usa el modelo con menor error en la validación de origen
+    móvil (seleccionar_modelo). <seleccion>: esa clave ya precalculada
+    (core/seleccion_modelos.py) para no repetir la validación (~15 s por serie).
     <ventana_prueba>: si se indica, los cuatro modelos se validan con los mismos
     últimos N meses, para que el modo automático compare métricas equivalentes.
     <df_exog>: opcional, solo lo usa el modelo XGBoost (columnas: fecha +
@@ -406,7 +441,8 @@ def generar_forecast(
             error_msg=f"Serie insuficiente: {len(serie)} periodos. Se requieren al menos {MIN_PERIODS_FORECAST}.",
         )
 
-    _fns = {"ets": _forecast_ets, "sarima": _forecast_sarima, "xgb": _forecast_xgboost, "naive": _forecast_naive}
+    _fns = {"ets": _forecast_ets, "sarima": _forecast_sarima, "xgb": _forecast_xgboost, "naive": _forecast_naive,
+            "combo": _forecast_combo}
 
     def _correr(key: str) -> ForecastResult:
         if key == "xgb":
@@ -416,6 +452,19 @@ def generar_forecast(
     if modelo in _fns:
         return _correr(modelo)
 
+    wape = None
+    if seleccion not in _fns:
+        seleccion, wape = seleccionar_modelo(df, col_periodo, col_val, df_exog=df_exog,
+                                             fecha_corte=fecha_corte, rellenar_huecos=rellenar_huecos)
+    if seleccion in _fns:
+        r = _correr(seleccion)
+        if not r.error_msg and not r.forecast.empty:
+            detalle = (" | ".join(f"{k}: {v:.0f}%" for k, v in wape.items())
+                       if wape is not None and len(wape) else "precalculado")
+            r.modelo = f"{r.modelo}  [auto, origen móvil: {detalle}]"
+            return r
+
+    # Respaldo (serie muy corta para el origen móvil): mejor MAPE en el corte único
     candidatos = ["ets", "xgb", "sarima", "naive"]
     resultados = []
 
@@ -436,6 +485,114 @@ def generar_forecast(
     ranking = " | ".join(f"{k}: {m:.0f}%" if m < float("inf") else f"{k}: N/A" for m, k, _ in resultados)
     mejor_res.modelo = f"{mejor_res.modelo}  [auto: {ranking}]"
     return mejor_res
+
+
+def backtest_origen_movil(
+    df: pd.DataFrame,
+    horizonte: int = 6,
+    n_origenes: int = 6,
+    modelos: tuple = ("ets", "sarima", "xgb", "naive"),
+    col_periodo: str = "PERIODO",
+    col_val: str = "PESO_TON",
+    df_exog: pd.DataFrame | None = None,
+    fecha_corte=None,
+    rellenar_huecos: bool = False,
+) -> pd.DataFrame:
+    """Validación de origen móvil: corta la serie en varios meses pasados, ajusta
+    cada modelo solo con lo anterior al corte y compara contra lo que pasó.
+    Cada horizonte h (1..<horizonte>) se evalúa con al menos <n_origenes> cortes.
+    Regresa formato largo: modelo, origen (último mes de entrenamiento), h, ds,
+    y_real, y_pred. Resumir con resumen_origen_movil."""
+    serie = _preparar_serie(df, col_periodo, col_val, fecha_corte=fecha_corte, rellenar_huecos=rellenar_huecos)
+    fns = {"ets": _forecast_ets, "sarima": _forecast_sarima, "naive": _forecast_naive,
+           "xgb": lambda s, h, n_test: _forecast_xgboost(s, h, df_exog=df_exog, n_test=n_test)}
+    # El combinado se arma con las predicciones de ETS y SARIMA del mismo corte
+    # (igual que _forecast_combo, sin volver a ajustarlos).
+    base = [k for k in fns if k in modelos or (k in ("ets", "sarima") and "combo" in modelos)]
+    n = len(serie)
+    filas = []
+    for i in range(1, n_origenes + horizonte):
+        train = serie.iloc[:n - i].reset_index(drop=True)
+        if len(train) < MIN_PERIODS_FORECAST:
+            break
+        reales = serie.iloc[n - i:n - i + horizonte]
+        preds = {}
+        for key in base:
+            r = fns[key](train, horizonte, n_test=0)
+            if r.error_msg or r.forecast.empty:
+                continue
+            preds[key] = r.forecast[r.forecast["ds"] > train["ds"].max()]["yhat"].to_numpy()
+        if "combo" in modelos and ("ets" in preds or "sarima" in preds):
+            preds["combo"] = ((preds["ets"] + preds["sarima"]) / 2 if "ets" in preds and "sarima" in preds
+                              else preds.get("ets", preds.get("sarima")))
+        for key in modelos:
+            if key not in preds:
+                continue
+            for h, (ds, y_real) in enumerate(zip(reales["ds"], reales["y"]), start=1):
+                filas.append({"modelo": key, "origen": train["ds"].max(), "h": h, "ds": ds,
+                              "y_real": float(y_real), "y_pred": float(preds[key][h - 1])})
+    return pd.DataFrame(filas, columns=["modelo", "origen", "h", "ds", "y_real", "y_pred"])
+
+
+def error_global(bt: pd.DataFrame) -> pd.Series:
+    """WAPE por modelo con todos los horizontes juntos: error total / volumen total (%)."""
+    err = (bt["y_real"] - bt["y_pred"]).abs()
+    return err.groupby(bt["modelo"]).sum() / bt.groupby("modelo")["y_real"].sum() * 100
+
+
+CANDIDATOS_AUTO = ("combo", "ets", "sarima", "xgb", "naive")
+
+
+def seleccionar_modelo(
+    df: pd.DataFrame,
+    col_periodo: str = "PERIODO",
+    col_val: str = "PESO_TON",
+    df_exog: pd.DataFrame | None = None,
+    fecha_corte=None,
+    rellenar_huecos: bool = False,
+) -> tuple[str | None, pd.Series]:
+    """Modelo con menor WAPE en la validación de origen móvil (6 horizontes,
+    6 cortes por horizonte). Regresa (clave, WAPE por modelo); clave None si la
+    serie es muy corta para validar."""
+    bt = backtest_origen_movil(df, horizonte=6, n_origenes=6, modelos=CANDIDATOS_AUTO,
+                               col_periodo=col_periodo, col_val=col_val, df_exog=df_exog,
+                               fecha_corte=fecha_corte, rellenar_huecos=rellenar_huecos)
+    if bt.empty:
+        return None, pd.Series(dtype=float)
+    wape = error_global(bt).sort_values()
+    return wape.index[0], wape
+
+
+def firma_serie(df: pd.DataFrame, col_periodo: str = "PERIODO", col_val: str = "PESO_TON",
+                fecha_corte=None, rellenar_huecos: bool = False) -> str:
+    """Identifica los datos con que se eligió el modelo (último mes | meses | total).
+    Si la serie cambia, la selección precalculada deja de aplicar."""
+    s = _preparar_serie(df, col_periodo, col_val, fecha_corte=fecha_corte, rellenar_huecos=rellenar_huecos)
+    if s.empty:
+        return ""
+    return f"{s['ds'].max():%Y-%m}|{len(s)}|{s['y'].sum():.0f}"
+
+
+def resumen_origen_movil(bt: pd.DataFrame) -> pd.DataFrame:
+    """Por modelo y horizonte: MAPE, WAPE (error total / volumen total, estable
+    con meses de 0 t), número de cortes y mejora contra el Naive estacional
+    (1 − MAE modelo / MAE naive; positivo = le gana al naive)."""
+    if bt.empty:
+        return pd.DataFrame()
+    filas = []
+    for (modelo, h), g in bt.groupby(["modelo", "h"]):
+        m = _metricas(g["y_real"].values, g["y_pred"].values)
+        tot = g["y_real"].sum()
+        wape = float((g["y_real"] - g["y_pred"]).abs().sum() / tot * 100) if tot > 0 else float("nan")
+        filas.append({"modelo": modelo, "h": h, "cortes": len(g), "MAE": m["MAE"],
+                      "MAPE (%)": m["MAPE (%)"], "WAPE (%)": round(wape, 1)})
+    res = pd.DataFrame(filas)
+    naive = res[res["modelo"] == "naive"].set_index("h")["MAE"]
+    res["mejora_vs_naive (%)"] = [
+        round((1 - mae / naive[h]) * 100, 1) if h in naive.index and naive[h] > 0 else float("nan")
+        for mae, h in zip(res["MAE"], res["h"])
+    ]
+    return res.sort_values(["h", "modelo"]).reset_index(drop=True)
 
 
 def filtrar_por_dimension(

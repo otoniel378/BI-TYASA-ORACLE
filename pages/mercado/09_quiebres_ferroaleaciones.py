@@ -28,7 +28,7 @@ from mercado_fastmarkets.loaders import FERROALEACIONES, load_ferroaleaciones, l
 from mercado_noticias.loaders import load_eventos_todos, load_mercado_mensual, load_noticias_periodo
 from mercado_noticias.analytics.rupturas import (
     HORIZONTES_MESES, TIPOS_IMPACTO, agregar_desempeno_posterior, bandas_normales, detectar_rupturas,
-    huella_impacto, normalizar_mensual, quiebre_en_formacion, rupturas_a_dataframe, tipo_impacto_noticias,
+    evaluar_contra_eventos, huella_impacto, normalizar_mensual, quiebre_en_formacion, rupturas_a_dataframe, tipo_impacto_noticias,
     vincular_eventos,
 )
 from core.components.kpi_cards import render_kpi_row, seccion_titulo
@@ -550,5 +550,25 @@ for h in HORIZONTES_MESES:
 resumen_tipo.columns = (["Tipo de impacto", "Quiebres", "Con evento verificado", "Tendencia sube"]
                         + [f"{h} meses después (mediana)" for h in HORIZONTES_MESES])
 st.dataframe(resumen_tipo, hide_index=True, width="stretch")
+
+# ---------------------------------------------------------------------------
+# Qué tan bien detecta quiebres (todas las series, contra el catálogo de eventos)
+# ---------------------------------------------------------------------------
+pares_ev, res_ev = evaluar_contra_eventos(rupturas_todas, load_eventos_todos(), precios)
+if res_ev.get("pares"):
+    seccion_titulo("¿Qué tan bien detecta quiebres?",
+                   f"Las 9 ferroaleaciones desde {desde_anio} contra el catálogo de eventos")
+    render_kpi_row([
+        {"label": "Eventos detectados", "value": f"{res_ev['detectados']} de {res_ev['pares']}",
+         "help_text": "Evento conocido que afectó a una aleación y el sistema marcó quiebre en esas fechas"},
+        {"label": "% detectado", "value": f"{res_ev['pct_detectados']:.0f}%"},
+        {"label": "Quiebres con evento conocido", "value": f"{res_ev['pct_explicados']:.0f}%",
+         "help_text": "El resto puede ser un movimiento real sin evento en el catálogo"},
+    ])
+    por_evento = (pares_ev.groupby("evento_nombre")["detectado"].agg(["sum", "count"])
+                  .sort_values("count", ascending=False).reset_index())
+    por_evento.columns = ["Evento", "Aleaciones con quiebre", "Aleaciones relacionadas"]
+    with st.expander("Detalle por evento"):
+        st.dataframe(por_evento, hide_index=True, width="stretch")
 
 st.caption("Datos: Fastmarkets (AMM), LME y Yahoo Finance · Eventos: catálogo curado con fuente")

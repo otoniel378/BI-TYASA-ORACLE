@@ -43,7 +43,8 @@ pages/
 scripts/                     ← cargas y transformaciones (load_bronze_from_csv, transform_to_silver, transform_to_gold,
                                update_*, setup_*_oracle, load_snice_to_oracle, backfill_*, seed_eventos_historicos…)
 .github/workflows/           ← update_market (L–V 8:45 MX), update_sentimiento, update_inegi (día 10),
-                               update_snice (día 5), update_semaforo_ferros (día 5), keep_alive (30 min)
+                               update_snice (día 5), update_semaforo_ferros (día 5),
+                               update_seleccion_modelos (día 6), keep_alive (30 min)
 ```
 
 ## Tablas Oracle activas
@@ -56,6 +57,7 @@ scripts/                     ← cargas y transformaciones (load_bronze_from_csv
 - Comercio exterior: BRONZE_SNICE_SIDERURGICO (retiene 6 meses; aviso = 123 días de vigencia) · GOLD_SNICE_TOP_FRACCIONES
   (historial completo) · GOLD_SNICE_TOP_EMPRESAS/PAISES/CATEGORIAS · GOLD_SNICE_RESUMEN_MENSUAL · BRONZE_CANACERO_COMEX
 - Ferroaleaciones: BRONZE_FASTMARKETS_PRECIOS · GOLD_PRECIOS_FASTMARKETS · GOLD_SEMAFORO_FERROS · GOLD_SEMAFORO_METRICAS
+- Pronóstico: GOLD_SELECCION_MODELO (modelo del modo Automático por serie + firma de los datos; core/seleccion_modelos.py)
 
 ## Convenciones
 - Nombres de tabla: BRONZE_ | SILVER_ | GOLD_ + descripción; siempre referenciarlas con table_ref().
@@ -65,6 +67,8 @@ scripts/                     ← cargas y transformaciones (load_bronze_from_csv
 - Loaders con @st.cache_data(ttl=600); conexión con @st.cache_resource. Consultas con valores de usuario: run_query_params (binds).
 - Fechas de referencia: usar get_fecha_corte() (última FECHAEMB cargada), no date.today().
 - Pronóstico: excluir mes incompleto, rellenar meses sin embarques con 0, ventana de prueba común de 6 meses. Meta MAPE aceptable ≤ 30 %.
+  Las páginas pronostican con core/seleccion_modelos.generar(df, h, modelo, serie_id, ...) — serie_id tipo
+  "NEGROS|PROCESO|<x>" o "CANACERO|IMPORTACION|FRACCION|<f>" (mismo formato en scripts/update_seleccion_modelos.py).
 - Nuevas páginas siguen el patrón de pages/ap_negros/01_resumen.py.
 - Caché IA en cache/ai_summaries/<hash>.json (no repetir llamadas a Gemini).
 
@@ -154,12 +158,15 @@ Sistema / datos:
    (afecta la Tabla 4.1 de la tesis).
 2. Cargar a Bronce la exportación de SAP posterior al 10/03/2026 (cambian casi todas las cifras de la tesis).
 3. Desarrollar Galvanizados y Formados (actualizar alcance §1.5 de la tesis).
-4. Mejorar el pronóstico: validación de origen móvil y por horizonte, ventanas recientes, variables de mercado como
-   regresores; comparar el pronóstico mar–ago 2026 contra la venta real (MAPE actual 40.6 %, meta ≤ 30 %).
+4. Mejorar el pronóstico: ✅ validación de origen móvil, modelo Combinado ETS+SARIMA y modo Automático por serie
+   (default) con selección precalculada en GOLD_SELECCION_MODELO (2026-11-23; ver bitácora).
+   **Otoniel debe correr una vez** `python scripts/setup_seleccion_modelos_oracle.py` y luego
+   `python scripts/update_seleccion_modelos.py` (o el workflow): sin la tabla, la app calcula la selección al abrir
+   cada serie (~10 s c/u; la página 08 tarda ~2 min la primera vez). Falta: ventanas recientes, variables de mercado
+   como regresores; comparar el pronóstico mar–ago 2026 contra la venta real.
 5. Copiloto de negociación con motor del experto: entrevistas (10–20 reglas) → motor de reglas difusas → registro de casos
    en Oracle → casos similares → ML (diseño en la bitácora).
-6. Revisar y hacer commit de los cambios del 2026-11-13 (forecasting.py, loaders.py, páginas 00/02/04/06, transform_to_silver.py,
-   core/chat_ia.py, core/memoria_ia.py, scripts/setup_memoria_ia_oracle.py). Al subirlos: "Reboot app" en Streamlit Cloud.
+6. ✅ Cambios del 2026-11-13 ya subidos (commit 4ef8b4f).
 7. Limpiar archivos temporales `*.py.tmp.*` en pages/ (decenas en pages/mercado/ y pages/login.py) — confirmar antes de borrar.
 8. Crear la tabla de memoria del asistente: `python scripts/setup_memoria_ia_oracle.py` (escribe en Oracle → lo corre Otoniel).
    Opcional: borrar el código obsoleto de BigQuery (cloud_functions/, create_market_tables.py, check_setup.py).

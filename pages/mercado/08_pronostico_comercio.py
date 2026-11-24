@@ -30,6 +30,9 @@ from mercado.canacero.loaders import (
     load_serie_tiempo_tyasa,
     load_series_fracciones_tyasa,
     load_descripciones_tyasa,
+    load_exog_inegi,
+    load_exog_pronostico,
+    INEGI_EXOG,
 )
 from mercado.inegi.loaders import load_serie_por_nombre
 from mercado_fastmarkets.loaders import load_precios_familia, load_resumen_benchmark, NOMBRES_FASTMARKETS
@@ -46,9 +49,10 @@ from aceros_planos.negros.analytics.forecasting import (
 )
 from core.components.kpi_cards import seccion_titulo
 from core.components.tables import tabla_ejecutiva
+from core.components.aciertos import render_aciertos
+from core.seleccion_modelos import generar
 from core.components.charts import barras_horizontales
 
-INEGI_EXOG = ["IMAI_HierroAcero_3311_Indice", "IMAI_Construccion_Indice", "BC_Siderurgia_Importaciones"]
 MERCADO_VISUAL = ["USD_MXN", "HRC_CME_USD", "Mineral_Hierro"]
 _MESES_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
              "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
@@ -64,27 +68,6 @@ except Exception:
     _GEMINI_KEY = ""
 
 
-@st.cache_data(ttl=1800, show_spinner="Cargando indicadores INEGI...")
-def _construir_df_exog_inegi() -> pd.DataFrame:
-    """fecha + una columna por indicador INEGI, mismo rango que CANACERO — es
-    lo que entra al modelo (rezagado dentro de forecasting.py)."""
-    partes = []
-    for nombre in INEGI_EXOG:
-        s = load_serie_por_nombre(nombre)[["fecha", "valor"]].rename(columns={"valor": nombre})
-        partes.append(s.set_index("fecha"))
-    return pd.concat(partes, axis=1).reset_index()
-
-
-def _construir_df_exog(familia: str | None) -> pd.DataFrame:
-    """INEGI + precios Fastmarkets relevantes a <familia> (insumos globales
-    siempre, más el benchmark de precio de esa familia si se reconoce) —
-    esto es lo que entra al modelo (rezagado dentro de forecasting.py)."""
-    df_fm = load_precios_familia(familia)
-    if df_fm.empty:
-        return df_exog_inegi
-    return df_exog_inegi.merge(df_fm, on="fecha", how="outer").sort_values("fecha")
-
-
 @st.cache_data(ttl=1800, show_spinner="Cargando contexto macro...")
 def _construir_contexto_visual(familia: str | None) -> pd.DataFrame:
     """INEGI + variables de mercado (USD/MXN, HRC, mineral de hierro) +
@@ -92,7 +75,7 @@ def _construir_contexto_visual(familia: str | None) -> pd.DataFrame:
     símbolos de Fastmarkets con pronóstico propio ya traen fechas reales a
     futuro (hasta 2028), así que el gráfico de contexto los dibuja
     extendiéndose más allá de "Hoy" sin necesitar lógica extra."""
-    df_inegi = _construir_df_exog_inegi()
+    df_inegi = load_exog_inegi()
     df_mkt = load_variables_mercado(dias=1200)
     if not df_mkt.empty:
         df_mkt = df_mkt[df_mkt["nombre"].isin(MERCADO_VISUAL)].copy()
@@ -154,7 +137,9 @@ with st.expander("Guía de modelos"):
 
         **Naive** — Baseline: igual al mismo mes del año pasado.
 
-        **Auto** — Prueba los 4 y elige el de menor MAPE en backtesting.
+        **Combinado** — Promedio de ETS y SARIMA.
+
+        **Automático** — Usa el modelo que mejor ha acertado en esta serie (pronósticos hechos desde meses pasados).
         """
     )
 
@@ -164,7 +149,6 @@ with st.spinner("Cargando series históricas..."):
     df_total = load_serie_tiempo_tyasa(movimiento)
     df_fracciones = load_series_fracciones_tyasa(movimiento)
     descripciones_fraccion = load_descripciones_tyasa()
-    df_exog_inegi = _construir_df_exog_inegi()
 
 
 def _colores_modelo(nombre: str) -> str:
@@ -604,7 +588,8 @@ def _get_or_compute(cache_key: str, fn):
 # ---------------------------------------------------------------------------
 # Pestañas
 # ---------------------------------------------------------------------------
-tab_total, tab_fraccion, tab_comparar = st.tabs(["Total", "Por fracción", "Comparar modelos"])
+tab_total, tab_fraccion, tab_comparar, tab_aciertos = st.tabs(
+    ["Total", "Por fracción", "Comparar modelos", "¿Qué tan bien acierta?"])
 
 with tab_total:
     seccion_titulo("Volumen nacional total — fracciones TYASA", f"{horizonte} meses proyectados")
@@ -615,9 +600,9 @@ with tab_total:
         df_ctx_largo_total = _contexto_a_formato_largo(df_ctx_total)
         ck = _cache_key("total", modelo_key, horizonte)
         res_total = _get_or_compute(
-            ck, lambda: generar_forecast(
-                df_total, horizonte, col_periodo="periodo_mes", col_val="volumen_total",
-                modelo=modelo_key, df_exog=_construir_df_exog(None),
+            ck, lambda: generar(
+                df_total, horizonte, modelo_key, f"CANACERO|{movimiento}|TOTAL",
+                col_periodo="periodo_mes", col_val="volumen_total", df_exog=load_exog_pronostico(None),
             )
         )
         _render_resultado(res_total, key_prefix="total", familia=None,
@@ -647,9 +632,9 @@ with tab_fraccion:
             df_ctx_largo_frac = _contexto_a_formato_largo(df_ctx_frac)
             ck_f = _cache_key("frac", modelo_key, horizonte, fraccion_sel)
             res_f = _get_or_compute(
-                ck_f, lambda: generar_forecast(
-                    df_f, horizonte, col_periodo="periodo_mes", col_val="volumen_total",
-                    modelo=modelo_key, df_exog=_construir_df_exog(familia_sel),
+                ck_f, lambda: generar(
+                    df_f, horizonte, modelo_key, f"CANACERO|{movimiento}|FRACCION|{fraccion_sel}",
+                    col_periodo="periodo_mes", col_val="volumen_total", df_exog=load_exog_pronostico(familia_sel),
                 )
             )
             _render_resultado(res_f, key_prefix="frac", familia=familia_sel,
@@ -716,6 +701,12 @@ with tab_comparar:
             st.plotly_chart(fig_comp, width="stretch", key="comparar_chart_modelos")
         else:
             st.info("Haz clic en el botón para comparar los 4 modelos.")
+
+with tab_aciertos:
+    seccion_titulo("¿Qué tan bien acierta?", "Pronósticos hechos desde meses pasados vs. el volumen real")
+    render_aciertos(df_total, key=f"fc_com_origen_movil_{movimiento}_{len(df_total)}",
+                    referencia="el volumen real", col_periodo="periodo_mes", col_val="volumen_total",
+                    df_exog=load_exog_pronostico(None))
 
 st.caption(
     "Datos: CANACERO SICEP · Fracciones del catálogo TYASA · Modelos: statsmodels / scikit-learn / xgboost"

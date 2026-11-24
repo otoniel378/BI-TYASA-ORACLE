@@ -124,3 +124,23 @@ def test_quiebre_en_formacion_avisa_antes_de_6_meses():
     assert f["meses_para_confirmar"] == 6 - f["meses"]
     sin_cambio = pd.Series(100 * np.exp(np.concatenate([[0], np.cumsum(rng.normal(0, 0.02, 124))])), index=idx)
     assert quiebre_en_formacion(sin_cambio) is None
+
+
+def test_evaluar_contra_eventos_cuenta_detectados_y_explicados():
+    from mercado_noticias.analytics.rupturas import evaluar_contra_eventos
+    idx = pd.date_range("2000-01-01", "2010-12-01", freq="MS")
+    precios = pd.DataFrame({"A": 1.0, "B": 1.0}, index=idx)
+    eventos = pd.DataFrame({
+        "id": ["e1", "e2"], "nombre": ["Uno", "Dos"],
+        "fecha_inicio": pd.to_datetime(["2005-06-01", "2008-01-01"]), "fecha_fin": [pd.NaT, pd.NaT],
+        "variables_relacionadas": ["A,B", "A,Z"],  # Z no tiene precios: no cuenta
+    })
+    rupturas = pd.DataFrame({
+        "serie": ["A", "A", "B"],
+        "fecha": pd.to_datetime(["2005-08-01", "2009-06-01", "2001-01-01"]),
+        "evento_id": ["e1", None, None],
+    })
+    pares, res = evaluar_contra_eventos(rupturas, eventos, precios)
+    assert res["pares"] == 3 and res["detectados"] == 1  # A-e1 sí; B-e1 y A-e2 (jun-2009 queda fuera) no
+    # el quiebre de 2001 es anterior al catálogo: no entra en "explicados"
+    assert res["quiebres_comparables"] == 2 and res["explicados"] == 1

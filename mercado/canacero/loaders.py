@@ -202,3 +202,29 @@ def load_descripciones_tyasa() -> dict:
     """
     df = _lc(run_query(sql))
     return dict(zip(df["fraccion"], df["descripcion"])) if not df.empty else {}
+
+
+# Variables exógenas del pronóstico de comercio exterior (solo las usa XGBoost,
+# rezagadas dentro de forecasting.py). Las comparten la página 08 y
+# scripts/update_seleccion_modelos.py, para que el modelo elegido sea el mismo.
+INEGI_EXOG = ["IMAI_HierroAcero_3311_Indice", "IMAI_Construccion_Indice", "BC_Siderurgia_Importaciones"]
+
+
+@st.cache_data(ttl=1800, show_spinner="Cargando indicadores INEGI...")
+def load_exog_inegi() -> pd.DataFrame:
+    """fecha + una columna por indicador de INEGI_EXOG."""
+    from mercado.inegi.loaders import load_serie_por_nombre
+    partes = [load_serie_por_nombre(n)[["fecha", "valor"]].rename(columns={"valor": n}).set_index("fecha")
+              for n in INEGI_EXOG]
+    return pd.concat(partes, axis=1).reset_index()
+
+
+def load_exog_pronostico(familia: str | None) -> pd.DataFrame:
+    """INEGI + precios Fastmarkets relevantes a <familia> (insumos globales
+    siempre, más el benchmark de precio de esa familia si se reconoce)."""
+    from mercado_fastmarkets.loaders import load_precios_familia
+    inegi = load_exog_inegi()
+    df_fm = load_precios_familia(familia)
+    if df_fm.empty:
+        return inegi
+    return inegi.merge(df_fm, on="fecha", how="outer").sort_values("fecha")

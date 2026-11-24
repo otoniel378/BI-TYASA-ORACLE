@@ -456,6 +456,51 @@ def vincular_eventos(rupturas: pd.DataFrame, eventos: pd.DataFrame) -> pd.DataFr
     return out
 
 
+def evaluar_contra_eventos(rupturas: pd.DataFrame, eventos: pd.DataFrame, precios: pd.DataFrame,
+                           meses_historia: int = 24) -> tuple[pd.DataFrame, dict]:
+    """¿Qué tan bien detecta quiebres? Contrasta con el catálogo de eventos.
+    - Detección: de cada par (evento, serie en VARIABLES_RELACIONADAS) con al
+      menos <meses_historia> de precios antes del evento, ¿hubo quiebre de esa
+      serie en la misma ventana que usa vincular_eventos?
+    - Explicados: de los quiebres desde el primer evento del catálogo, cuántos
+      tienen evento vinculado (columna evento_id de vincular_eventos). Es un
+      piso: el catálogo no tiene todos los eventos del mercado.
+    <precios>: ancho mensual (normalizar_mensual). Regresa (pares, resumen)."""
+    cols = ["evento_id", "evento_nombre", "serie", "detectado"]
+    if eventos.empty or precios.empty:
+        return pd.DataFrame(columns=cols), {}
+    filas = []
+    for _, e in eventos.iterrows():
+        fin = e["fecha_fin"] if pd.notna(e["fecha_fin"]) else e["fecha_inicio"]
+        desde = e["fecha_inicio"] - pd.DateOffset(months=MESES_ANTES_EVENTO)
+        hasta = fin + pd.DateOffset(months=MESES_DESPUES_EVENTO)
+        for s in {x.strip() for x in str(e["variables_relacionadas"] or "").split(",")}:
+            if s not in precios.columns:
+                continue
+            p = precios[s].dropna()
+            if p.empty or p.index.min() > e["fecha_inicio"] - pd.DateOffset(months=meses_historia) \
+                    or e["fecha_inicio"] > p.index.max():
+                continue
+            hit = (not rupturas.empty) and bool(
+                ((rupturas["serie"] == s) & (rupturas["fecha"] >= desde) & (rupturas["fecha"] <= hasta)).any())
+            filas.append({"evento_id": e["id"], "evento_nombre": e["nombre"], "serie": s, "detectado": hit})
+    pares = pd.DataFrame(filas, columns=cols)
+
+    comparables = (rupturas[rupturas["fecha"] >= eventos["fecha_inicio"].min()
+                            - pd.DateOffset(months=MESES_ANTES_EVENTO)]
+                   if not rupturas.empty else rupturas)
+    resumen = {
+        "pares": len(pares),
+        "detectados": int(pares["detectado"].sum()),
+        "pct_detectados": float(pares["detectado"].mean() * 100) if len(pares) else float("nan"),
+        "quiebres_comparables": len(comparables),
+        "explicados": int(comparables["evento_id"].notna().sum()) if len(comparables) else 0,
+    }
+    resumen["pct_explicados"] = (resumen["explicados"] / resumen["quiebres_comparables"] * 100
+                                 if resumen["quiebres_comparables"] else float("nan"))
+    return pares, resumen
+
+
 # ── Tipo de impacto de las noticias ──────────────────────────────────────────
 # Las noticias casi nunca hablan de una ferroaleación en particular: se separan
 # por el tipo de impacto que pueden tener. Orden de prioridad: grupo de búsqueda

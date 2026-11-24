@@ -27,6 +27,8 @@ from aceros_planos.negros.analytics.forecasting import (
     filtrar_por_dimension,
     MODELOS_DISPONIBLES,
 )
+from core.components.aciertos import render_aciertos
+from core.seleccion_modelos import generar
 from core.components.kpi_cards import seccion_titulo
 from core.components.filters import sidebar_header
 from core.components.tables import tabla_ejecutiva, tabla_metricas
@@ -46,7 +48,8 @@ st.sidebar.markdown(
     SARIMA — Clasico estadistico. Bueno cuando hay tendencia clara.<br><br>
     XGBoost — Machine Learning con rezagos. Captura patrones no lineales.<br><br>
     Naive — Baseline: igual al mismo mes del anio pasado.<br><br>
-    Auto — Prueba los 4 y elige el de menor MAPE en backtesting.
+    Combinado — Promedio de ETS y SARIMA.<br><br>
+    Automatico — Usa el modelo que mejor ha acertado en esta serie.
     </div>
     """,
     unsafe_allow_html=True,
@@ -62,6 +65,7 @@ with st.spinner("Cargando datos..."):
 # los meses sin embarques cuentan como 0 t y los cuatro modelos se validan con
 # los mismos últimos 6 meses (comparación justa en el modo automático).
 _FC_OPC = dict(fecha_corte=fecha_corte, ventana_prueba=6, rellenar_huecos=True)
+_FC_OPC_OM = dict(fecha_corte=fecha_corte, rellenar_huecos=True)  # validación de origen móvil
 
 st.markdown(
     f"""
@@ -219,7 +223,8 @@ def _get_or_compute(cache_key: str, fn):
     return st.session_state[cache_key]
 
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Demanda Total", "Comparar Modelos", "Por Proceso", "Por Familia", "Escenarios"])
+tab1, tab2, tab6, tab3, tab4, tab5 = st.tabs(["Demanda Total", "Comparar Modelos", "¿Qué tan bien acierta?",
+                                              "Por Proceso", "Por Familia", "Escenarios"])
 
 with tab1:
     seccion_titulo("Demanda Total", f"{horizonte} meses proyectados")
@@ -227,7 +232,7 @@ with tab1:
         st.warning("Sin datos de demanda total.")
     else:
         ck = _cache_key("total", modelo_key, horizonte)
-        res_total = _get_or_compute(ck, lambda: generar_forecast(df_total, horizonte, modelo=modelo_key, **_FC_OPC))
+        res_total = _get_or_compute(ck, lambda: generar(df_total, horizonte, modelo_key, "NEGROS|TOTAL", **_FC_OPC))
         _render_resultado(res_total, key_prefix="total")
 
 with tab2:
@@ -289,6 +294,10 @@ with tab2:
         else:
             st.info("Haz clic en el boton para comparar los 4 modelos.")
 
+with tab6:
+    seccion_titulo("¿Qué tan bien acierta?", "Pronósticos hechos desde meses pasados vs. la venta real")
+    render_aciertos(df_total, key=f"fc_origen_movil_{fecha_corte}", referencia="lo que se vendió", **_FC_OPC_OM)
+
 with tab3:
     seccion_titulo("Pronostico por Proceso", f"Modelo: {MODELOS_DISPONIBLES[modelo_key]}")
     if df_proceso.empty:
@@ -304,7 +313,7 @@ with tab3:
                 st.warning(f"Solo {n_p} meses disponibles — se requieren minimo 12.")
             else:
                 ck_p = _cache_key("proc", modelo_key, horizonte, proc_sel)
-                res_p = _get_or_compute(ck_p, lambda: generar_forecast(df_p, horizonte, modelo=modelo_key, **_FC_OPC))
+                res_p = _get_or_compute(ck_p, lambda: generar(df_p, horizonte, modelo_key, f"NEGROS|PROCESO|{proc_sel}", **_FC_OPC))
                 _render_resultado(res_p, key_prefix="proc")
 
 with tab4:
@@ -324,7 +333,7 @@ with tab4:
                 st.warning(f"Solo {n_pr} meses — se requieren minimo 12.")
             else:
                 ck_pr = _cache_key("prod", modelo_key, horizonte, prod_sel)
-                res_pr = _get_or_compute(ck_pr, lambda: generar_forecast(df_pr, horizonte, modelo=modelo_key, **_FC_OPC))
+                res_pr = _get_or_compute(ck_pr, lambda: generar(df_pr, horizonte, modelo_key, f"NEGROS|PRODUCTO|{prod_sel}", **_FC_OPC))
                 _render_resultado(res_pr, key_prefix="prod")
 
 with tab5:
@@ -340,7 +349,7 @@ with tab5:
     else:
         # Cargar/computar pronóstico base
         ck_base = _cache_key("total", modelo_key, horizonte)
-        res_base = _get_or_compute(ck_base, lambda: generar_forecast(df_total, horizonte, modelo=modelo_key, **_FC_OPC))
+        res_base = _get_or_compute(ck_base, lambda: generar(df_total, horizonte, modelo_key, "NEGROS|TOTAL", **_FC_OPC))
 
         if res_base.error_msg or res_base.forecast.empty:
             st.error("No se pudo generar el pronóstico base.")

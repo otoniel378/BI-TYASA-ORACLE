@@ -1,0 +1,63 @@
+name: Selección Mensual de Modelos de Pronóstico
+
+on:
+  schedule:
+    # Día 6 de cada mes, 9:00 AM México (15:00 UTC), después de SNICE y del semáforo.
+    # Las ventas y CANACERO se cargan a mano: después de cargar conviene correrlo
+    # con "Run workflow". Solo recalcula las series cuyos datos cambiaron.
+    - cron: "0 15 6 * *"
+  workflow_dispatch:
+    inputs:
+      forzar:
+        description: "Recalcular todas las series aunque no hayan cambiado"
+        type: boolean
+        default: false
+
+jobs:
+  update-seleccion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        # streamlit: lo importan los loaders compartidos con la app
+        run: |
+          pip install oracledb pandas numpy python-dotenv statsmodels scikit-learn xgboost streamlit
+
+      - name: Extraer wallet de Oracle
+        run: |
+          mkdir -p /tmp/oracle_wallet
+          echo "${{ secrets.ORACLE_WALLET_B64 }}" | base64 -d > /tmp/oracle_wallet.zip
+          unzip -o /tmp/oracle_wallet.zip -d /tmp/oracle_wallet
+          ls /tmp/oracle_wallet
+
+      - name: Elegir modelo por serie (validación de origen móvil)
+        env:
+          ORACLE_USER:            ${{ secrets.ORACLE_USER }}
+          ORACLE_PASSWORD:        ${{ secrets.ORACLE_PASSWORD }}
+          ORACLE_DSN:             ${{ secrets.ORACLE_DSN }}
+          ORACLE_WALLET_DIR:      /tmp/oracle_wallet
+          ORACLE_WALLET_PASSWORD: ${{ secrets.ORACLE_WALLET_PASSWORD }}
+          # los loaders de la app se conectan con core/db_connector, que usa el wallet en base64
+          ORACLE_WALLET_B64:      ${{ secrets.ORACLE_WALLET_B64 }}
+        run: python scripts/update_seleccion_modelos.py ${{ inputs.forzar && '--forzar' || '' }}
+
+      - name: Avisar por correo si falló
+        if: failure()
+        env:
+          GMAIL_USER:         ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          DIGEST_EMAIL_TO:    ${{ secrets.DIGEST_EMAIL_TO }}
+        run: python scripts/notify_failure.py
+
+      - name: Resultado
+        if: always()
+        run: echo "Selección de modelos actualizada - $(date)"
