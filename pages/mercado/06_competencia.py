@@ -464,25 +464,23 @@ with tab_pub:
         with apc2:
             ap_emp_opts  = ["Todas las empresas"] + empresas_sel
             ap_emp_label = st.selectbox("Empresa", ap_emp_opts, key="ap_emp")
-        with apc3:
-            st.markdown("<div style='padding-top:22px;'></div>", unsafe_allow_html=True)
-            ap_refresh = st.button("Actualizar", key="ap_refresh", help="Forzar recarga desde Apify")
-
         ap_red_val = _ap_redes_opts[ap_red_label]
         ap_redes   = [ap_red_val] if ap_red_val else ["instagram", "facebook", "twitter", "linkedin"]
         ap_empresas   = [ap_emp_label] if ap_emp_label != "Todas las empresas" else empresas_sel
 
-        # Cache en session_state — evita re-fetch al navegar entre tabs
+        # Apify cobra por consulta: solo se llama al presionar el botón (no al abrir la página).
         _AP_POSTS_KEY = "apify_pub_posts"
         _AP_TS_KEY    = "apify_pub_ts"
         _AP_SEL_KEY   = "apify_pub_sel"
         _ap_sel_curr  = f"{'|'.join(sorted(ap_empresas))}_{'|'.join(sorted(ap_redes))}"
+        _ap_ya_cargado = st.session_state.get(_AP_SEL_KEY) == _ap_sel_curr
 
-        _needs_fetch = (
-            ap_refresh
-            or _AP_POSTS_KEY not in st.session_state
-            or st.session_state.get(_AP_SEL_KEY) != _ap_sel_curr
-        )
+        with apc3:
+            st.markdown("<div style='padding-top:22px;'></div>", unsafe_allow_html=True)
+            ap_refresh = st.button("Actualizar" if _ap_ya_cargado else "Cargar publicaciones",
+                                   key="ap_refresh", help="Consulta Apify (servicio de pago)")
+
+        _needs_fetch = ap_refresh
 
         if _needs_fetch:
             with st.spinner(f"Obteniendo publicaciones reales de {', '.join(ap_empresas)}…"):
@@ -490,14 +488,18 @@ with tab_pub:
                 for _emp in ap_empresas:
                     _posts.extend(
                         get_apify_posts(_emp, _APIFY_KEY, ap_redes, n=8,
-                                        force_refresh=ap_refresh)
+                                        force_refresh=_ap_ya_cargado)
                     )
                 _posts.sort(key=lambda x: x.get("fecha_pub", "") or "", reverse=True)
                 st.session_state[_AP_POSTS_KEY] = _posts
                 st.session_state[_AP_TS_KEY]    = datetime.datetime.now()
                 st.session_state[_AP_SEL_KEY]   = _ap_sel_curr
 
-        apify_posts: list[dict] = st.session_state.get(_AP_POSTS_KEY, [])
+        if st.session_state.get(_AP_SEL_KEY) != _ap_sel_curr:
+            st.info("Las publicaciones se consultan en Apify (servicio de pago) solo cuando presionas "
+                    "«Cargar publicaciones».")
+        apify_posts: list[dict] = (st.session_state.get(_AP_POSTS_KEY, [])
+                                   if st.session_state.get(_AP_SEL_KEY) == _ap_sel_curr else [])
         _ap_loaded_ts = st.session_state.get(_AP_TS_KEY)
         _ap_ts_str = _ap_loaded_ts.strftime("%H:%M") if _ap_loaded_ts else "—"
 
@@ -513,10 +515,12 @@ with tab_pub:
             f"cargadas a las {_ap_ts_str} — usa Actualizar para refrescar"
         )
 
-        if not apify_filtrados and apify_posts:
+        if not apify_posts:
+            pass
+        elif not apify_filtrados:
             st.info(f"Hay {len(apify_posts)} publicaciones pero ninguna cae en el período seleccionado. "
                     "Amplía el rango de fechas.")
-        elif not apify_posts:
+        elif not apify_posts and st.session_state.get(_AP_SEL_KEY) == _ap_sel_curr:
             st.warning("No se encontraron publicaciones. Verifica que el token de Apify es válido "
                        "y que las empresas tienen usuarios configurados.")
         else:
@@ -597,8 +601,11 @@ with tab_bench:
 
     with st.spinner("Calculando benchmarking…"):
         noticias_bm  = _get_todas_noticias(empresas_sel, max_r=8)
-        _emp_key_bm  = "|".join(sorted(empresas_sel))
-        posts_bm     = _feed_apify_cached(_emp_key_bm, _APIFY_KEY, "linkedin|instagram|facebook|twitter", n=8)
+        # Redes sociales: solo las ya cargadas en la pestaña Publicaciones (Apify cobra por consulta).
+        posts_bm     = [p for p in st.session_state.get("apify_pub_posts", [])
+                        if p.get("empresa") in empresas_sel]
+    if not posts_bm:
+        st.caption("Sin redes sociales en esta comparación: cárgalas en la pestaña Publicaciones.")
 
     metricas = calcular_metricas_benchmarking(posts_bm, noticias_bm, empresas_sel, fecha_desde, fecha_hasta)
 

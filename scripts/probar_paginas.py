@@ -5,7 +5,7 @@ probar_paginas.py — Prueba de humo de toda la app: abre cada página dentro de
 Úsalo antes de subir cambios grandes:
     python scripts/probar_paginas.py              # todas, salvo Competencia e Industria
     python scripts/probar_paginas.py mercado      # solo las de una sección
-    python scripts/probar_paginas.py --todas      # incluye Competencia (llama a Apify, que COBRA por uso)
+    python scripts/probar_paginas.py --todas      # incluye Competencia y su búsqueda de noticias
                                                   # e Industria (noticias en internet, ~4 min)
 
 Solo lee (no escribe en Oracle). Sale con código 1 si alguna página truena.
@@ -28,7 +28,7 @@ from streamlit.testing.v1 import AppTest  # noqa: E402
 # Secciones que se saltan siempre: Largos sigue en BigQuery (lo migra su equipo);
 # el chat necesita una pregunta para hacer algo.
 OMITIR_SECCIONES = {"aceros_largos", "chat_ia"}
-EXTERNAS = {"mkt_industria", "mkt_competencia"}   # internet / Apify de pago: solo con --todas
+EXTERNAS = {"mkt_industria", "mkt_competencia"}   # muchas búsquedas en internet (minutos): solo con --todas
 
 
 def _diccionario(nombre: str) -> dict:
