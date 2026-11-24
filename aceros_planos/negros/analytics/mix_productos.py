@@ -34,22 +34,15 @@ def n_familias_por_cliente(df_cliente_producto: pd.DataFrame) -> pd.DataFrame:
 
 
 def tabla_coocurrencia(df_cliente_producto: pd.DataFrame) -> pd.DataFrame:
+    """Clientes en común entre cada par de productos (diagonal = clientes del producto).
+    Es Bᵀ·B con B = matriz cliente × producto de 0/1 (antes un ciclo de 250 mil pares: ~50 s)."""
     if df_cliente_producto.empty:
         return pd.DataFrame()
 
-    clientes_por_prod = df_cliente_producto.groupby("PRODUCTO_LIMPIO")["CLIENTE"].apply(set).to_dict()
-    productos = sorted(clientes_por_prod.keys())
-    matrix = pd.DataFrame(0, index=productos, columns=productos)
-
-    for pa, pb in combinations(productos, 2):
-        n = len(clientes_por_prod[pa] & clientes_por_prod[pb])
-        matrix.loc[pa, pb] = n
-        matrix.loc[pb, pa] = n
-
-    for p in productos:
-        matrix.loc[p, p] = len(clientes_por_prod[p])
-
-    return matrix
+    b = (pd.crosstab(df_cliente_producto["CLIENTE"], df_cliente_producto["PRODUCTO_LIMPIO"]) > 0).astype(np.int64)
+    b = b.reindex(columns=sorted(b.columns))
+    m = b.T.to_numpy() @ b.to_numpy()
+    return pd.DataFrame(m, index=b.columns.tolist(), columns=b.columns.tolist())
 
 
 def combinaciones_frecuentes(df_cliente_producto: pd.DataFrame, min_clientes: int = 2) -> pd.DataFrame:

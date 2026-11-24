@@ -22,7 +22,7 @@ from aceros_planos.negros.loaders import (
     load_serie_mensual_proceso,
     get_fecha_corte,
 )
-from aceros_planos.negros.analytics.forecasting import (
+from core.forecasting import (
     generar_forecast,
     filtrar_por_dimension,
     MODELOS_DISPONIBLES,

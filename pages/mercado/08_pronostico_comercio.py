@@ -1,7 +1,7 @@
 """
 pages/mercado/08_pronostico_comercio.py — Pronóstico de Importación (CANACERO)
 
-Reutiliza el motor de pronóstico de aceros_planos/negros/analytics/forecasting.py
+Reutiliza el motor de pronóstico común core/forecasting.py
 (ETS, SARIMA, XGBoost, Naive, auto-selección por backtesting) sobre las series
 mensuales de comercio exterior nacional filtradas a las fracciones de TYASA
 (mercado/canacero/loaders.py). Mismo molde visual que
@@ -42,7 +42,7 @@ from mercado_noticias.analytics.ai_analysis import _call_gemini_text
 from mercado_noticias.analytics.noticias import buscar_noticias_actuales
 
 DIAS_NOTICIAS_RECIENTES = 60  # más allá de esto, la búsqueda en vivo ya no sirve (busca desde "hoy", no desde <fecha>)
-from aceros_planos.negros.analytics.forecasting import (
+from core.forecasting import (
     generar_forecast,
     filtrar_por_dimension,
     MODELOS_DISPONIBLES,

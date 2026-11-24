@@ -12,7 +12,7 @@ import pandas as pd
 import streamlit as st
 
 from core.db_connector import run_query, table_ref
-from aceros_planos.negros.analytics.forecasting import firma_serie, generar_forecast
+from core.forecasting import firma_serie, generar_forecast
 
 T_SELECCION = table_ref("GOLD_SELECCION_MODELO")
 

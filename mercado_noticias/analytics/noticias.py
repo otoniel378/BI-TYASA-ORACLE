@@ -328,9 +328,12 @@ def buscar_noticias_multifuente(
     queries = QUERIES.get(variable, [variable.replace("_", " ")])
     todos = []
 
-    for q in queries[:3]:  # hasta 3 queries por variable
-        res = _buscar_google_news(q, max_resultados=6)
-        todos.extend(res)
+    # Hasta 3 queries por variable, en paralelo (en serie el Monitor tardaba ~1 min en red).
+    # map() conserva el orden de las queries, así que el resultado es el mismo.
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        for res in pool.map(lambda q: _buscar_google_news(q, max_resultados=6), queries[:3]):
+            todos.extend(res)
 
     # Respaldo NewsAPI con la primera query
     if len(todos) < 5:
