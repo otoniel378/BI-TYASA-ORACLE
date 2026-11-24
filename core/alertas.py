@@ -4,7 +4,7 @@ alertas.py — Bandeja única de alertas de TYASA BI.
 Reúne en una sola lista las señales que hoy viven en distintas páginas y
 correos: ventas de Aceros Planos (clientes que dejaron de comprar, caída del
 mes), ferroaleaciones (semáforo de alza), quiebres de mercado, decretos del
-DOF, sentimiento de noticias y datos desactualizados. La usan la página
+DOF, sentimiento de noticias y calidad / frescura de los datos (core/calidad_datos.py). La usan la página
 pages/alertas_bandeja.py, el contador del Hub y el resumen semanal por correo
 (scripts/enviar_resumen_semanal.py).
 
@@ -24,11 +24,7 @@ from core.db_connector import run_query_params, table_ref
 
 PRIORIDADES = ("alta", "media", "info")
 
-# Umbrales (días sin actualizar antes de avisar y variaciones que se consideran caída)
-DIAS_VENTAS_DESACTUALIZADAS = 45
-DIAS_MERCADO_DESACTUALIZADO = 5
-DIAS_NOTICIAS_DESACTUALIZADAS = 3
-DIAS_FASTMARKETS_DESACTUALIZADO = 45
+# Umbrales (los de datos desactualizados viven en core/calidad_datos.FUENTES)
 CAIDA_MES_MEDIA, CAIDA_MES_ALTA = -10, -25      # % vs mismo mes del año anterior
 TOP_CLIENTES_PRIORITARIOS = 20                  # por toneladas de los últimos 12 meses
 DIAS_DOF = 30
@@ -42,6 +38,7 @@ DESTINO_FERROS = ("mercado", "mkt_ferros", None)
 DESTINO_MONITOR = ("mercado", "mkt_monitor", None)
 DESTINO_COMERCIO = ("mercado", "mkt_comercio", None)
 DESTINO_SENTIMIENTO = ("mas_info", "mi_sentimiento", None)
+DESTINO_ESTADO_DATOS = ("inicio", "datos", None)
 
 
 @dataclass
@@ -71,28 +68,21 @@ def _fmt_fecha(fecha) -> str:
 
 
 # ── Sistema: datos desactualizados ───────────────────────────────────────────
-def alertas_frescura(hoy: date) -> list[Alerta]:
+def alertas_calidad(hoy: date) -> list[Alerta]:
+    """Fuentes desactualizadas y reglas de calidad (core/calidad_datos.py).
+    Falla → la prioridad de la fuente (ventas = alta); aviso → informativa."""
+    from core import calidad_datos
     out = []
-    corte = metricas.fecha_corte()
-    d = _dias(corte, hoy)
-    if d > DIAS_VENTAS_DESACTUALIZADAS:
-        out.append(Alerta("alta", "Sistema", "Ventas (SAP)", f"Ventas cargadas solo hasta el {_fmt_fecha(corte)}",
-                          f"Hace {d} días. Las cifras de ventas, clientes y pronósticos no incluyen lo más reciente.",
-                          corte, clave="frescura_ventas"))
-    fuentes = [
-        ("Variables de mercado", f"SELECT MAX(FECHA) F FROM {table_ref('GOLD_VARIABLES_MERCADO')}",
-         DIAS_MERCADO_DESACTUALIZADO),
-        ("Noticias", f"SELECT MAX(FECHA_PUB) F FROM {table_ref('GOLD_SENTIMIENTO_NOTICIAS')}",
-         DIAS_NOTICIAS_DESACTUALIZADAS),
-        ("Precios de ferroaleaciones", f"SELECT MAX(FECHA) F FROM {table_ref('GOLD_PRECIOS_FASTMARKETS')}",
-         DIAS_FASTMARKETS_DESACTUALIZADO),
-    ]
-    for nombre, sql, limite in fuentes:
-        f = _q(sql)["F"].iloc[0]
-        if pd.notna(f) and _dias(f, hoy) > limite:
-            out.append(Alerta("media", "Sistema", nombre, f"{nombre}: último dato del {_fmt_fecha(f)}",
-                              f"Hace {_dias(f, hoy)} días; revisar la carga automática.", f,
-                              clave=f"frescura_{nombre}"))
+    for r in calidad_datos.revisar(hoy):
+        if r.estado == "ok":
+            continue
+        prioridad = r.prioridad if r.estado == "falla" else "info"
+        if r.tipo == "frescura":
+            titulo = f"{r.fuente}: datos sin actualizar" if r.estado == "falla" else f"{r.fuente}: actualización atrasada"
+        else:
+            titulo = f"{r.fuente}: {r.regla.lower()} — no se cumple"
+        out.append(Alerta(prioridad, "Sistema", "Calidad de datos", titulo, r.detalle, r.fecha,
+                          DESTINO_ESTADO_DATOS, clave=f"calidad_{r.fuente}_{r.regla}"))
     return out
 
 
@@ -208,7 +198,7 @@ def alertas_sentimiento(hoy: date) -> list[Alerta]:
 
 
 FUENTES = {
-    "Datos actualizados": alertas_frescura,
+    "Calidad de datos": alertas_calidad,
     "Clientes": alertas_clientes,
     "Ventas": alertas_volumen,
     "DOF": alertas_dof,

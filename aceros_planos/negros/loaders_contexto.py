@@ -46,6 +46,9 @@ def load_alertas_inegi_planos() -> pd.DataFrame:
         df = calcular_alertas()
         if df.empty:
             return pd.DataFrame()
+        # calcular_alertas() entrega columnas en minúsculas; las páginas de Planos usan "Clave" / "Nombre".
+        df["Clave"] = df["clave"].astype(str)
+        df["Nombre"] = df.get("nombre", df["Clave"])
         return df[df["Clave"].isin(CLAVES_INEGI_PLANOS)].copy()
     except Exception as e:
         print(f"[loaders_contexto] load_alertas_inegi_planos: {e}")
