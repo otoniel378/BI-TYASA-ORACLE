@@ -157,6 +157,20 @@ MATERIALES = {
     "Ni": ("Níquel", ["360", "608", "643", "540", "124", "036"]),
 }
 
+# Código ISO de 3 letras (lo usa el mapa para sombrear países)
+ISO3 = {
+    "484": "MEX", "840": "USA", "124": "CAN", "156": "CHN", "360": "IDN", "608": "PHL", "458": "MYS", "356": "IND",
+    "710": "ZAF", "716": "ZWE", "643": "RUS", "398": "KAZ", "268": "GEO", "804": "UKR", "792": "TUR", "246": "FIN",
+    "578": "NOR", "826": "GBR", "250": "FRA", "724": "ESP", "076": "BRA", "152": "CHL", "604": "PER", "540": "NCL",
+    "036": "AUS",
+}
+# Países que bordean cada paso marítimo: se iluminan en el mapa cuando la ruta lo cruza
+PASO_PAISES = {
+    "panama": ["PAN"], "yucatan": ["CUB"], "bab": ["YEM", "DJI", "ERI"], "suez": ["EGY"], "hormuz": ["IRN", "OMN"],
+    "malaca": ["MYS", "IDN", "SGP"], "gibraltar": ["ESP", "MAR"], "mancha": ["GBR", "FRA"], "bos": ["TUR"],
+    "cabo": ["ZAF"], "luzon": ["PHL", "TWN"],
+}
+
 # Material -> serie de precio (mercado_fastmarkets/loaders.FERROALEACIONES), para
 # cruzar la ruta con el semáforo de alza y el quiebre en formación del precio
 SERIE_PRECIO = {

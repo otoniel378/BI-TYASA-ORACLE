@@ -87,7 +87,7 @@ PATRON_GRAVE = (
 # Noticias de alivio: mencionan prohibiciones o ataques pero para decir que se
 # levantan o se pausan ("China Halts Critical Minerals Ban"). No son graves.
 PATRON_ALIVIO = (
-    r"lift(s|ed)?|eases?|paus(e|es|ed)|halts?.*ban|suspends?.*ban|ends?.*(ban|war|strike)|"
+    r"lift(s|ed)?\b|eases?\b|paus(e|es|ed)\b|halts?\b.*\bban|suspends?\b.*\bban|ends?\b.*\b(ban|war|strike)|"
     r"levanta|suspende.*prohib|tregua|truce|ceasefire|alto al fuego|reabre|reopen|resume|reanuda"
 )
 
