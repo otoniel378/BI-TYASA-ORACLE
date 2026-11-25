@@ -6,6 +6,7 @@ del "Monitor materiales críticos" (artifact de rutas):
   paso:<clave>    pasos marítimos (PASO_NAME del monitor: suez, bab, panama...)
   pais:<iso>      país de origen, código ISO numérico de 3 dígitos ('710' = Sudáfrica)
   puerto:<clave>  puerto de llegada en México (LANDING del monitor: ver, alt, coa, man, laz)
+  frontera:<clave> cruce fronterizo de las rutas por tren (laredo)
 
 El monitor cuelga cada aviso en todas las rutas que pasan por ese lugar, siempre
 con nivel "aviso": una noticia no cambia qué ruta sale como mejor opción; subirla
@@ -60,6 +61,8 @@ PAISES = {
     "124": ("Canadá", r"canad[aá]"),
     "036": ("Australia", r"australia"),
     "540": ("Nueva Caledonia", r"nueva caledonia|new caledonia"),
+    "392": ("Japón", r"jap[oó]n|japan"),
+    "170": ("Colombia", r"colombia"),
 }
 PUERTOS = {
     "ver": ("Veracruz", r"veracruz"),
@@ -68,7 +71,11 @@ PUERTOS = {
     "man": ("Manzanillo", r"manzanillo"),
     "laz": ("Lázaro Cárdenas", r"l[aá]zaro c[aá]rdenas"),
 }
-# Países y puertos solo cuentan si el título habla de logística o de una
+# Cruces fronterizos de las rutas por tren desde EE. UU. (frontera:<clave>)
+FRONTERAS = {
+    "laredo": ("Nuevo Laredo", r"laredo|world trade bridge|puente (internacional )?del comercio mundial"),
+}
+# Países, puertos y cruces solo cuentan si el título habla de logística o de una
 # disrupción del suministro. "export/import" solos no: traen estadísticas de
 # comercio ("Kazajistán exportó X millones"), no riesgos.
 PATRON_LOGISTICA = (
@@ -105,6 +112,7 @@ def _lugares(titulo: str) -> list[tuple[str, str]]:
     if re.search(PATRON_LOGISTICA, t):
         out += [(f"pais:{k}", n) for k, (n, p) in PAISES.items() if re.search(p, t)]
         out += [(f"puerto:{k}", n) for k, (n, p) in PUERTOS.items() if re.search(p, t)]
+        out += [(f"frontera:{k}", n) for k, (n, p) in FRONTERAS.items() if re.search(p, t)]
     return out
 
 

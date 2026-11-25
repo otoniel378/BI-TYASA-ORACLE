@@ -11,11 +11,13 @@ Las rutas se arman como  origen → salida (corredor hasta un "acceso") → lleg
   atl  Atlántico, entrada este del Caribe
   pac  Pacífico mexicano, frente a Manzanillo
   gol  Golfo de México (origen ya dentro del Golfo: EE. UU., Canadá por Florida)
+  car  Caribe sur, frente a Panamá (Colombia)
 Así cada país tiene varias rutas (todas las combinaciones salida × puerto) y un
 escenario que cierra un paso deja solo las que no lo cruzan, como en el monitor.
 
 IMPORTANTE: los orígenes por material son los principales productores
-(referencia), no los proveedores reales de TYASA. Distancias y días son estimados.
+(referencia), no los proveedores reales de TYASA; los reales se registran en la
+pestaña Proveedores (mercado_rutas/proveedores.py) y se suman a estos. Distancias y días son estimados.
 """
 
 TYASA = {"nombre": "TYASA", "lugar": "Ixtaczoquitlán, Ver.", "lat": 18.857, "lon": -97.060}
@@ -54,7 +56,7 @@ PASOS = {
 
 # Accesos a México y tramo final de cada acceso a cada puerto. Un str en la
 # lista es un paso marítimo (se toma su coordenada y se cuenta como cruce).
-ACCESOS = {"atl": (16.0, -62.0), "pac": (16.0, -106.0), "gol": (25.5, -93.0)}
+ACCESOS = {"atl": (16.0, -62.0), "pac": (16.0, -106.0), "gol": (25.5, -93.0), "car": (12.5, -77.0)}
 _GOLFO = (23.5, -91.5)
 _A_PACIFICO_DESDE_CARIBE = [(12.0, -77.5), "panama", (8.0, -84.0), (13.0, -97.0)]
 _A_GOLFO_DESDE_PACIFICO = [(9.0, -86.0), "panama", (12.5, -78.5), (18.0, -82.5), "yucatan", _GOLFO]
@@ -65,6 +67,8 @@ LLEGADAS = {
     ("gol", "Pacífico"): ["yucatan", (18.0, -82.5)] + _A_PACIFICO_DESDE_CARIBE,
     ("pac", "Pacífico"): [],
     ("pac", "Golfo"): _A_GOLFO_DESDE_PACIFICO,
+    ("car", "Golfo"): [(18.0, -82.5), "yucatan", _GOLFO],
+    ("car", "Pacífico"): ["panama", (8.0, -84.0), (13.0, -97.0)],
 }
 
 # Corredores de salida: del puerto de carga a un acceso
@@ -104,6 +108,7 @@ SALIDAS = {
                   "puntos": [(-38.0, 125.0), (-42.0, 150.0), (-30.0, 180.0), (-10.0, -140.0), (8.0, -115.0)]},
     "sudamerica_pacifico": {"nombre": "por el Pacífico", "acceso": "pac", "puntos": [(-5.0, -85.0), (8.0, -98.0)]},
     "eeuu_golfo": {"nombre": "por el Golfo", "acceso": "gol", "puntos": [(27.0, -94.5)]},
+    "caribe": {"nombre": "por el Caribe", "acceso": "car", "puntos": []},
     "canada_atl": {"nombre": "por el Atlántico y Florida", "acceso": "gol",
                    "puntos": [(45.0, -60.0), (35.0, -72.0), (24.4, -81.5), (24.0, -86.0)]},
 }
@@ -112,7 +117,8 @@ SALIDAS = {
 PAISES = {
     "484": {"nombre": "México", "puerto": "Planta nacional", "lat": 22.20, "lon": -97.90, "salidas": [],
             "km_terrestre": 450},
-    "840": {"nombre": "Estados Unidos", "puerto": "Houston", "lat": 29.73, "lon": -95.27, "salidas": ["eeuu_golfo"]},
+    "840": {"nombre": "Estados Unidos", "puerto": "Houston", "lat": 29.73, "lon": -95.27, "salidas": ["eeuu_golfo"],
+            "terrestre": ["laredo"]},
     "124": {"nombre": "Canadá", "puerto": "Montreal", "lat": 45.50, "lon": -73.55, "salidas": ["canada_atl"]},
     "156": {"nombre": "China", "puerto": "Shanghái", "lat": 31.23, "lon": 121.80,
             "salidas": ["asia_pacifico", "asia_cabo", "asia_suez"]},
@@ -142,6 +148,24 @@ PAISES = {
     "604": {"nombre": "Perú", "puerto": "Callao", "lat": -12.05, "lon": -77.15, "salidas": ["sudamerica_pacifico"]},
     "540": {"nombre": "Nueva Caledonia", "puerto": "Nouméa", "lat": -22.27, "lon": 166.44, "salidas": ["oceania"]},
     "036": {"nombre": "Australia", "puerto": "Port Hedland", "lat": -20.30, "lon": 118.60, "salidas": ["australia"]},
+    "392": {"nombre": "Japón", "puerto": "Kobe", "lat": 34.68, "lon": 135.20, "salidas": ["asia_pacifico"]},
+    "170": {"nombre": "Colombia", "puerto": "Cartagena", "lat": 10.39, "lon": -75.53, "salidas": ["caribe"]},
+}
+
+# Cruces fronterizos (rutas por tierra desde EE. UU.): tren de la frontera a la planta.
+# km_origen = del puerto/patio de origen a la frontera; km = de la frontera a TYASA.
+FRONTERAS = {
+    "laredo": {"nombre": "Nuevo Laredo", "lat": 27.50, "lon": -99.51, "km_origen": 510, "km": 1400,
+               "via": [(25.67, -100.31), (22.15, -100.98), (20.59, -100.39), (19.04, -98.20)]},
+}
+KMH_TREN = 25                             # promedio con maniobras en patios
+DIAS_FRONTERA = (1, 3)                    # cruce, inspección y cambio de tripulación
+
+# Grupos de materiales (pestaña de material de la página)
+GRUPOS = {
+    "Ferroaleaciones": ["FeMn", "SiMn", "FeSi", "FeCr", "FeV", "FeMo", "FeTi", "FeNb", "Ni"],
+    "Insumos indirectos": ["Grafito", "Refractarios", "Coque", "Aluminio", "Zinc"],
+    "Chatarra": ["HMS", "Triturada", "Rebaba"],
 }
 
 # Material -> países productores de referencia (por confirmar con Compras)
@@ -155,6 +179,16 @@ MATERIALES = {
     "FeTi": ("Ferrotitanio", ["840", "826", "643", "156"]),
     "FeNb": ("Ferroniobio", ["076", "124"]),
     "Ni": ("Níquel", ["360", "608", "643", "540", "124", "036"]),
+    # Insumos indirectos del horno y de galvanizado
+    "Grafito": ("Electrodos de grafito", ["156", "356", "392", "643", "840"]),
+    "Refractarios": ("Refractarios y magnesita", ["156", "792", "076", "724"]),
+    "Coque": ("Coque y antracita", ["840", "170", "124", "036"]),
+    "Aluminio": ("Aluminio desoxidante", ["840", "124", "356"]),
+    "Zinc": ("Zinc para galvanizado", ["484", "604", "036", "124"]),
+    # Chatarra: nacional, por tren desde EE. UU. o por barco
+    "HMS": ("Chatarra pesada HMS 1&2", ["484", "840", "124", "826"]),
+    "Triturada": ("Chatarra triturada (shredded)", ["484", "840", "124"]),
+    "Rebaba": ("Rebaba de troquelado (busheling)", ["484", "840"]),
 }
 
 # Código ISO de 3 letras (lo usa el mapa para sombrear países)
@@ -162,7 +196,7 @@ ISO3 = {
     "484": "MEX", "840": "USA", "124": "CAN", "156": "CHN", "360": "IDN", "608": "PHL", "458": "MYS", "356": "IND",
     "710": "ZAF", "716": "ZWE", "643": "RUS", "398": "KAZ", "268": "GEO", "804": "UKR", "792": "TUR", "246": "FIN",
     "578": "NOR", "826": "GBR", "250": "FRA", "724": "ESP", "076": "BRA", "152": "CHL", "604": "PER", "540": "NCL",
-    "036": "AUS",
+    "036": "AUS", "392": "JPN", "170": "COL",
 }
 # Países que bordean cada paso marítimo: se iluminan en el mapa cuando la ruta lo cruza
 PASO_PAISES = {
@@ -177,6 +211,9 @@ SERIE_PRECIO = {
     "FeMn": "FerroManganeso", "SiMn": "SilicoManganeso", "FeSi": "FerroSilicio", "FeCr": "FerroCromo",
     "FeV": "FerroVanadio", "FeMo": "FerroMolibdeno", "FeTi": "FerroTitanio", "FeNb": "FerroNiobio", "Ni": "Niquel",
 }
+
+# Material -> variable de GOLD_VARIABLES_MERCADO (precio sin semáforo de alza)
+PRECIO_MERCADO = {"Aluminio": "Aluminio_USD", "Zinc": "Zinc_USD"}
 
 # Supuestos de tiempo (estimados)
 NUDOS_RAPIDO, NUDOS_LENTO = 14.0, 11.0    # granelero

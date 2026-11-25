@@ -55,3 +55,26 @@ def test_nivel_de_punto_y_ruta():
     assert ev["nivel"] == "riesgo" and ev["graves"] == 1
     assert peor("normal", "vigilar") == "vigilar"
     assert set(PUERTOS) == {"ver", "coa", "alt", "laz", "man"}
+
+
+def test_ruta_por_tren_y_grupos():
+    from mercado_rutas.red import FRONTERAS, GRUPOS
+    assert all(m in MATERIALES for g in GRUPOS.values() for m in g)
+    assert set(MATERIALES) == {m for g in GRUPOS.values() for m in g}
+    tren = [r for r in rutas_de("840") if r["modo"] == "tren"]
+    assert len(tren) == 1 and tren[0]["frontera"] in FRONTERAS and not tren[0]["pasos"]
+    avisos = pd.DataFrame({"nodo": ["frontera:laredo"], "lugar": ["Nuevo Laredo"], "severidad": ["alta"]})
+    red = estado_red(pd.DataFrame(columns=["fecha", "paso", "transitos"]),
+                     pd.DataFrame(columns=["fecha", "puerto", "llamadas"]), avisos, pd.DataFrame(),
+                     pd.DataFrame(columns=["nombre", "tipo", "puerto", "km"]))
+    assert evaluar_ruta(tren[0], red)["nivel"] == "riesgo"
+    # Colombia entra por el Caribe: al Golfo sin cruzar Panamá
+    assert "panama" not in next(r for r in rutas_de("170") if r["puerto"] == "ver")["pasos"]
+
+
+def test_origenes_con_proveedores():
+    from mercado_rutas.proveedores import origenes, ruta_principal
+    prov = pd.DataFrame({"material": ["FeCr"], "proveedor": ["X"], "pais_iso": ["156"], "ruta_id": ["156-a-ver"]})
+    assert origenes("FeCr", ["710", "156"], prov) == ["156", "710"]
+    assert ruta_principal("FeCr", "156", prov) == ("156-a-ver", "X")
+    assert ruta_principal("FeSi", "156", prov) == (None, None)

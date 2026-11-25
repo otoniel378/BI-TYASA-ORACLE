@@ -18,7 +18,8 @@ import math
 import pandas as pd
 
 from mercado_rutas.red import (
-    ACCESOS, DIAS_CANAL, DIAS_PUERTO, KMH_CAMION, LLEGADAS, NUDOS_LENTO, NUDOS_RAPIDO, PAISES, PASOS, PUERTOS, SALIDAS,
+    ACCESOS, DIAS_CANAL, DIAS_FRONTERA, DIAS_PUERTO, FRONTERAS, KMH_CAMION, KMH_TREN, LLEGADAS, NUDOS_LENTO,
+    NUDOS_RAPIDO, PAISES, PASOS, PUERTOS, SALIDAS, TYASA,
 )
 
 NIVELES = ("riesgo", "vigilar", "normal", "sin datos")
@@ -70,9 +71,9 @@ def rutas_de(iso: str, cerrados: frozenset = frozenset()) -> list[dict]:
             "id": f"{iso}-terrestre", "nombre": f"{o['nombre']} → TYASA (carretera)", "iso": iso, "salida": None,
             "puerto": None, "pasos": [], "coords": [], "nm": 0, "km_camion": km,
             "dias_min": max(1, round(dias)), "dias_max": max(2, round(dias) + 2), "dias_mar": (0, 0),
-            "disponible": True, "cerrados": [],
+            "disponible": True, "cerrados": [], "frontera": None, "modo": "camion",
         }]
-    out = []
+    out = [_ruta_terrestre(iso, f) for f in o.get("terrestre", [])]
     for s_id in o["salidas"]:
         s = SALIDAS[s_id]
         for p_id, p in PUERTOS.items():
@@ -93,9 +94,24 @@ def rutas_de(iso: str, cerrados: frozenset = frozenset()) -> list[dict]:
                 "dias_mar": (round(mar[0]), round(mar[1])),
                 "dias_min": round(mar[0] + DIAS_PUERTO[0] + canales + camion),
                 "dias_max": round(mar[1] + DIAS_PUERTO[1] + canales + camion + 1),
-                "disponible": not bloqueo, "cerrados": bloqueo,
+                "disponible": not bloqueo, "cerrados": bloqueo, "frontera": None, "modo": "barco",
             })
     return sorted(out, key=lambda r: (not r["disponible"], r["dias_max"], r["dias_min"]))
+
+
+def _ruta_terrestre(iso: str, f_id: str) -> dict:
+    """Ruta por tren: origen → cruce fronterizo → planta (no cruza pasos marítimos)."""
+    o, f = PAISES[iso], FRONTERAS[f_id]
+    km = f["km_origen"] + f["km"]
+    horas = km / KMH_TREN / 24
+    return {
+        "id": f"{iso}-tierra-{f_id}", "nombre": f"{o['nombre']} → TYASA · tren vía {f['nombre']}", "iso": iso,
+        "salida": None, "salida_nombre": "por tren", "puerto": None, "pasos": [],
+        "coords": [(o["lat"], o["lon"]), (f["lat"], f["lon"])] + f["via"] + [(TYASA["lat"], TYASA["lon"])],
+        "nm": 0, "km_camion": km, "dias_mar": (0, 0),
+        "dias_min": round(horas + DIAS_FRONTERA[0]), "dias_max": round(horas * 1.5 + DIAS_FRONTERA[1]),
+        "disponible": True, "cerrados": [], "frontera": f_id, "modo": "tren",
+    }
 
 
 # ── Tráfico ───────────────────────────────────────────────────────────────────
@@ -146,6 +162,10 @@ def estado_red(pasos_df: pd.DataFrame, puertos_df: pd.DataFrame, avisos: pd.Data
              else pd.Series(dtype=float))
         filas.append({"nodo": f"puerto:{k}", "tipo": "Puerto de llegada", "clave": k, "nombre": p["nombre"],
                       "lat": p["lat"], "lon": p["lon"], **estado_trafico(s, VENTANA_PUERTO)})
+    for k, f in FRONTERAS.items():
+        filas.append({"nodo": f"frontera:{k}", "tipo": "Cruce fronterizo", "clave": k, "nombre": f["nombre"],
+                      "lat": f["lat"], "lon": f["lon"], "reciente": None, "base": None, "cambio": None,
+                      "estado": "Sin datos", "al": None})
     if not avisos.empty:
         for nodo in sorted(n for n in avisos["nodo"].unique() if n.startswith("pais:")):
             iso = nodo.split(":", 1)[1]
@@ -194,6 +214,8 @@ def evaluar_ruta(ruta: dict, red: pd.DataFrame) -> dict:
     nodos = [f"paso:{p}" for p in ruta["pasos"]] + [f"pais:{ruta['iso']}"]
     if ruta["puerto"]:
         nodos.append(f"puerto:{ruta['puerto']}")
+    if ruta.get("frontera"):
+        nodos.append(f"frontera:{ruta['frontera']}")
     r = red.set_index("nodo")
     nivel, noticias, graves, motivos = "normal", 0, 0, []
     for n in nodos:
@@ -211,14 +233,17 @@ def evaluar_ruta(ruta: dict, red: pd.DataFrame) -> dict:
             "motivos": sorted(motivos, key=lambda m: _ORDEN.get(m[0], 9))}
 
 
-def matriz_calor(red: pd.DataFrame, cerrados: frozenset = frozenset()) -> pd.DataFrame:
+def matriz_calor(red: pd.DataFrame, cerrados: frozenset = frozenset(),
+                 origenes: dict[str, list[str]] | None = None) -> pd.DataFrame:
     """Material × país de origen: nivel de la mejor ruta disponible (la más
     rápida que no cruza un paso cerrado). nivel = 'cerrada' si el escenario no
-    deja ninguna. Columnas: material, iso, pais, nivel, ruta, dias, noticias, graves."""
+    deja ninguna. <origenes>: {material: [iso]} (por omisión, red.MATERIALES).
+    Columnas: material, iso, pais, nivel, ruta, dias, noticias, graves."""
     from mercado_rutas.red import MATERIALES
 
+    origenes = origenes or {m: p for m, (_, p) in MATERIALES.items()}
     filas, cache = [], {}
-    for mat, (_, paises) in MATERIALES.items():
+    for mat, paises in origenes.items():
         for iso in paises:
             if iso not in cache:
                 disp = [r for r in rutas_de(iso, cerrados) if r["disponible"]]

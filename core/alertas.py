@@ -224,7 +224,7 @@ def alertas_rutas(hoy: date) -> list[Alerta]:
         noticias = noticias.drop_duplicates(subset="titulo")
     avisos = avisos_de(noticias, hoy=hoy, max_por_lugar=12)
     red = estado_red(pasos, puertos, avisos, pd.DataFrame(), pd.DataFrame())
-    riesgo = red[(red["nivel"] == "riesgo") & red["tipo"].isin(["Paso marítimo", "Puerto de llegada"])]
+    riesgo = red[(red["nivel"] == "riesgo") & red["tipo"].isin(["Paso marítimo", "Puerto de llegada", "Cruce fronterizo"])]
     out = [Alerta("media", "Mercado Global", "Rutas y puertos", f"{r['nombre']} en riesgo",
                   _primera_mayuscula("; ".join(t for _, t in r["motivos"])) + ".", hoy, DESTINO_RUTAS,
                   clave=f"rutas_{r['nodo']}")

@@ -93,6 +93,29 @@ def load_precios_materiales() -> dict:
             "arriba": bool(pd.notna(b["banda_sup"]) and b["precio"] > b["banda_sup"]),
             "formacion": quiebre_en_formacion(p),
         }
+    out.update(_precios_mercado())
+    return out
+
+
+def _precios_mercado() -> dict:
+    """Insumos con precio diario en GOLD_VARIABLES_MERCADO (aluminio, zinc): último
+    precio y cambio a 3 meses, sin semáforo de alza."""
+    from mercado_noticias.loaders import load_variables_mercado
+    from mercado_rutas.red import PRECIO_MERCADO
+
+    try:
+        v = load_variables_mercado(dias=200)
+    except Exception:
+        return {}
+    out = {}
+    for mat, nombre in PRECIO_MERCADO.items():
+        s = v[v["nombre"] == nombre].dropna(subset=["valor"]).set_index("fecha")["valor"].sort_index()
+        if s.empty:
+            continue
+        hace3 = s[s.index <= s.index[-1] - pd.DateOffset(months=3)]
+        out[mat] = {"serie": nombre, "precio": float(s.iloc[-1]), "fecha": s.index[-1],
+                    "cambio_3m": float(s.iloc[-1] / hace3.iloc[-1] - 1) if not hace3.empty else None,
+                    "semaforo": None, "nivel": "sin datos", "confiable": False, "arriba": False, "formacion": None}
     return out
 
 

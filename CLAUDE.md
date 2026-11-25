@@ -48,9 +48,11 @@ mercado_noticias/ (detector, rupturas, noticias, categorias, dof_monitor, vistas
   Las páginas grandes delegan sus piezas: 03_industria → mercado_noticias/vistas_industria.py;
   07_comercio_exterior → mercado/snice/vistas.py y mercado/canacero/vista_participacion.py (pestaña Participación TYASA).
 mercado_fastmarkets/         ← ferroaleaciones, alerta_alzas (semáforo XGBoost)
-mercado_rutas/               ← Rutas y puertos: red (planta, puertos MX, pasos marítimos, orígenes, corredores),
-                               riesgo (rutas, tráfico vs. normal, nivel de cada punto y ruta), fuentes (PortWatch,
-                               NOAA, Open-Meteo), datos (cargadores), vistas (mapa, tarjetas, tablas)
+mercado_rutas/               ← Rutas y puertos: red (planta, puertos MX, pasos marítimos, cruce de Nuevo Laredo,
+                               orígenes, corredores, grupos Ferroaleaciones / Insumos indirectos / Chatarra),
+                               riesgo (rutas por barco y por tren, tráfico vs. normal, nivel de cada punto y ruta),
+                               fuentes (PortWatch, NOAA, Open-Meteo), datos (cargadores), proveedores (reales, en
+                               Oracle), vistas (mapa con acercamiento y recorrido animado, trayecto, comparar, tablas)
 ml/categoria_noticias/       ← clasificador de noticias (embeddings + regresión logística)
 pages/
   hub.py (con contador de alertas), alertas_bandeja.py (INICIO → Bandeja de alertas),
@@ -83,6 +85,8 @@ scripts/                     ← cargas y transformaciones (load_bronze_from_csv
 - Ferroaleaciones: BRONZE_FASTMARKETS_PRECIOS · GOLD_PRECIOS_FASTMARKETS · GOLD_SEMAFORO_FERROS · GOLD_SEMAFORO_METRICAS
 - Rutas y puertos: GOLD_TRAFICO_PASOS · GOLD_TRAFICO_PUERTOS (IMF PortWatch, 2 años; scripts/setup_rutas_oracle.py +
   update_trafico_maritimo.py). Si no existen, la página descarga PortWatch directo (~45 s, caché 12 h).
+  GOLD_PROVEEDORES_MATERIALES (proveedores reales por material; la app escribe al registrar/quitar, baja lógica
+  ACTIVO=0; scripts/setup_proveedores_oracle.py). Sin la tabla, los proveedores viven solo en la sesión.
 - Pronóstico: GOLD_SELECCION_MODELO (modelo del modo Automático por serie + firma de los datos; core/seleccion_modelos.py)
 
 ## Convenciones
