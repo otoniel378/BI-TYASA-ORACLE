@@ -154,13 +154,64 @@ def render_aranceles_tab():
         fig = estructura_100(
             df_graf, fila="linea_dashboard", categoria="igi_bucket", valor="conteo",
             titulo="Composición del arancel base (IGI) por línea TYASA",
-            orden_filas=_DIVISIONES, height=230,
+            orden_filas=_DIVISIONES, height=340,
         )
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        # estructura_100 es genérico (lo usan otras páginas con toneladas) — aquí
+        # el valor es "fracciones", no "t", y se reaprovecha customdata para poder
+        # identificar el segmento exacto (línea + tasa) que se hace clic.
+        for trace in fig.data:
+            bucket = trace.name
+            n = len(trace.y)
+            conteo_arr = list(trace.customdata) if trace.customdata is not None else [0] * n
+            trace.customdata = list(zip(conteo_arr, trace.y, [bucket] * n))
+            trace.hovertemplate = (
+                f"<b>{bucket}</b><br>%{{y}}: %{{x:.1f}}% · %{{customdata[0]:,.0f}} fracciones<extra></extra>"
+            )
+        fig.update_layout(height=340, margin=dict(l=64, r=12, t=36, b=110))
+
+        evento = st.plotly_chart(
+            fig, width="stretch", key="aranceles_composicion",
+            config={"displayModeBar": False}, on_select="rerun", selection_mode="points",
+        )
         st.caption(
-            "% de fracciones de cada línea en cada tasa de importación (IGI) — "
-            "exportación (IGE) está exenta en el 100% del catálogo de TYASA."
+            "% de fracciones de cada línea en cada tasa de importación (IGI) — exportación (IGE) "
+            "está exenta en el 100% del catálogo de TYASA. Clic en un segmento para ver cuáles son."
         )
+
+        puntos = [
+            p for p in (evento.selection.points if evento else [])
+            if isinstance(p.get("customdata"), (list, tuple)) and len(p["customdata"]) == 3
+        ]
+        if puntos:
+            _, linea_click, bucket_click = puntos[0]["customdata"]
+            st.session_state["_aranceles_click"] = (linea_click, bucket_click)
+
+        click_actual = st.session_state.get("_aranceles_click")
+        if click_actual and click_actual[0] in set(df_graf["linea_dashboard"]):
+            linea_click, bucket_click = click_actual
+            detalle = df_graf[
+                (df_graf["linea_dashboard"] == linea_click) & (df_graf["igi_bucket"] == bucket_click)
+            ].sort_values("fraccion")
+            filas_html = "".join(
+                f"<div style='display:flex;gap:10px;padding:5px 0;border-bottom:1px solid #F1F5F9;font-size:0.8rem;'>"
+                f"<span style='font-weight:700;color:{COLORS['primary']};min-width:82px;'>{r.fraccion}</span>"
+                f"<span style='color:{COLORS['text_light']};'>{r.descripcion}</span></div>"
+                for r in detalle.itertuples()
+            )
+            st.html(
+                f"<div style='margin-top:10px;padding:14px 16px;background:{COLORS['background']};"
+                f"border-radius:10px;border:1px solid #E5E7EB;'>"
+                f"<p style='margin:0 0 8px;font-size:0.84rem;font-weight:700;color:{COLORS['primary']};'>"
+                f"{linea_click} · IGI {bucket_click} ({len(detalle)} fracción{'es' if len(detalle) != 1 else ''})</p>"
+                f"{filas_html}</div>"
+            )
+        else:
+            st.html(
+                f"<div style='margin-top:10px;padding:16px;background:{COLORS['background']};"
+                f"border-radius:10px;border:1px dashed #CBD5E1;text-align:center;'>"
+                f"<p style='margin:0;font-size:0.8rem;color:{COLORS['text_light']};'>"
+                f"Haz clic en un segmento de la gráfica para ver qué fracciones lo componen.</p></div>"
+            )
 
     with col_b:
         html = _card_open("Alertas DOF recientes", "Relevantes para TYASA, cualquier fracción del acero")
