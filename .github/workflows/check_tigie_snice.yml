@@ -1,0 +1,43 @@
+name: Chequeo Mensual Edición TIGIE (SNICE)
+
+on:
+  schedule:
+    # Día 6 de cada mes, 9:00 AM México (15:00 UTC) — un día después de la
+    # descarga mensual de SNICE (update_snice.yml, día 5)
+    - cron: "0 15 6 * *"
+  workflow_dispatch:  # permite correrlo manualmente desde GitHub
+
+jobs:
+  check-tigie:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: pip install oracledb requests python-dotenv
+
+      - name: Extraer wallet de Oracle
+        run: |
+          mkdir -p /tmp/oracle_wallet
+          echo "${{ secrets.ORACLE_WALLET_B64 }}" | base64 -d > /tmp/oracle_wallet.zip
+          unzip -o /tmp/oracle_wallet.zip -d /tmp/oracle_wallet
+
+      - name: Revisar si hay edición más nueva de la TIGIE en SNICE
+        env:
+          ORACLE_USER:            ${{ secrets.ORACLE_USER }}
+          ORACLE_PASSWORD:        ${{ secrets.ORACLE_PASSWORD }}
+          ORACLE_DSN:             ${{ secrets.ORACLE_DSN }}
+          ORACLE_WALLET_DIR:      /tmp/oracle_wallet
+          ORACLE_WALLET_PASSWORD: ${{ secrets.ORACLE_WALLET_PASSWORD }}
+          GMAIL_USER:             ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD:     ${{ secrets.GMAIL_APP_PASSWORD }}
+          DIGEST_EMAIL_TO:        ${{ secrets.DIGEST_EMAIL_TO }}
+        run: python scripts/check_actualizacion_tigie.py

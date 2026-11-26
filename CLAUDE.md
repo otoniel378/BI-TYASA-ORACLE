@@ -46,7 +46,9 @@ aceros_largos/  aceros_sbq/  ← otros compañeros
 mercado/ (inegi, snice [+ vistas.py], canacero [+ vista_participacion.py]) ·
 mercado_noticias/ (detector, rupturas, noticias, categorias, dof_monitor, vistas_industria.py…)
   Las páginas grandes delegan sus piezas: 03_industria → mercado_noticias/vistas_industria.py;
-  07_comercio_exterior → mercado/snice/vistas.py y mercado/canacero/vista_participacion.py (pestaña Participación TYASA).
+  07_comercio_exterior → mercado/snice/vistas.py, mercado/canacero/vista_participacion.py (pestaña
+  Participación TYASA) y mercado/snice/vistas_aranceles.py + loaders_aranceles.py (pestaña Aranceles:
+  arancel base TIGIE × medidas del DOF por fracción TYASA — ver tablas nuevas abajo).
 mercado_fastmarkets/         ← ferroaleaciones, alerta_alzas (semáforo XGBoost)
 mercado_rutas/               ← Rutas y puertos: red (planta, puertos MX, pasos marítimos, cruce de Nuevo Laredo,
                                orígenes, corredores, grupos Ferroaleaciones / Insumos indirectos / Chatarra),
@@ -67,8 +69,10 @@ pages/
           10 rutas y puertos
 scripts/                     ← cargas y transformaciones (load_bronze_from_csv, transform_to_silver, transform_to_gold,
                                update_*, setup_*_oracle, load_snice_to_oracle, backfill_*, seed_eventos_historicos…)
-.github/workflows/           ← update_market (L–V 8:45 MX), update_sentimiento, update_inegi (día 10),
-                               update_snice (día 5), update_semaforo_ferros (día 5), update_trafico_maritimo (L–V 10:00 MX),
+.github/workflows/           ← update_market (L–V 8:45 MX), update_sentimiento (incluye monitor_dof.py →
+                               ALERTA DOF), update_inegi (día 10), update_snice (día 5),
+                               check_tigie_snice (día 6, aviso si hay edición TIGIE más nueva en SNICE),
+                               update_semaforo_ferros (día 5), update_trafico_maritimo (L–V 10:00 MX),
                                update_seleccion_modelos (día 6), resumen_semanal (lunes 8:00 MX),
                                keep_alive (30 min)
 ```
@@ -82,6 +86,10 @@ scripts/                     ← cargas y transformaciones (load_bronze_from_csv
 - INEGI: GOLD_INDICADORES_INEGI · GOLD_INDICADORES_INEGI_ESTADO
 - Comercio exterior: BRONZE_SNICE_SIDERURGICO (retiene 6 meses; aviso = 123 días de vigencia) · GOLD_SNICE_TOP_FRACCIONES
   (historial completo) · GOLD_SNICE_TOP_EMPRESAS/PAISES/CATEGORIAS · GOLD_SNICE_RESUMEN_MENSUAL · BRONZE_CANACERO_COMEX
+- Aranceles (pestaña Aranceles de 07_comercio_exterior): GOLD_TIGIE_BASE (arancel general IGI/IGE por
+  fracción cap. 72/73, carga manual 1-2×/año — scripts/cargar_tigie_base_oracle.py, aviso automático
+  scripts/check_actualizacion_tigie.py) · GOLD_MEDIDAS_ARANCELARIAS (una fila por fracción+medida que el
+  DOF le aplica — cuota compensatoria, Regla 8a, TLC —, la llena scripts/monitor_dof.py)
 - Ferroaleaciones: BRONZE_FASTMARKETS_PRECIOS · GOLD_PRECIOS_FASTMARKETS · GOLD_SEMAFORO_FERROS · GOLD_SEMAFORO_METRICAS
 - Rutas y puertos: GOLD_TRAFICO_PASOS · GOLD_TRAFICO_PUERTOS (IMF PortWatch, 2 años; scripts/setup_rutas_oracle.py +
   update_trafico_maritimo.py). Si no existen, la página descarga PortWatch directo (~45 s, caché 12 h).
@@ -218,6 +226,11 @@ Sistema / datos:
     la tesis dice que "su vista se habilita conforme se liberan los módulos de su división" (§3.5.1, §3.7). Al cambiarlo → bitácora.
 9e. Textos de la app que todavía dicen "31 variables" (`pages/mercado/02_variables.py`): son 35.
 9f. ✅ El motor de pronóstico ya es común (core/forecasting.py, 2026-11-24).
+9g. **Otoniel debe correr una vez** `python scripts/backfill_caso_historico_sbq.py`: carga a Oracle
+    (GOLD_ALERTAS_DOF + GOLD_MEDIDAS_ARANCELARIAS) el caso de la Regla 8a de bolas de molienda
+    (DOF 30/10/2026, código 5802604) que motivó el monitor — ocurrió antes de que existiera y por eso
+    no quedó en esas tablas; sin este backfill, la pestaña Aranceles de 07_comercio_exterior arranca sin
+    ningún caso real en "Historial de medidas arancelarias" (2026-11-26).
 Tesis:
 10. Datos personales (portada, agradecimientos), sesiones de validación con usuarios, tiempo de elaboración de reportes
     (hipótesis), motivos de la migración, referencias incompletas (en amarillo), confirmar con TYASA los nombres de clientes en capturas.

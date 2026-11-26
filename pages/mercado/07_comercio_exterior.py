@@ -18,6 +18,12 @@ Dos niveles de detalle, según de dónde sale cada tabla:
 
 DOM-STABLE: todo HTML dinámico usa st.html() (no st.markdown unsafe_allow_html
 para contenido que cambia entre reruns).
+
+Pestaña "Aranceles" (mercado/snice/vistas_aranceles.py): arancel base (TIGIE,
+GOLD_TIGIE_BASE — carga manual, ver scripts/cargar_tigie_base_oracle.py y el
+aviso mensual scripts/check_actualizacion_tigie.py) cruzado con lo que el DOF
+le ha aplicado desde entonces (GOLD_MEDIDAS_ARANCELARIAS / GOLD_ALERTAS_DOF —
+scripts/monitor_dof.py, automático).
 """
 
 import os
@@ -170,6 +176,7 @@ if not en_ventana:
 
 from mercado.canacero.vista_participacion import render_participacion_tyasa
 from mercado.snice.vistas import _card_open, _CARD_CLOSE, _rank_list_html, _agrupar_por_partida
+from mercado.snice.vistas_aranceles import render_aranceles_tab
 
 
 
@@ -247,8 +254,8 @@ st.divider()
 # ---------------------------------------------------------------------------
 # Pestañas
 # ---------------------------------------------------------------------------
-tab_resumen, tab_categorias, tab_detalle, tab_tyasa = st.tabs(
-    ["Resumen", "Categorías", "Detalle de avisos", "Participación TYASA"]
+tab_resumen, tab_categorias, tab_detalle, tab_tyasa, tab_aranceles = st.tabs(
+    ["Resumen", "Categorías", "Detalle de avisos", "Participación TYASA", "Aranceles"]
 )
 
 # ── RESUMEN (categorías + países + empresas) ────────────────────────────────
@@ -445,6 +452,10 @@ with tab_tyasa:
         periodo_sel=periodo_sel,
         periodos=periodos,
     )
+
+# ── ARANCELES (TIGIE base × medidas del DOF) ────────────────────────────────
+with tab_aranceles:
+    render_aranceles_tab()
 
 st.caption(
     f"Datos: SNICE — Secretaría de Economía · Periodo {periodo_sel} · "
