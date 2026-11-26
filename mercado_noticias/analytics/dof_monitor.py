@@ -203,8 +203,23 @@ Si el decreto cita explícitamente fracciones arancelarias que son de TYASA, el 
 impacto es automáticamente Alto o Medio (nunca Bajo), aunque el resto del texto \
 parezca genérico. Si el decreto es de un tema sin ninguna conexión real con \
 TYASA (ej. otro sector, trámites administrativos sin relación), marca \
-tiene_contenido_relevante=false. Responde ÚNICAMENTE con JSON válido, sin \
-markdown ni texto fuera del JSON.\
+tiene_contenido_relevante=false.
+
+Además, SIEMPRE que el decreto establezca o modifique una medida arancelaria
+concreta sobre una fracción (sea o no de TYASA, siempre que esté en el capítulo
+72 o 73 de la TIGIE), extráela como un registro en "medidas" — esto es
+independiente de tiene_contenido_relevante, porque sirve para llevar un
+historial de TODO lo que le pasa a la tarifa de estos capítulos, no solo lo
+que toca a TYASA directamente. Tipos de medida válidos:
+  - "Arancel general (TIGIE)": cambio a la tasa base de importación/exportación.
+  - "Cuota compensatoria / antidumping": cuota por dumping, con país de origen.
+  - "Exencion o regimen especial": Regla 8a, IMMEX, PROSEC u otro programa que
+    exima o reduzca el arancel bajo condiciones específicas.
+  - "Tratado de libre comercio": preferencia arancelaria por un TLC.
+Si el decreto no establece ninguna medida arancelaria concreta por fracción
+(ej. solo tipo de cambio, tasas de interés, trámites administrativos), deja
+"medidas" como lista vacía. Responde ÚNICAMENTE con JSON válido, sin markdown \
+ni texto fuera del JSON.\
 """
 
 _PROMPT_TMPL_DOF = """\
@@ -227,13 +242,23 @@ Responde con este JSON exacto (sin markdown):
   "productos_afectados": ["Tubería OCTG", "Tubería Mecánica", "Perfiles", "SBQ", "Lámina Negra", "Galvanizado"],
   "explicacion": "2-3 oraciones específicas: qué cambia, por qué impacta a TYASA y magnitud estimada.",
   "fecha_vigencia": "fecha o frase textual de cuándo entra en vigor, si el decreto lo menciona; si no, deja vacío",
-  "recomendacion": "Empieza con verbo de acción en segunda persona (Evalúa / Considera / Revisa / Acelera / Prioriza / Asegura). Acción específica dirigida a TYASA."
+  "recomendacion": "Empieza con verbo de acción en segunda persona (Evalúa / Considera / Revisa / Acelera / Prioriza / Asegura). Acción específica dirigida a TYASA.",
+  "medidas": [
+    {{
+      "fraccion": "fracción de 8 dígitos sin puntos (ej. 72283001)",
+      "tipo_medida": "Arancel general (TIGIE) | Cuota compensatoria / antidumping | Exencion o regimen especial | Tratado de libre comercio",
+      "valor": "texto libre con el valor concreto, ej. 'Exento (0%) bajo Regla 8a' o '35% arancel general' o '15% cuota compensatoria'",
+      "pais_origen": "país si la medida es por origen (cuotas compensatorias/TLC); vacío si no aplica",
+      "vigencia_desde": "fecha si se menciona, formato DD/MM/AAAA; vacío si no",
+      "vigencia_hasta": "fecha si se menciona (ej. cuotas compensatorias con plazo); vacío si no"
+    }}
+  ]
 }}
 
-Si NO hay impacto real para TYASA:
+Si NO hay impacto real para TYASA (pero puede haber "medidas" igual, ver arriba):
 {{"tiene_contenido_relevante": false, "resumen": "", "impacto": "Bajo", \
 "direccion": "Neutral", "productos_afectados": [], "explicacion": "", \
-"fecha_vigencia": "", "recomendacion": ""}}"""
+"fecha_vigencia": "", "recomendacion": "", "medidas": []}}"""
 
 _DOF_MODELS = ("gemini-3.5-flash", "gemini-2.5-flash-lite", "gemini-1.5-flash")
 

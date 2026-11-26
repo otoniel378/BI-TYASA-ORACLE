@@ -26,6 +26,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from scripts.fracciones_tyasa import es_fraccion_tyasa
+
 
 def _get_gemini_key() -> str:
     key = os.environ.get("GEMINI_API_KEY", "")
@@ -102,6 +104,55 @@ def _guardar_resultado(conn: oracledb.Connection, analisis: dict, correo_enviado
         cursor.close()
 
 
+def _guardar_medidas(conn: oracledb.Connection, analisis: dict):
+    """Persiste cada medida arancelaria extraída (ADMIN.GOLD_MEDIDAS_ARANCELARIAS)
+    — una fila por fracción, de cualquier fracción de capítulo 72/73 (no solo
+    las de TYASA), para armar el historial completo del arancel por fracción."""
+    medidas = analisis.get("medidas") or []
+    if not medidas:
+        return
+    cursor = conn.cursor()
+    try:
+        cursor.execute("ALTER SESSION DISABLE PARALLEL DML")
+        for m in medidas:
+            fraccion = (m.get("fraccion") or "").replace(".", "").strip()
+            if not fraccion:
+                continue
+            cursor.execute(
+                """
+                MERGE INTO ADMIN.GOLD_MEDIDAS_ARANCELARIAS T
+                USING (SELECT :codigo_dof AS CODIGO_DOF, :fraccion AS FRACCION FROM dual) S
+                ON (T.CODIGO_DOF = S.CODIGO_DOF AND T.FRACCION = S.FRACCION)
+                WHEN NOT MATCHED THEN INSERT
+                    (CODIGO_DOF, FRACCION, ES_FRACCION_TYASA, TIPO_MEDIDA, VALOR,
+                     PAIS_ORIGEN, VIGENCIA_DESDE, VIGENCIA_HASTA, FECHA_DOF, URL)
+                VALUES
+                    (:codigo_dof, :fraccion, :es_tyasa, :tipo_medida, :valor,
+                     :pais_origen, :vigencia_desde, :vigencia_hasta, :fecha_dof, :url)
+                """,
+                {
+                    "codigo_dof": analisis["codigo"],
+                    "fraccion": fraccion[:10],
+                    "es_tyasa": 1 if es_fraccion_tyasa(fraccion) else 0,
+                    "tipo_medida": (m.get("tipo_medida") or "")[:60],
+                    "valor": (m.get("valor") or "")[:500],
+                    "pais_origen": (m.get("pais_origen") or "")[:100],
+                    "vigencia_desde": (m.get("vigencia_desde") or "")[:20],
+                    "vigencia_hasta": (m.get("vigencia_hasta") or "")[:20],
+                    "fecha_dof": analisis.get("fecha_dof", "")[:10],
+                    "url": (analisis.get("url", "") or "")[:500],
+                },
+            )
+        conn.commit()
+    except oracledb.DatabaseError as e:
+        # No interrumpe la corrida si ADMIN.GOLD_MEDIDAS_ARANCELARIAS todavía
+        # no existe (ORA-00942) — ejecutar setup_medidas_arancelarias_oracle.py
+        # una vez para crearla; mientras tanto el resto del monitor sigue igual.
+        print(f"    [WARN] No se pudo guardar medidas arancelarias: {e}")
+    finally:
+        cursor.close()
+
+
 def run():
     print("=" * 60)
     print(f"TYASA BI — Monitor DOF — {date.today()}")
@@ -137,6 +188,7 @@ def run():
         print(f"  Ya analizados en una corrida anterior: {len(ya_vistos)} | Pendientes: {len(pendientes)}")
 
         alertas_enviadas = 0
+        medidas_totales = 0
         for item in pendientes:
             print(f"\n  Analizando [{item['codigo']}] {item['titulo']} — {item['descripcion'][:80]}")
             analisis = analizar_decreto(item, gemini_key)
@@ -158,11 +210,18 @@ def run():
             else:
                 print("    Sin impacto real para TYASA.")
 
+            n_medidas = len(analisis.get("medidas") or [])
+            if n_medidas:
+                print(f"    Medidas arancelarias detectadas: {n_medidas}")
+                _guardar_medidas(conn, analisis)
+                medidas_totales += n_medidas
+
             _guardar_resultado(conn, analisis, correo_enviado)
             if correo_enviado:
                 alertas_enviadas += 1
 
         print(f"\n  Alertas DOF enviadas hoy: {alertas_enviadas}")
+        print(f"  Medidas arancelarias registradas hoy: {medidas_totales}")
     finally:
         conn.close()
 
